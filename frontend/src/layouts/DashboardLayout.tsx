@@ -26,35 +26,103 @@ import {
   LightMode,
   Menu as MenuIcon,
 } from '@mui/icons-material';
+import { memo, startTransition, useCallback, useMemo } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { usePrefetch } from '../contexts/PrefetchContext';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { selectUserDisplayName } from '../store/selectors/authSelectors';
+import { selectDarkMode, selectSidebarOpen } from '../store/selectors/uiSelectors';
 import { logout } from '../store/slices/authSlice';
 import { toggleDarkMode, toggleSidebar } from '../store/slices/uiSlice';
+import { useThrottleCallback } from '../hooks/useThrottleCallback';
 
 const drawerWidth = 260;
 
-const nav = [
-  { label: 'Dashboard', path: '/dashboard', icon: <Dashboard /> },
-  { label: 'Jobs', path: '/jobs', icon: <Work /> },
+const NAV_ITEMS = [
+  { label: 'Dashboard', path: '/dashboard', icon: <Dashboard />, prefetch: 'dashboard' as const },
+  { label: 'Jobs', path: '/jobs', icon: <Work />, prefetch: 'jobs' as const },
   { label: 'Tracked', path: '/jobs/tracked', icon: <Work /> },
   { label: 'Applied', path: '/jobs/applied', icon: <Work /> },
   { label: 'History', path: '/jobs/history', icon: <History /> },
   { label: 'Job Portals', path: '/job-portals', icon: <Hub /> },
   { label: 'Companies', path: '/companies', icon: <Business /> },
   { label: 'Automation', path: '/automation', icon: <SmartToy /> },
-  { label: 'Reports', path: '/reports', icon: <Assessment /> },
+  { label: 'Reports', path: '/reports', icon: <Assessment />, prefetch: 'dashboard' as const },
   { label: 'Profile', path: '/profile', icon: <Person /> },
   { label: 'Settings', path: '/settings', icon: <Settings /> },
 ];
 
-export default function DashboardLayout() {
+type NavItemProps = {
+  label: string;
+  path: string;
+  icon: React.ReactNode;
+  selected: boolean;
+  onNavigate: (path: string) => void;
+  onPrefetch?: () => void;
+};
+
+const NavItem = memo(function NavItem({
+  label,
+  path,
+  icon,
+  selected,
+  onNavigate,
+  onPrefetch,
+}: NavItemProps) {
+  const handleClick = useCallback(() => onNavigate(path), [onNavigate, path]);
+  return (
+    <ListItemButton
+      selected={selected}
+      onClick={handleClick}
+      onMouseEnter={onPrefetch}
+      onFocus={onPrefetch}
+      sx={{ borderRadius: 2, mb: 0.5 }}
+    >
+      <ListItemIcon sx={{ minWidth: 40 }}>{icon}</ListItemIcon>
+      <ListItemText primary={label} />
+    </ListItemButton>
+  );
+});
+
+function DashboardLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useAppDispatch();
-  const darkMode = useAppSelector((s) => s.ui.darkMode);
-  const sidebarOpen = useAppSelector((s) => s.ui.sidebarOpen);
-  const user = useAppSelector((s) => s.auth.user);
+  const darkMode = useAppSelector(selectDarkMode);
+  const sidebarOpen = useAppSelector(selectSidebarOpen);
+  const displayName = useAppSelector(selectUserDisplayName);
   const isMobile = useMediaQuery('(max-width:900px)');
+  const { prefetchDashboard, prefetchJobs } = usePrefetch();
+
+  const handleNavigate = useCallback(
+    (path: string) => {
+      startTransition(() => navigate(path));
+      if (isMobile) dispatch(toggleSidebar());
+    },
+    [navigate, isMobile, dispatch],
+  );
+
+  const handleToggleSidebar = useCallback(() => dispatch(toggleSidebar()), [dispatch]);
+  const handleToggleDark = useThrottleCallback(() => dispatch(toggleDarkMode()), 300);
+
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem('refresh_token');
+    dispatch(logout());
+    navigate('/login');
+  }, [dispatch, navigate]);
+
+  const prefetchMap = useMemo(
+    () => ({
+      dashboard: prefetchDashboard,
+      jobs: prefetchJobs,
+    }),
+    [prefetchDashboard, prefetchJobs],
+  );
+
+  const pageTitle = useMemo(
+    () => NAV_ITEMS.find((n) => n.path === location.pathname)?.label || 'JobPilot AI',
+    [location.pathname],
+  );
 
   const drawer = (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -63,31 +131,24 @@ export default function DashboardLayout() {
           JobPilot AI
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          {user?.full_name || 'Automation workspace'}
+          {displayName}
         </Typography>
       </Box>
       <List sx={{ px: 1, flex: 1 }}>
-        {nav.map((item) => (
-          <ListItemButton
+        {NAV_ITEMS.map((item) => (
+          <NavItem
             key={item.path}
+            label={item.label}
+            path={item.path}
+            icon={item.icon}
             selected={location.pathname === item.path}
-            onClick={() => navigate(item.path)}
-            sx={{ borderRadius: 2, mb: 0.5 }}
-          >
-            <ListItemIcon sx={{ minWidth: 40 }}>{item.icon}</ListItemIcon>
-            <ListItemText primary={item.label} />
-          </ListItemButton>
+            onNavigate={handleNavigate}
+            onPrefetch={item.prefetch ? prefetchMap[item.prefetch] : undefined}
+          />
         ))}
       </List>
       <List sx={{ px: 1, pb: 2 }}>
-        <ListItemButton
-          onClick={() => {
-            localStorage.removeItem('refresh_token');
-            dispatch(logout());
-            navigate('/login');
-          }}
-          sx={{ borderRadius: 2 }}
-        >
+        <ListItemButton onClick={handleLogout} sx={{ borderRadius: 2 }}>
           <ListItemIcon sx={{ minWidth: 40 }}>
             <Logout />
           </ListItemIcon>
@@ -111,13 +172,11 @@ export default function DashboardLayout() {
         }}
       >
         <Toolbar>
-          <IconButton edge="start" onClick={() => dispatch(toggleSidebar())}>
+          <IconButton edge="start" onClick={handleToggleSidebar} aria-label="Toggle sidebar">
             <MenuIcon />
           </IconButton>
-          <Typography sx={{ flex: 1, fontWeight: 600 }}>
-            {nav.find((n) => n.path === location.pathname)?.label || 'JobPilot AI'}
-          </Typography>
-          <IconButton onClick={() => dispatch(toggleDarkMode())}>
+          <Typography sx={{ flex: 1, fontWeight: 600 }}>{pageTitle}</Typography>
+          <IconButton onClick={handleToggleDark} aria-label="Toggle theme">
             {darkMode ? <LightMode /> : <DarkMode />}
           </IconButton>
         </Toolbar>
@@ -126,7 +185,7 @@ export default function DashboardLayout() {
       <Drawer
         variant={isMobile ? 'temporary' : 'persistent'}
         open={sidebarOpen}
-        onClose={() => dispatch(toggleSidebar())}
+        onClose={handleToggleSidebar}
         sx={{
           width: drawerWidth,
           flexShrink: 0,
@@ -159,3 +218,5 @@ export default function DashboardLayout() {
     </Box>
   );
 }
+
+export default memo(DashboardLayout);

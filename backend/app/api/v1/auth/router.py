@@ -1,8 +1,9 @@
 """Auth endpoints."""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 from app.dependencies.auth import get_current_user
+from app.dependencies.services import get_auth_service
 from app.models.user import User
 from app.schemas.auth import (
     LoginRequest,
@@ -13,7 +14,6 @@ from app.schemas.auth import (
 )
 from app.schemas.common import MessageResponse
 from app.schemas.user import UserProfileSchema
-from app.dependencies.services import get_auth_service
 from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -47,8 +47,15 @@ async def refresh(payload: RefreshRequest, service: AuthService = Depends(get_au
 
 
 @router.post("/logout", response_model=MessageResponse)
-async def logout(payload: RefreshRequest, service: AuthService = Depends(get_auth_service)):
-    await service.logout(payload.refresh_token)
+async def logout(
+    request: Request,
+    payload: RefreshRequest,
+    service: AuthService = Depends(get_auth_service),
+    user: User = Depends(get_current_user),
+):
+    _ = user
+    jti = getattr(request.state, "token_jti", None)
+    await service.logout(payload.refresh_token, access_jti=jti)
     return MessageResponse(detail="Logged out")
 
 

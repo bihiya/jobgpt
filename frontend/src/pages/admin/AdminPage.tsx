@@ -1,10 +1,10 @@
 import { Alert, Stack, Typography } from '@mui/material';
+import { memo } from 'react';
 import { useAppSelector } from '../../store/hooks';
+import { selectIsAdmin } from '../../store/selectors/authSelectors';
 
-export default function AdminPage() {
-  const user = useAppSelector((s) => s.auth.user);
-  const roles: string[] = user?.roles || [];
-  const isAdmin = roles.includes('admin');
+function AdminPage() {
+  const isAdmin = useAppSelector(selectIsAdmin);
 
   return (
     <Stack spacing={2}>
@@ -19,3 +19,5 @@ export default function AdminPage() {
     </Stack>
   );
 }
+
+export default memo(AdminPage);

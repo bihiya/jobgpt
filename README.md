@@ -99,10 +99,18 @@ npx playwright install
 npm test
 ```
 
+## Performance
+
+See [docs/PERFORMANCE.md](docs/PERFORMANCE.md) for the full optimization map:
+
+- Frontend: lazy routes, Suspense, memoization, debounce/throttle, virtualization, React Query caching, optimistic UI, bundle/Gzip/Brotli splitting
+- Backend: async FastAPI, Motor pooling, Redis cache patterns, GZip, ETag, Celery + Kafka, circuit breaker, Gunicorn workers
+- Redis: cache-aside, write-through/behind, locks, rate limits, sessions, leaderboards, streams
+
 ## Security
 
 - Bcrypt password hashing
-- JWT access + refresh token rotation
+- JWT access + refresh token rotation + Redis token blacklist
 - RBAC via role dependencies
 - Rate limiting, CORS, security headers
 - Structured request logging with correlation IDs

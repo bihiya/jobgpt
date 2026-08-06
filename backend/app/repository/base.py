@@ -57,3 +57,29 @@ class BaseRepository(Generic[T]):
 
     async def find_eq(self, field: str, value: Any) -> list[T]:
         return await self.model.find(Eq(field, value)).to_list()
+
+    async def bulk_insert(self, rows: list[dict[str, Any]]) -> list[T]:
+        """Batch insert for high-throughput ingestion."""
+        docs = [self.model(**row) for row in rows]
+        if not docs:
+            return []
+        await self.model.insert_many(docs)
+        return docs
+
+    async def bulk_update(self, filters: dict[str, Any], update: dict[str, Any]) -> int:
+        """Batch update matching documents; returns modified count when available."""
+        result = await self.model.find(filters).update_many({"$set": update})
+        return int(getattr(result, "modified_count", 0) or 0)
+
+    async def find_projected(
+        self,
+        filters: dict[str, Any] | None = None,
+        fields: list[str] | None = None,
+        skip: int = 0,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """Selective field projection to reduce payload size."""
+        projection = {field: 1 for field in fields} if fields else None
+        cursor = self.model.get_motor_collection().find(filters or {}, projection)
+        cursor = cursor.skip(skip).limit(limit)
+        return [doc async for doc in cursor]

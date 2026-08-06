@@ -28,6 +28,19 @@ class Settings(BaseSettings):
     mongodb_db: str = "jobpilot"
 
     redis_url: str = "redis://redis:6379/0"
+    redis_max_connections: int = 50
+    redis_cache_ttl_seconds: int = 60
+    redis_hot_ttl_seconds: int = 300
+
+    celery_broker_url: str = "redis://redis:6379/1"
+    celery_result_backend: str = "redis://redis:6379/2"
+
+    mongodb_max_pool_size: int = 50
+    mongodb_min_pool_size: int = 5
+    request_timeout_seconds: int = 60
+
+    otel_enabled: bool = False
+    otel_exporter_endpoint: str = "http://otel-collector:4317"
 
     kafka_bootstrap_servers: str = "kafka:9092"
     kafka_client_id: str = "jobpilot-api"

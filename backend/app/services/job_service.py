@@ -44,26 +44,65 @@ class JobService:
         )
 
     async def list_jobs(self, user_id: str, params: JobFilterParams) -> PaginatedResponse[JobResponse]:
-        items, total = await self.jobs.search(
-            user_id,
-            q=params.q,
-            portal=params.portal,
-            company=params.company,
-            status=params.status,
-            min_score=params.min_score,
-            page=params.page,
-            page_size=params.page_size,
-            sort_by=params.sort_by,
-            sort_dir=params.sort_dir,
+        # Cache Aside: Redis API response caching with namespaced keys + TTL
+        fingerprint = (
+            f"{params.q}|{params.portal}|{params.company}|{params.status}|"
+            f"{params.min_score}|{params.page}|{params.page_size}|{params.sort_by}|{params.sort_dir}"
         )
-        pages = ceil(total / params.page_size) if params.page_size else 0
-        return PaginatedResponse(
-            items=[self._to_response(j) for j in items],
-            total=total,
-            page=params.page,
-            page_size=params.page_size,
-            pages=pages,
-        )
+        cache_key = None
+        try:
+            from app.core.config import settings
+            from app.services.cache_service import CacheService
+
+            cache = CacheService()
+            cache_key = cache.jobs_key(user_id, fingerprint)
+
+            async def _load():
+                items, total = await self.jobs.search(
+                    user_id,
+                    q=params.q,
+                    portal=params.portal,
+                    company=params.company,
+                    status=params.status,
+                    min_score=params.min_score,
+                    page=params.page,
+                    page_size=params.page_size,
+                    sort_by=params.sort_by,
+                    sort_dir=params.sort_dir,
+                )
+                pages = ceil(total / params.page_size) if params.page_size else 0
+                result = PaginatedResponse(
+                    items=[self._to_response(j) for j in items],
+                    total=total,
+                    page=params.page,
+                    page_size=params.page_size,
+                    pages=pages,
+                )
+                return result.model_dump()
+
+            cached = await cache.get_or_set(cache_key, _load, ttl=settings.redis_cache_ttl_seconds)
+            return PaginatedResponse(**cached)
+        except Exception:  # noqa: BLE001
+            items, total = await self.jobs.search(
+                user_id,
+                q=params.q,
+                portal=params.portal,
+                company=params.company,
+                status=params.status,
+                min_score=params.min_score,
+                page=params.page,
+                page_size=params.page_size,
+                sort_by=params.sort_by,
+                sort_dir=params.sort_dir,
+            )
+            pages = ceil(total / params.page_size) if params.page_size else 0
+            return PaginatedResponse(
+                items=[self._to_response(j) for j in items],
+                total=total,
+                page=params.page,
+                page_size=params.page_size,
+                pages=pages,
+            )
 
     async def list_by_statuses(
         self,
@@ -94,10 +133,22 @@ class JobService:
         return self._to_response(job)
 
     async def track(self, user_id: str, job_id: str) -> JobResponse:
-        return await self.update(user_id, job_id, JobUpdateRequest(status=JobStatus.TRACKED))
+        result = await self.update(user_id, job_id, JobUpdateRequest(status=JobStatus.TRACKED))
+        await self._invalidate_job_cache(user_id)
+        return result
 
     async def ignore(self, user_id: str, job_id: str) -> JobResponse:
-        return await self.update(user_id, job_id, JobUpdateRequest(status=JobStatus.IGNORED))
+        result = await self.update(user_id, job_id, JobUpdateRequest(status=JobStatus.IGNORED))
+        await self._invalidate_job_cache(user_id)
+        return result
+
+    async def _invalidate_job_cache(self, user_id: str) -> None:
+        try:
+            from app.services.cache_service import CacheService
+
+            await CacheService().invalidate_namespace("cache", "jobs", user_id)
+        except Exception:  # noqa: BLE001
+            pass
 
     async def match_job(self, user_id: str, job: Job) -> Job:
         user = await self.users.get_profile(user_id)
