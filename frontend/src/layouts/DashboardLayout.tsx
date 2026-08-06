@@ -1,6 +1,7 @@
 import {
   AppBar,
   Box,
+  Button,
   Chip,
   Drawer,
   IconButton,
@@ -22,6 +23,7 @@ import {
   Timeline,
   Hub,
   Logout,
+  Login,
   Person,
   RocketLaunch,
   Settings,
@@ -35,13 +37,14 @@ import {
 import { alpha } from '@mui/material/styles';
 import { memo, startTransition, useCallback, useMemo } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import GuestBanner from '../components/auth/GuestBanner';
 import { usePrefetch } from '../contexts/PrefetchContext';
 import { useRealtimeSocket } from '../hooks/useRealtimeSocket';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
-import { selectUserDisplayName } from '../store/selectors/authSelectors';
+import { selectIsAuthenticated, selectUserDisplayName } from '../store/selectors/authSelectors';
 import { selectDarkMode, selectSidebarOpen } from '../store/selectors/uiSelectors';
 import { logout } from '../store/slices/authSlice';
-import { toggleDarkMode, toggleSidebar } from '../store/slices/uiSlice';
+import { openLoginGate, toggleDarkMode, toggleSidebar } from '../store/slices/uiSlice';
 import { useThrottleCallback } from '../hooks/useThrottleCallback';
 import { useToast } from '../hooks/useToast';
 
@@ -103,10 +106,11 @@ function DashboardLayout() {
   const darkMode = useAppSelector(selectDarkMode);
   const sidebarOpen = useAppSelector(selectSidebarOpen);
   const displayName = useAppSelector(selectUserDisplayName);
+  const isAuthenticated = useAppSelector(selectIsAuthenticated);
   const isMobile = useMediaQuery('(max-width:900px)');
   const { prefetchDashboard, prefetchJobs } = usePrefetch();
   const { info } = useToast();
-  const { status: liveStatus } = useRealtimeSocket(true);
+  const { status: liveStatus } = useRealtimeSocket(isAuthenticated);
 
   const liveChip = useMemo(() => {
     if (liveStatus === 'connected') {
@@ -133,8 +137,17 @@ function DashboardLayout() {
     localStorage.removeItem('refresh_token');
     dispatch(logout());
     info('Signed out');
-    navigate('/login');
+    navigate('/dashboard');
   }, [dispatch, navigate, info]);
+
+  const handleSignIn = useCallback(() => {
+    dispatch(
+      openLoginGate({
+        reason: 'Sign in to save your setup and run automation',
+        redirectTo: `${location.pathname}${location.search}`,
+      }),
+    );
+  }, [dispatch, location.pathname, location.search]);
 
   const prefetchMap = useMemo(
     () => ({
@@ -165,7 +178,7 @@ function DashboardLayout() {
           JobPilot AI
         </Typography>
         <Typography variant="body2" sx={{ opacity: 0.75, mt: 0.5 }}>
-          {displayName}
+          {isAuthenticated ? displayName : 'Guest explorer'}
         </Typography>
       </Box>
       <List sx={{ px: 0.5, flex: 1, overflowY: 'auto' }}>
@@ -182,12 +195,21 @@ function DashboardLayout() {
         ))}
       </List>
       <List sx={{ px: 0.5, pb: 2 }}>
-        <ListItemButton onClick={handleLogout}>
-          <ListItemIcon sx={{ minWidth: 40, color: 'inherit' }}>
-            <Logout />
-          </ListItemIcon>
-          <ListItemText primary="Logout" />
-        </ListItemButton>
+        {isAuthenticated ? (
+          <ListItemButton onClick={handleLogout}>
+            <ListItemIcon sx={{ minWidth: 40, color: 'inherit' }}>
+              <Logout />
+            </ListItemIcon>
+            <ListItemText primary="Logout" />
+          </ListItemButton>
+        ) : (
+          <ListItemButton onClick={handleSignIn}>
+            <ListItemIcon sx={{ minWidth: 40, color: 'inherit' }}>
+              <Login />
+            </ListItemIcon>
+            <ListItemText primary="Sign in" />
+          </ListItemButton>
+        )}
       </List>
     </Box>
   );
@@ -218,20 +240,35 @@ function DashboardLayout() {
           >
             {pageTitle}
           </Typography>
-          <Chip
-            size="small"
-            icon={<Circle sx={{ fontSize: '0.65rem !important' }} />}
-            label={liveChip.label}
-            color={liveChip.color}
-            variant={liveStatus === 'connected' ? 'filled' : 'outlined'}
-            sx={{
-              display: { xs: 'none', sm: 'inline-flex' },
-              fontWeight: 700,
-              '& .MuiChip-icon': {
-                animation: liveStatus === 'connected' ? 'jp-pulse-soft 2.2s ease infinite' : 'none',
-              },
-            }}
-          />
+          {isAuthenticated ? (
+            <Chip
+              size="small"
+              icon={<Circle sx={{ fontSize: '0.65rem !important' }} />}
+              label={liveChip.label}
+              color={liveChip.color}
+              variant={liveStatus === 'connected' ? 'filled' : 'outlined'}
+              sx={{
+                display: { xs: 'none', sm: 'inline-flex' },
+                fontWeight: 700,
+                '& .MuiChip-icon': {
+                  animation: liveStatus === 'connected' ? 'jp-pulse-soft 2.2s ease infinite' : 'none',
+                },
+              }}
+            />
+          ) : (
+            <Chip
+              size="small"
+              label="Guest"
+              color="info"
+              variant="outlined"
+              sx={{ display: { xs: 'none', sm: 'inline-flex' }, fontWeight: 700 }}
+            />
+          )}
+          {!isAuthenticated && (
+            <Button size="small" variant="contained" onClick={handleSignIn} sx={{ display: { xs: 'none', md: 'inline-flex' } }}>
+              Sign in
+            </Button>
+          )}
           <IconButton onClick={handleToggleDark} aria-label="Toggle theme">
             {darkMode ? <LightMode /> : <DarkMode />}
           </IconButton>
@@ -267,6 +304,7 @@ function DashboardLayout() {
             `radial-gradient(700px 260px at 100% 0%, ${alpha(t.palette.secondary.main, 0.1)}, transparent)`,
         }}
       >
+        <GuestBanner />
         <Outlet key={location.pathname} />
       </Box>
     </Box>

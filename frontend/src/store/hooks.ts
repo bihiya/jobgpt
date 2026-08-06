@@ -17,6 +17,7 @@ export type RootState = {
       duration: number;
     }>;
     snackbar: { open: boolean; message: string; severity: string };
+    loginGate: { open: boolean; reason: string; redirectTo: string };
   };
 };
 

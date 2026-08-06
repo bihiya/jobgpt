@@ -12,6 +12,10 @@ type QueryMeta = {
   silent?: boolean;
 };
 
+function isGuestGateError(error: unknown): boolean {
+  return Boolean((error as { isGuestGate?: boolean } | undefined)?.isGuestGate);
+}
+
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -27,8 +31,7 @@ export const queryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: (error, query) => {
       const meta = query.meta as QueryMeta | undefined;
-      if (meta?.silent) return;
-      // Toast only when a background refetch fails after we already had data
+      if (meta?.silent || isGuestGateError(error)) return;
       if (query.state.data !== undefined) {
         toastFromStore(`Refresh failed: ${getApiErrorMessage(error)}`, 'warning', 5000);
       }
@@ -44,7 +47,7 @@ export const queryClient = new QueryClient({
     },
     onError: (error, _vars, _ctx, mutation) => {
       const meta = mutation.meta as MutationMeta | undefined;
-      if (meta?.silent) return;
+      if (meta?.silent || isGuestGateError(error)) return;
       const prefix = meta?.errorMessage ? `${meta.errorMessage}: ` : '';
       toastFromStore(`${prefix}${getApiErrorMessage(error)}`, 'error', 6000);
     },

@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Box, Button, Link, Paper, Stack, TextField, Typography } from '@mui/material';
 import { useForm } from 'react-hook-form';
-import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
 import { z } from 'zod';
 import { authApi } from '../../api/auth';
 import { useToast } from '../../hooks/useToast';
@@ -16,6 +16,7 @@ type FormValues = z.infer<typeof schema>;
 
 export default function RegisterPage() {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
   const { apiSuccess, apiError } = useToast();
   const {
     register,
@@ -27,7 +28,8 @@ export default function RegisterPage() {
     try {
       await authApi.register(values);
       apiSuccess('Account created — sign in to continue');
-      navigate('/login');
+      const redirect = params.get('redirect');
+      navigate(redirect ? `/login?redirect=${encodeURIComponent(redirect)}` : '/login');
     } catch (err) {
       apiError(err, 'Unable to register. Email may already exist.');
     }
@@ -55,6 +57,8 @@ export default function RegisterPage() {
           </Button>
           <Typography variant="body2">
             Already have an account? <Link component={RouterLink} to="/login">Sign in</Link>
+            {' · '}
+            <Link component={RouterLink} to="/dashboard">Browse as guest</Link>
           </Typography>
         </Stack>
       </Box>
