@@ -8,11 +8,12 @@ Server data uses TanStack Query; Redux holds session + UI chrome.
 ```
 frontend/src/store/
 ├── store.js                 # configureStore + combined reducers
-├── hooks.js                 # typed-style useAppDispatch / useAppSelector
+├── hooks.ts                 # useAppDispatch / useAppSelector
 └── slices/
     ├── authSlice.js         # session credentials
     └── uiSlice.js           # dark mode, sidebar, snackbar
 ```
+
 
 ## Store setup
 
