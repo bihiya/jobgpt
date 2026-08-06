@@ -64,8 +64,18 @@ class AuthService:
         await self.refresh_tokens.revoke(token_hash)
         return await self._issue_tokens(user)
 
-    async def logout(self, refresh_token: str) -> None:
+    async def logout(self, refresh_token: str, access_jti: str | None = None) -> None:
         await self.refresh_tokens.revoke(self._hash_token(refresh_token))
+        if access_jti:
+            try:
+                from app.core.redis_features import blacklist_token
+
+                await blacklist_token(
+                    access_jti,
+                    ttl_seconds=settings.access_token_expire_minutes * 60,
+                )
+            except Exception:  # noqa: BLE001
+                pass
 
     async def _issue_tokens(self, user: User) -> TokenResponse:
         roles = [r.value for r in user.roles]

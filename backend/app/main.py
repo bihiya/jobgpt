@@ -5,6 +5,8 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import ORJSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, generate_latest
 from starlette.responses import Response
 
@@ -14,7 +16,11 @@ from app.core.exception_handlers import register_exception_handlers
 from app.core.kafka import close_producer
 from app.core.logging import get_logger, setup_logging
 from app.core.middleware import RequestContextMiddleware, SecurityHeadersMiddleware
-from app.db.mongodb import close_mongo_connection, connect_to_mongo
+from app.core.redis import close_redis, ping_redis
+from app.core.telemetry import setup_telemetry
+from app.db.mongodb import close_mongo_connection, connect_to_mongo, get_client
+from app.middleware.http_cache import ETagMiddleware
+from app.middleware.idempotency import IdempotencyMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.scheduler.jobs import start_scheduler, stop_scheduler
 
@@ -31,15 +37,23 @@ async def lifespan(_: FastAPI):
     await connect_to_mongo()
     if settings.app_env != "test":
         try:
+            await ping_redis()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("redis_ping_failed", error=str(exc))
+        try:
             start_scheduler()
         except Exception as exc:  # noqa: BLE001
             logger.warning("scheduler_start_skipped", error=str(exc))
     logger.info("app_started", env=settings.app_env)
-    yield
-    stop_scheduler()
-    await close_producer()
-    await close_mongo_connection()
-    logger.info("app_stopped")
+    try:
+        yield
+    finally:
+        # Graceful shutdown order: stop intake → drain → close IO
+        stop_scheduler()
+        await close_producer()
+        await close_redis()
+        await close_mongo_connection()
+        logger.info("app_stopped")
 
 
 app = FastAPI(
@@ -50,45 +64,54 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
+    default_response_class=ORJSONResponse,  # faster JSON serialization
 )
 
+# Middleware order: last added = outermost
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID", "X-Correlation-ID", "Idempotency-Key", "If-None-Match"],
+    max_age=600,  # CORS preflight cache
 )
+app.add_middleware(GZipMiddleware, minimum_size=500)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RequestContextMiddleware)
 app.add_middleware(RateLimitMiddleware)
+app.add_middleware(IdempotencyMiddleware)
+app.add_middleware(ETagMiddleware)
 
 register_exception_handlers(app)
+setup_telemetry(app)
 app.include_router(api_router, prefix=settings.api_v1_prefix)
 
 
-@app.get("/health")
+@app.get("/health", response_model=None)
 async def health():
     return {"status": "ok", "service": settings.app_name}
 
 
-@app.get("/health/ready")
+@app.get("/health/ready", response_model=None)
 async def ready():
+    checks = {"mongo": False, "redis": False}
     try:
-        from app.db.mongodb import get_client
-
         client = get_client()
         await client.admin.command("ping")
-        return {"status": "ready"}
+        checks["mongo"] = True
     except Exception as exc:  # noqa: BLE001
-        return Response(
-            content=f'{{"status":"not_ready","error":"{exc}"}}',
+        return ORJSONResponse(
             status_code=503,
-            media_type="application/json",
+            content={"status": "not_ready", "checks": checks, "error": str(exc)},
         )
+    checks["redis"] = await ping_redis()
+    if not checks["redis"] and settings.app_env == "production":
+        return ORJSONResponse(status_code=503, content={"status": "not_ready", "checks": checks})
+    return {"status": "ready", "checks": checks}
 
 
-@app.get("/metrics")
+@app.get("/metrics", response_model=None)
 async def metrics():
     if not settings.prometheus_enabled:
         return Response(status_code=404)

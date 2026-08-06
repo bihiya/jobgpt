@@ -21,4 +21,5 @@ RUN mkdir -p /tmp/jobpilot/uploads /tmp/jobpilot/screenshots /tmp/jobpilot/repor
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Production: Gunicorn + Uvicorn workers (override with uvicorn for local reload)
+CMD ["gunicorn", "app.main:app", "-c", "gunicorn.conf.py"]

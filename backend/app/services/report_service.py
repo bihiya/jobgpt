@@ -96,6 +96,27 @@ class ReportService:
         return report.file_path
 
     async def analytics(self, user_id: str) -> AnalyticsResponse:
+        # Hot data caching (cache aside + sliding TTL warm path)
+        try:
+            from app.core.config import settings
+            from app.services.cache_service import CacheService
+
+            cache = CacheService()
+            key = cache.analytics_key(user_id)
+
+            async def _compute() -> dict:
+                return (await self._compute_analytics(user_id)).model_dump()
+
+            cached = await cache.get_sliding(key, ttl=settings.redis_hot_ttl_seconds)
+            if cached is not None:
+                return AnalyticsResponse(**cached)
+            data = await _compute()
+            await cache.set_sliding(key, data, ttl=settings.redis_hot_ttl_seconds)
+            return AnalyticsResponse(**data)
+        except Exception:  # noqa: BLE001
+            return await self._compute_analytics(user_id)
+
+    async def _compute_analytics(self, user_id: str) -> AnalyticsResponse:
         jobs_found = await self.jobs.count({"user_id": user_id})
         status_counts = await self.applications.count_by_status(user_id)
         applied = status_counts.get(ApplicationStatus.SUCCESS.value, 0)
@@ -106,7 +127,6 @@ class ReportService:
         total_apps = max(applied + failed + pending, 1)
         success_rate = round(applied / total_apps * 100, 2)
 
-        # Lightweight aggregations for dashboard charts
         recent_jobs = await self.jobs.find_many({"user_id": user_id}, limit=200, sort=[("fetched_at", -1)])
         company_map: dict[str, int] = {}
         portal_map: dict[str, int] = {}
@@ -131,7 +151,7 @@ class ReportService:
         skill_demand = [{"skill": k, "count": v} for k, v in sorted(skill_map.items(), key=lambda x: -x[1])[:15]]
         apps_per_day = round(sum(d["count"] for d in daily_applications) / 7, 2)
 
-        _ = JobStatus  # keep import used for future filters
+        _ = JobStatus
         return AnalyticsResponse(
             jobs_found=jobs_found,
             applied=applied,

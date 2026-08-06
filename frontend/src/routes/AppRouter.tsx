@@ -1,46 +1,60 @@
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { lazy, startTransition } from 'react';
+import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import PageSuspense from '../components/common/PageSuspense';
 import AuthLayout from '../layouts/AuthLayout';
 import DashboardLayout from '../layouts/DashboardLayout';
-import AdminPage from '../pages/admin/AdminPage';
-import ForgotPasswordPage from '../pages/auth/ForgotPasswordPage';
-import LoginPage from '../pages/auth/LoginPage';
-import RegisterPage from '../pages/auth/RegisterPage';
-import AutomationPage from '../pages/automation/AutomationPage';
-import CompaniesPage from '../pages/companies/CompaniesPage';
-import DashboardPage from '../pages/dashboard/DashboardPage';
-import AppliedJobsPage from '../pages/jobs/AppliedJobsPage';
-import HistoryJobsPage from '../pages/jobs/HistoryJobsPage';
-import JobsPage from '../pages/jobs/JobsPage';
-import TrackedJobsPage from '../pages/jobs/TrackedJobsPage';
-import PortalsPage from '../pages/portals/PortalsPage';
-import ProfilePage from '../pages/profile/ProfilePage';
-import ReportsPage from '../pages/reports/ReportsPage';
-import SettingsPage from '../pages/settings/SettingsPage';
 import ProtectedRoute from './ProtectedRoute';
+
+// Route-based lazy loading + dynamic imports → separate chunks (code splitting)
+const LoginPage = lazy(() => import('../pages/auth/LoginPage'));
+const RegisterPage = lazy(() => import('../pages/auth/RegisterPage'));
+const ForgotPasswordPage = lazy(() => import('../pages/auth/ForgotPasswordPage'));
+const DashboardPage = lazy(() => import('../pages/dashboard/DashboardPage'));
+const JobsPage = lazy(() => import('../pages/jobs/JobsPage'));
+const TrackedJobsPage = lazy(() => import('../pages/jobs/TrackedJobsPage'));
+const AppliedJobsPage = lazy(() => import('../pages/jobs/AppliedJobsPage'));
+const HistoryJobsPage = lazy(() => import('../pages/jobs/HistoryJobsPage'));
+const PortalsPage = lazy(() => import('../pages/portals/PortalsPage'));
+const CompaniesPage = lazy(() => import('../pages/companies/CompaniesPage'));
+const AutomationPage = lazy(() => import('../pages/automation/AutomationPage'));
+const ReportsPage = lazy(() => import('../pages/reports/ReportsPage'));
+const ProfilePage = lazy(() => import('../pages/profile/ProfilePage'));
+const SettingsPage = lazy(() => import('../pages/settings/SettingsPage'));
+const AdminPage = lazy(() => import('../pages/admin/AdminPage'));
+
+function Lazy({ children }: { children: React.ReactNode }) {
+  return <PageSuspense>{children}</PageSuspense>;
+}
+
+/** Concurrent-friendly navigate helper for call sites that want startTransition. */
+export function useTransitionNavigate() {
+  const navigate = useNavigate();
+  return (to: string) => startTransition(() => navigate(to));
+}
 
 export default function AppRouter() {
   return (
     <Routes>
       <Route element={<AuthLayout />}>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/login" element={<Lazy><LoginPage /></Lazy>} />
+        <Route path="/register" element={<Lazy><RegisterPage /></Lazy>} />
+        <Route path="/forgot-password" element={<Lazy><ForgotPasswordPage /></Lazy>} />
       </Route>
 
       <Route element={<ProtectedRoute />}>
         <Route element={<DashboardLayout />}>
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/jobs" element={<JobsPage />} />
-          <Route path="/jobs/tracked" element={<TrackedJobsPage />} />
-          <Route path="/jobs/applied" element={<AppliedJobsPage />} />
-          <Route path="/jobs/history" element={<HistoryJobsPage />} />
-          <Route path="/job-portals" element={<PortalsPage />} />
-          <Route path="/companies" element={<CompaniesPage />} />
-          <Route path="/automation" element={<AutomationPage />} />
-          <Route path="/reports" element={<ReportsPage />} />
-          <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/admin" element={<AdminPage />} />
+          <Route path="/dashboard" element={<Lazy><DashboardPage /></Lazy>} />
+          <Route path="/jobs" element={<Lazy><JobsPage /></Lazy>} />
+          <Route path="/jobs/tracked" element={<Lazy><TrackedJobsPage /></Lazy>} />
+          <Route path="/jobs/applied" element={<Lazy><AppliedJobsPage /></Lazy>} />
+          <Route path="/jobs/history" element={<Lazy><HistoryJobsPage /></Lazy>} />
+          <Route path="/job-portals" element={<Lazy><PortalsPage /></Lazy>} />
+          <Route path="/companies" element={<Lazy><CompaniesPage /></Lazy>} />
+          <Route path="/automation" element={<Lazy><AutomationPage /></Lazy>} />
+          <Route path="/reports" element={<Lazy><ReportsPage /></Lazy>} />
+          <Route path="/profile" element={<Lazy><ProfilePage /></Lazy>} />
+          <Route path="/settings" element={<Lazy><SettingsPage /></Lazy>} />
+          <Route path="/admin" element={<Lazy><AdminPage /></Lazy>} />
         </Route>
       </Route>
 
