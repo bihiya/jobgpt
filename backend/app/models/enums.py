@@ -1,6 +1,8 @@
 """Shared enumerations for domain models."""
 
-from enum import StrEnum
+from __future__ import annotations
+
+from app.compat import StrEnum
 
 
 class UserRole(StrEnum):
