@@ -27,7 +27,7 @@ Additional docs:
 
 **Frontend:** React 19, TypeScript, Vite, MUI v7, React Router v7, TanStack Query, Redux Toolkit (JS), Axios, RHF + Zod, MUI DataGrid, Recharts, Dayjs
 
-**Backend:** FastAPI, Python 3.13, Pydantic v2, Motor, Beanie, JWT + Refresh, APScheduler, Kafka, Playwright
+**Backend:** FastAPI, Python 3.9+, Pydantic v2, Motor, Beanie, JWT + Refresh, APScheduler, Kafka, Playwright
 
 **Infra:** Docker Compose, MongoDB, Redis, Kafka/Zookeeper, Prometheus, Grafana, GitHub Actions
 
