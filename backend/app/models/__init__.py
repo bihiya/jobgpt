@@ -4,6 +4,7 @@ from app.models.application import Application
 from app.models.approval import Approval
 from app.models.automation_log import AuditLog, AutomationLog
 from app.models.company import Company
+from app.models.email_inbox import EmailAccount, InboundEmail
 from app.models.job import Job
 from app.models.notification import Notification
 from app.models.portal import Portal
@@ -35,6 +36,8 @@ DOCUMENT_MODELS = [
     QuestionAnswer,
     Reminder,
     NotificationChannel,
+    EmailAccount,
+    InboundEmail,
 ]
 
 __all__ = [
@@ -57,4 +60,6 @@ __all__ = [
     "QuestionAnswer",
     "Reminder",
     "NotificationChannel",
+    "EmailAccount",
+    "InboundEmail",
 ]

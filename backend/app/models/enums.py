@@ -98,3 +98,20 @@ class ReportStatus(StrEnum):
     PENDING = "pending"
     READY = "ready"
     FAILED = "failed"
+
+
+class EmailEventType(StrEnum):
+    INTERVIEW_SCHEDULE = "interview_schedule"
+    JD_RECEIVED = "jd_received"
+    OFFER = "offer"
+    REJECTION = "rejection"
+    ASSESSMENT = "assessment"
+    APPLICATION_UPDATE = "application_update"
+    OTHER = "other"
+
+
+class EmailSyncStatus(StrEnum):
+    PENDING = "pending"
+    APPLIED = "applied"
+    IGNORED = "ignored"
+    FAILED = "failed"

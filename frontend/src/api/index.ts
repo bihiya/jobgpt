@@ -101,3 +101,16 @@ export const activityApi = {
   forJob: (jobId: string, params?: Record<string, unknown>) =>
     api.get(`/jobs/${jobId}/activity`, { params }),
 };
+
+export const emailApi = {
+  accounts: () => api.get('/email/accounts'),
+  upsertAccount: (payload: Record<string, unknown>) => api.post('/email/accounts', payload),
+  removeAccount: (id: string) => api.delete(`/email/accounts/${id}`),
+  testAccount: (id: string) => api.post(`/email/accounts/${id}/test`),
+  syncAccount: (id: string) => api.post(`/email/accounts/${id}/sync`),
+  syncAll: () => api.post('/email/sync'),
+  messages: (params?: Record<string, unknown>) => api.get('/email/messages', { params }),
+  ingest: (payload: Record<string, unknown>) => api.post('/email/ingest', payload),
+  apply: (id: string) => api.post(`/email/messages/${id}/apply`),
+  ignore: (id: string) => api.post(`/email/messages/${id}/ignore`),
+};

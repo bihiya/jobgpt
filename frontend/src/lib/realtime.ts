@@ -71,6 +71,19 @@ export function queryKeysForEvent(event: string): string[][] {
     case 'reminder.scheduled':
     case 'reminder.completed':
       return [['reminders-due'], ['calendar']];
+    case 'email.synced':
+    case 'email.ingested':
+    case 'email.applied':
+      return [
+        ['email-messages'],
+        ['email-accounts'],
+        ['pipeline'],
+        ['jobs'],
+        ['jobs-infinite'],
+        ['calendar'],
+        ['reminders-due'],
+        ['weekly-story'],
+      ];
     case 'audit.created':
       return [['user-activity'], ['job-activity']];
     default:
@@ -95,5 +108,8 @@ export function shouldToastEvent(event: string): boolean {
     'portal.health',
     'reminder.due',
     'reminder.completed',
+    'email.synced',
+    'email.ingested',
+    'email.applied',
   ].includes(event);
 }

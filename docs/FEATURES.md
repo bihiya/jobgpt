@@ -29,6 +29,7 @@
 | Smart batch apply | Approve ≥ threshold for a portal with daily caps + cooldown |
 | Home Digest command center | Ranked match cards, live apply tray, blockers inbox, portal health, weekly story |
 | Pipeline Kanban | Matched → Approved → Applied → Interview → Offer → Rejected |
+| Email inbox sync | IMAP poll + classify interview/JD/offer/rejection → pipeline + calendar (`/email`) |
 
 ## Default safer flow
 

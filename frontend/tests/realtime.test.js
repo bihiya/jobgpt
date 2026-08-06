@@ -21,6 +21,13 @@ describe('realtime helpers', () => {
     expect(keys).toContain('approval-blockers');
   });
 
+  it('maps email inbox events to email + pipeline keys', () => {
+    const keys = queryKeysForEvent('email.applied').map((k) => k[0]);
+    expect(keys).toContain('email-messages');
+    expect(keys).toContain('pipeline');
+    expect(keys).toContain('calendar');
+  });
+
   it('toasts worker-driven events but not mutation echoes', () => {
     expect(shouldToastEvent('approval.needed')).toBe(true);
     expect(shouldToastEvent('job.success')).toBe(true);

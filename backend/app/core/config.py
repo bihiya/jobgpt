@@ -84,13 +84,18 @@ class Settings(BaseSettings):
     captcha_poll_attempts: int = 40
     totp_test_code: str = ""
 
-    # Email alerts
+    # Email alerts (outbound SMTP)
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_username: str = ""
     smtp_password: str = ""
     smtp_from: str = "noreply@jobpilot.ai"
     smtp_tls: bool = True
+
+    # Inbound email (IMAP) sync
+    email_sync_interval_seconds: int = 300
+    imap_default_host: str = "imap.gmail.com"
+    imap_default_port: int = 993
 
     cors_origins: list[str] = Field(
         default_factory=lambda: ["http://localhost:5173", "http://localhost:3000"]
