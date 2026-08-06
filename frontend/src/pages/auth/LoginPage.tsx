@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Box, Button, Link, Paper, Stack, TextField, Typography } from '@mui/material';
 import { useForm } from 'react-hook-form';
-import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
 import { z } from 'zod';
 import { authApi } from '../../api/auth';
 import { useToast } from '../../hooks/useToast';
@@ -17,6 +17,7 @@ type FormValues = z.infer<typeof schema>;
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
   const dispatch = useAppDispatch();
   const { apiSuccess, apiError } = useToast();
   const {
@@ -43,7 +44,8 @@ export default function LoginPage() {
         }),
       );
       apiSuccess('Welcome back');
-      navigate('/dashboard');
+      const redirect = params.get('redirect') || '/dashboard';
+      navigate(redirect.startsWith('/') ? redirect : '/dashboard');
     } catch (err) {
       apiError(err, 'Invalid email or password');
     }
@@ -86,6 +88,8 @@ export default function LoginPage() {
             No account? <Link component={RouterLink} to="/register">Register</Link>
             {' · '}
             <Link component={RouterLink} to="/forgot-password">Forgot password</Link>
+            {' · '}
+            <Link component={RouterLink} to="/dashboard">Browse as guest</Link>
           </Typography>
         </Stack>
       </Box>

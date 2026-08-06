@@ -6,6 +6,12 @@ const initialState = {
   // Toast queue — newest at the end; ToastHost shows the latest
   toasts: [],
   snackbar: { open: false, message: '', severity: 'info' },
+  // Guest action gate — ask for login without blocking browse
+  loginGate: {
+    open: false,
+    reason: 'Sign in to continue',
+    redirectTo: '',
+  },
 };
 
 const uiSlice = createSlice({
@@ -53,6 +59,16 @@ const uiSlice = createSlice({
       state.toasts = [];
       state.snackbar = { open: false, message: '', severity: 'info' };
     },
+    openLoginGate(state, action) {
+      state.loginGate = {
+        open: true,
+        reason: action.payload?.reason || 'Sign in to continue',
+        redirectTo: action.payload?.redirectTo || '',
+      };
+    },
+    closeLoginGate(state) {
+      state.loginGate.open = false;
+    },
   },
 });
 
@@ -64,6 +80,8 @@ export const {
   hideSnackbar,
   dismissToast,
   clearToasts,
+  openLoginGate,
+  closeLoginGate,
 } = uiSlice.actions;
 
 export default uiSlice.reducer;

@@ -6,3 +6,7 @@ export const selectDarkMode = createSelector([selectUiState], (ui) => ui.darkMod
 export const selectSidebarOpen = createSelector([selectUiState], (ui) => ui.sidebarOpen);
 export const selectSnackbar = createSelector([selectUiState], (ui) => ui.snackbar);
 export const selectToasts = createSelector([selectUiState], (ui) => ui.toasts || []);
+export const selectLoginGate = createSelector(
+  [selectUiState],
+  (ui) => ui.loginGate || { open: false, reason: '', redirectTo: '' },
+);

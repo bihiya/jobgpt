@@ -2,6 +2,7 @@ import { CssBaseline, ThemeProvider } from '@mui/material';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Provider } from 'react-redux';
 import { BrowserRouter } from 'react-router-dom';
+import LoginGateDialog from './components/auth/LoginGateDialog';
 import ToastHost from './components/common/ToastHost';
 import { PrefetchProvider } from './contexts/PrefetchContext';
 import { queryClient } from './lib/queryClient';
@@ -20,6 +21,7 @@ function ThemedApp() {
         <PrefetchProvider>
           <AppRouter />
           <ToastHost />
+          <LoginGateDialog />
         </PrefetchProvider>
       </BrowserRouter>
     </ThemeProvider>
