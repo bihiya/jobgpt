@@ -400,6 +400,76 @@ export const demoOnboarding = {
 export const demoCalendar: unknown[] = [];
 export const demoReminders: unknown[] = [];
 
+export const demoEmailAccounts = [
+  {
+    id: 'demo-email-1',
+    label: 'Gmail',
+    email_address: 'you@gmail.com',
+    imap_host: 'imap.gmail.com',
+    imap_port: 993,
+    username: 'you@gmail.com',
+    use_ssl: true,
+    mailbox: 'INBOX',
+    enabled: true,
+    auto_apply: true,
+    last_sync_at: now,
+    last_error: '',
+    has_password: true,
+  },
+];
+
+export const demoEmailMessages = {
+  items: [
+    {
+      id: 'demo-mail-1',
+      account_id: 'demo-email-1',
+      message_id: '<demo-1@acme.com>',
+      subject: 'Interview scheduled — Platform Engineer',
+      sender: 'Talent at Acme <recruiter@acme.com>',
+      recipients: ['you@gmail.com'],
+      received_at: now,
+      snippet: 'We would like to schedule an interview on Tuesday at 3pm via Zoom.',
+      body_text: 'Hi, interview scheduled for Tuesday Mar 10 at 3pm via Zoom https://zoom.us/j/123',
+      event_type: 'interview_schedule',
+      confidence: 0.9,
+      matched_job_id: 'demo-job-3',
+      matched_company: 'Acme',
+      extracted: {
+        company: 'Acme',
+        job_title: 'Platform Engineer',
+        interview_at: now,
+        meeting_url: 'https://zoom.us/j/123',
+      },
+      sync_status: 'pending',
+      applied_actions: [],
+      created_at: now,
+    },
+    {
+      id: 'demo-mail-2',
+      account_id: 'demo-email-1',
+      message_id: '<demo-2@harbor.ai>',
+      subject: 'Job description for Full-Stack Engineer',
+      sender: 'Harbor Talent <talent@harbor.ai>',
+      recipients: ['you@gmail.com'],
+      received_at: now,
+      snippet: "Here's the full job description for the Full-Stack Engineer role.",
+      body_text: "Here's the full job description for the Full-Stack Engineer role at Harbor.",
+      event_type: 'jd_received',
+      confidence: 0.85,
+      matched_job_id: 'demo-job-2',
+      matched_company: 'Harbor',
+      extracted: { company: 'Harbor', job_title: 'Full-Stack Engineer' },
+      sync_status: 'applied',
+      applied_actions: ['jd_updated:demo-job-2'],
+      created_at: now,
+    },
+  ],
+  total: 2,
+  page: 1,
+  page_size: 50,
+  pages: 1,
+};
+
 /** Map API paths (without query) to demo payloads. */
 export function resolveDemoData(url = '', method = 'get'): unknown | undefined {
   if (method.toLowerCase() !== 'get') return undefined;
@@ -437,6 +507,8 @@ export function resolveDemoData(url = '', method = 'get'): unknown | undefined {
   if (path.includes('/onboarding')) return demoOnboarding;
   if (path.includes('/calendar')) return demoCalendar;
   if (path.includes('/reminders')) return demoReminders;
+  if (path.includes('/email/accounts')) return demoEmailAccounts;
+  if (path.includes('/email/messages')) return demoEmailMessages;
   if (path.includes('/questions')) return demoQuestions;
   if (path.includes('/notification-channels')) return [];
   if (path.includes('/applications')) return demoApplications;

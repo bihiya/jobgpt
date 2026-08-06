@@ -8,6 +8,7 @@ from app.api.v1.approvals.router import router as approvals_router
 from app.api.v1.auth.router import router as auth_router
 from app.api.v1.automation.router import router as automation_router
 from app.api.v1.companies.router import router as companies_router
+from app.api.v1.email.router import router as email_router
 from app.api.v1.jobs.router import router as jobs_router
 from app.api.v1.notifications.router import router as notifications_router
 from app.api.v1.onboarding.router import router as onboarding_router
@@ -35,4 +36,5 @@ api_router.include_router(scheduler_router)
 api_router.include_router(approvals_router)
 api_router.include_router(questions_router)
 api_router.include_router(notifications_router)
+api_router.include_router(email_router)
 api_router.include_router(onboarding_router)

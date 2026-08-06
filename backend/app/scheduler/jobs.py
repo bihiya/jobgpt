@@ -20,6 +20,18 @@ async def publish_report_tick() -> None:
     await publish("reports", {"source": "scheduler", "type": "daily"}, key="system")
 
 
+async def publish_email_sync_tick() -> None:
+    """Poll all enabled IMAP accounts and classify recruiting mail."""
+    logger.info("scheduler_email_sync_tick")
+    try:
+        from app.services.email_inbox_service import EmailInboxService
+
+        result = await EmailInboxService().sync_all()
+        logger.info("scheduler_email_sync_done", **result)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("scheduler_email_sync_failed", error=str(exc))
+
+
 def start_scheduler() -> None:
     if scheduler.running:
         return
@@ -35,6 +47,13 @@ def start_scheduler() -> None:
         "interval",
         seconds=max(settings.scheduler_interval_seconds * 6, 21600),
         id="report_tick",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        publish_email_sync_tick,
+        "interval",
+        seconds=max(int(getattr(settings, "email_sync_interval_seconds", 300) or 300), 60),
+        id="email_sync_tick",
         replace_existing=True,
     )
     scheduler.start()
