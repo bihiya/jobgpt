@@ -1,5 +1,7 @@
 """Generic repository base class."""
 
+from __future__ import annotations
+
 from typing import Any, Generic, TypeVar
 
 from beanie import Document
@@ -32,7 +34,7 @@ class BaseRepository(Generic[T]):
     async def delete(self, doc: T) -> None:
         await doc.delete()
 
-    async def list(
+    async def find_many(
         self,
         filters: dict[str, Any] | None = None,
         skip: int = 0,

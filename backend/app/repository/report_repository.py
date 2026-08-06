@@ -13,7 +13,7 @@ class ReportRepository(BaseRepository[Report]):
         filters = {"user_id": user_id}
         skip = (page - 1) * page_size
         total = await self.count(filters)
-        items = await self.list(filters, skip=skip, limit=page_size, sort=[("created_at", -1)])
+        items = await self.find_many(filters, skip=skip, limit=page_size, sort=[("created_at", -1)])
         return items, total
 
 
@@ -25,5 +25,5 @@ class AutomationLogRepository(BaseRepository[AutomationLog]):
         filters = {"user_id": user_id}
         skip = (page - 1) * page_size
         total = await self.count(filters)
-        items = await self.list(filters, skip=skip, limit=page_size, sort=[("created_at", -1)])
+        items = await self.find_many(filters, skip=skip, limit=page_size, sort=[("created_at", -1)])
         return items, total

@@ -53,12 +53,12 @@ class JobRepository(BaseRepository[Job]):
         direction = -1 if sort_dir == "desc" else 1
         skip = (page - 1) * page_size
         total = await self.count(filters)
-        items = await self.list(filters, skip=skip, limit=page_size, sort=[(sort_field, direction)])
+        items = await self.find_many(filters, skip=skip, limit=page_size, sort=[(sort_field, direction)])
         return items, total
 
     async def by_status(self, user_id: str, statuses: list[JobStatus], page: int = 1, page_size: int = 20):
         filters = {"user_id": user_id, "status": {"$in": [s.value for s in statuses]}}
         skip = (page - 1) * page_size
         total = await self.count(filters)
-        items = await self.list(filters, skip=skip, limit=page_size, sort=[("fetched_at", -1)])
+        items = await self.find_many(filters, skip=skip, limit=page_size, sort=[("fetched_at", -1)])
         return items, total

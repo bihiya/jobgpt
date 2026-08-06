@@ -7,6 +7,7 @@ from app.models.user import User
 from app.schemas.auth import UserResponse
 from app.schemas.common import MessageResponse
 from app.schemas.user import ResumeResponse, UserProfileSchema, UserUpdateRequest
+from app.dependencies.services import get_user_service
 from app.services.user_service import UserService
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -15,7 +16,7 @@ router = APIRouter(prefix="/users", tags=["users"])
 @router.get("/me", response_model=UserResponse)
 async def get_me(
     user: User = Depends(get_current_user),
-    service: UserService = Depends(UserService),
+    service: UserService = Depends(get_user_service),
 ):
     profile = await service.get_profile(str(user.id))
     return UserResponse(
@@ -32,7 +33,7 @@ async def get_me(
 async def update_me(
     payload: UserUpdateRequest,
     user: User = Depends(get_current_user),
-    service: UserService = Depends(UserService),
+    service: UserService = Depends(get_user_service),
 ):
     profile = await service.update_profile(str(user.id), payload)
     return UserResponse(
@@ -48,7 +49,7 @@ async def update_me(
 @router.get("/me/resumes", response_model=list[ResumeResponse])
 async def list_resumes(
     user: User = Depends(get_current_user),
-    service: UserService = Depends(UserService),
+    service: UserService = Depends(get_user_service),
 ):
     resumes = await service.list_resumes(str(user.id))
     return [
@@ -69,7 +70,7 @@ async def upload_resume(
     name: str | None = Form(default=None),
     is_default: bool = Form(default=False),
     user: User = Depends(get_current_user),
-    service: UserService = Depends(UserService),
+    service: UserService = Depends(get_user_service),
 ):
     resume = await service.upload_resume(str(user.id), file, name=name, is_default=is_default)
     return ResumeResponse(
@@ -85,7 +86,7 @@ async def upload_resume(
 async def delete_resume(
     resume_id: str,
     user: User = Depends(get_current_user),
-    service: UserService = Depends(UserService),
+    service: UserService = Depends(get_user_service),
 ):
     await service.delete_resume(str(user.id), resume_id)
     return MessageResponse(detail="Resume deleted")

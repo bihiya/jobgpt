@@ -9,6 +9,7 @@ from app.dependencies.auth import get_current_user
 from app.models.user import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.report import AnalyticsResponse, ReportCreate, ReportResponse
+from app.dependencies.services import get_report_service
 from app.services.report_service import ReportService
 
 router = APIRouter(prefix="/reports", tags=["reports"])
@@ -19,7 +20,7 @@ async def list_reports(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     user: User = Depends(get_current_user),
-    service: ReportService = Depends(ReportService),
+    service: ReportService = Depends(get_report_service),
 ):
     return await service.list(str(user.id), page, page_size)
 
@@ -28,7 +29,7 @@ async def list_reports(
 async def create_report(
     payload: ReportCreate,
     user: User = Depends(get_current_user),
-    service: ReportService = Depends(ReportService),
+    service: ReportService = Depends(get_report_service),
 ):
     return await service.create(str(user.id), payload)
 
@@ -36,7 +37,7 @@ async def create_report(
 @router.get("/analytics", response_model=AnalyticsResponse)
 async def analytics(
     user: User = Depends(get_current_user),
-    service: ReportService = Depends(ReportService),
+    service: ReportService = Depends(get_report_service),
 ):
     return await service.analytics(str(user.id))
 
@@ -45,7 +46,7 @@ async def analytics(
 async def download_report(
     report_id: str,
     user: User = Depends(get_current_user),
-    service: ReportService = Depends(ReportService),
+    service: ReportService = Depends(get_report_service),
 ):
     path = await service.get_download_path(str(user.id), report_id)
     return FileResponse(path, filename=Path(path).name)

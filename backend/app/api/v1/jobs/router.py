@@ -7,6 +7,7 @@ from app.models.enums import JobStatus
 from app.models.user import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.job import JobFilterParams, JobResponse, JobUpdateRequest
+from app.dependencies.services import get_job_service
 from app.services.job_service import JobService
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -24,7 +25,7 @@ async def list_jobs(
     sort_by: str = "fetched_at",
     sort_dir: str = "desc",
     user: User = Depends(get_current_user),
-    service: JobService = Depends(JobService),
+    service: JobService = Depends(get_job_service),
 ):
     params = JobFilterParams(
         q=q,
@@ -45,7 +46,7 @@ async def tracked_jobs(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     user: User = Depends(get_current_user),
-    service: JobService = Depends(JobService),
+    service: JobService = Depends(get_job_service),
 ):
     return await service.list_by_statuses(str(user.id), [JobStatus.TRACKED, JobStatus.MATCHED], page, page_size)
 
@@ -55,7 +56,7 @@ async def applied_jobs(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     user: User = Depends(get_current_user),
-    service: JobService = Depends(JobService),
+    service: JobService = Depends(get_job_service),
 ):
     return await service.list_by_statuses(str(user.id), [JobStatus.APPLIED, JobStatus.APPLYING], page, page_size)
 
@@ -65,7 +66,7 @@ async def job_history(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     user: User = Depends(get_current_user),
-    service: JobService = Depends(JobService),
+    service: JobService = Depends(get_job_service),
 ):
     return await service.list_by_statuses(
         str(user.id),
@@ -79,7 +80,7 @@ async def job_history(
 async def get_job(
     job_id: str,
     user: User = Depends(get_current_user),
-    service: JobService = Depends(JobService),
+    service: JobService = Depends(get_job_service),
 ):
     return await service.get(str(user.id), job_id)
 
@@ -89,7 +90,7 @@ async def update_job(
     job_id: str,
     payload: JobUpdateRequest,
     user: User = Depends(get_current_user),
-    service: JobService = Depends(JobService),
+    service: JobService = Depends(get_job_service),
 ):
     return await service.update(str(user.id), job_id, payload)
 
@@ -98,7 +99,7 @@ async def update_job(
 async def track_job(
     job_id: str,
     user: User = Depends(get_current_user),
-    service: JobService = Depends(JobService),
+    service: JobService = Depends(get_job_service),
 ):
     return await service.track(str(user.id), job_id)
 
@@ -107,6 +108,6 @@ async def track_job(
 async def ignore_job(
     job_id: str,
     user: User = Depends(get_current_user),
-    service: JobService = Depends(JobService),
+    service: JobService = Depends(get_job_service),
 ):
     return await service.ignore(str(user.id), job_id)

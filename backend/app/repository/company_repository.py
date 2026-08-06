@@ -17,5 +17,5 @@ class CompanyRepository(BaseRepository[Company]):
         filters = {"user_id": user_id}
         skip = (page - 1) * page_size
         total = await self.count(filters)
-        items = await self.list(filters, skip=skip, limit=page_size, sort=[("priority", 1), ("name", 1)])
+        items = await self.find_many(filters, skip=skip, limit=page_size, sort=[("priority", 1), ("name", 1)])
         return items, total

@@ -107,7 +107,7 @@ class ReportService:
         success_rate = round(applied / total_apps * 100, 2)
 
         # Lightweight aggregations for dashboard charts
-        recent_jobs = await self.jobs.list({"user_id": user_id}, limit=200, sort=[("fetched_at", -1)])
+        recent_jobs = await self.jobs.find_many({"user_id": user_id}, limit=200, sort=[("fetched_at", -1)])
         company_map: dict[str, int] = {}
         portal_map: dict[str, int] = {}
         skill_map: dict[str, int] = {}

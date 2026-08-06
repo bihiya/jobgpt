@@ -28,7 +28,7 @@ class FetchWorker(BaseWorker):
         user_id = payload.get("user_id")
         if not user_id:
             # System tick: fan-out to active users with connected portals
-            users = await self.users.list(limit=100)
+            users = await self.users.find_many(limit=100)
             for user in users:
                 await publish("job.fetch", {"user_id": str(user.id), "source": "fanout"}, key=str(user.id))
             return
