@@ -48,10 +48,14 @@ class JobStatus(StrEnum):
     NEW = "new"
     TRACKED = "tracked"
     MATCHED = "matched"
+    AWAITING_APPROVAL = "awaiting_approval"
+    APPROVED = "approved"
+    REJECTED = "rejected"
     APPLYING = "applying"
     APPLIED = "applied"
     FAILED = "failed"
     IGNORED = "ignored"
+    DUPLICATE = "duplicate"
 
 
 class ApplicationStatus(StrEnum):
@@ -60,6 +64,21 @@ class ApplicationStatus(StrEnum):
     SUCCESS = "success"
     FAILED = "failed"
     RETRYING = "retrying"
+    FOLLOW_UP = "follow_up"
+
+
+class ApprovalStatus(StrEnum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    EXPIRED = "expired"
+
+
+class AlertChannel(StrEnum):
+    EMAIL = "email"
+    SLACK = "slack"
+    WEBHOOK = "webhook"
+    IN_APP = "in_app"
 
 
 class ReportFormat(StrEnum):

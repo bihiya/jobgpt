@@ -52,6 +52,10 @@ class BasePortal(ABC):
         self.credentials = credentials or {}
         self.cookies = cookies or []
         self.proxy = proxy
+        if captcha_hook is None:
+            from app.automation.captcha import default_captcha_hook
+
+            captcha_hook = default_captcha_hook
         self.captcha_hook = captcha_hook
         self.browser = BaseBrowser(headless=headless, proxy=proxy, cookies=cookies)
 

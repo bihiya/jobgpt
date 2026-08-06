@@ -43,6 +43,37 @@ export const settingsApi = {
   update: (payload: Record<string, unknown>) => api.patch('/settings', payload),
 };
 
+export const approvalsApi = {
+  list: (params?: Record<string, unknown>) => api.get('/approvals', { params }),
+  approve: (id: string, note = '') => api.post(`/approvals/${id}/approve`, { note }),
+  reject: (id: string, note = '') => api.post(`/approvals/${id}/reject`, { note }),
+};
+
+export const questionsApi = {
+  list: () => api.get('/questions'),
+  upsert: (payload: Record<string, unknown>) => api.post('/questions', payload),
+  remove: (id: string) => api.delete(`/questions/${id}`),
+};
+
+export const onboardingApi = {
+  status: () => api.get('/onboarding/status'),
+  advance: (step: string) => api.post('/onboarding/advance', { step }),
+  firstSync: () => api.post('/onboarding/first-sync'),
+};
+
+export const calendarApi = {
+  month: (month?: number, year?: number) =>
+    api.get('/calendar', { params: { month, year } }),
+  dueReminders: () => api.get('/reminders/due'),
+  completeReminder: (id: string) => api.post(`/reminders/${id}/complete`),
+};
+
+export const channelsApi = {
+  list: () => api.get('/notification-channels'),
+  create: (payload: Record<string, unknown>) => api.post('/notification-channels', payload),
+  remove: (id: string) => api.delete(`/notification-channels/${id}`),
+};
+
 export const usersApi = {
   me: () => api.get('/users/me'),
   update: (payload: Record<string, unknown>) => api.patch('/users/me', payload),

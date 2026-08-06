@@ -16,6 +16,7 @@ import {
 import { memo, useCallback, useMemo, useState } from 'react';
 import { applicationsApi, jobsApi } from '../../api';
 import VirtualizedJobList from '../../components/jobs/VirtualizedJobList';
+import JobDetailDrawer, { type JobDetail } from '../../components/jobs/JobDetailDrawer';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import PageSkeleton from '../../components/common/PageSkeleton';
 
@@ -39,13 +40,18 @@ type ActionCellProps = {
   id: string;
   onTrack: (id: string) => void;
   onApply: (id: string) => void;
+  onDetails: (id: string) => void;
 };
 
-const ActionCell = memo(function ActionCell({ id, onTrack, onApply }: ActionCellProps) {
+const ActionCell = memo(function ActionCell({ id, onTrack, onApply, onDetails }: ActionCellProps) {
   const handleTrack = useCallback(() => onTrack(id), [id, onTrack]);
   const handleApply = useCallback(() => onApply(id), [id, onApply]);
+  const handleDetails = useCallback(() => onDetails(id), [id, onDetails]);
   return (
     <Stack direction="row" spacing={1}>
+      <Button size="small" onClick={handleDetails}>
+        Why
+      </Button>
       <Button size="small" onClick={handleTrack}>
         Track
       </Button>
@@ -59,6 +65,7 @@ const ActionCell = memo(function ActionCell({ id, onTrack, onApply }: ActionCell
 function JobsPage({ mode = 'all' }: { mode?: Mode }) {
   const [q, setQ] = useState('');
   const [virtualized, setVirtualized] = useState(false);
+  const [drawerJob, setDrawerJob] = useState<JobDetail | null>(null);
   const debouncedQ = useDebouncedValue(q, 350);
   const queryClient = useQueryClient();
 
@@ -144,7 +151,14 @@ function JobsPage({ mode = 'all' }: { mode?: Mode }) {
 
   const onTrack = useCallback((id: string) => trackMutation.mutate(id), [trackMutation]);
   const onApply = useCallback((id: string) => applyMutation.mutate(id), [applyMutation]);
-  const onSelect = useCallback((id: string) => onTrack(id), [onTrack]);
+  const openDetails = useCallback(async (id: string) => {
+    const { data } = await jobsApi.get(id);
+    setDrawerJob(data);
+  }, []);
+  const onSelect = useCallback((id: string) => {
+    void openDetails(id);
+  }, [openDetails]);
+  const closeDrawer = useCallback(() => setDrawerJob(null), []);
   const onSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setQ(e.target.value);
   }, []);
@@ -173,14 +187,19 @@ function JobsPage({ mode = 'all' }: { mode?: Mode }) {
       {
         field: 'actions',
         headerName: 'Actions',
-        width: 200,
+        width: 260,
         sortable: false,
         renderCell: (params) => (
-          <ActionCell id={params.row.id} onTrack={onTrack} onApply={onApply} />
+          <ActionCell
+            id={params.row.id}
+            onTrack={onTrack}
+            onApply={onApply}
+            onDetails={openDetails}
+          />
         ),
       },
     ],
-    [onTrack, onApply],
+    [onTrack, onApply, openDetails],
   );
 
   const virtualJobs = useMemo(
@@ -231,6 +250,7 @@ function JobsPage({ mode = 'all' }: { mode?: Mode }) {
           sx={{ bgcolor: 'background.paper', borderRadius: 2 }}
         />
       )}
+      <JobDetailDrawer open={!!drawerJob} job={drawerJob} onClose={closeDrawer} />
     </Stack>
   );
 }

@@ -1,16 +1,20 @@
 """Beanie document model registry."""
 
 from app.models.application import Application
+from app.models.approval import Approval
 from app.models.automation_log import AuditLog, AutomationLog
 from app.models.company import Company
 from app.models.job import Job
 from app.models.notification import Notification
 from app.models.portal import Portal
+from app.models.question_bank import QuestionAnswer
+from app.models.reminder import Reminder
 from app.models.report import Report
 from app.models.resume import Resume
 from app.models.scheduler_job import SchedulerJob
 from app.models.settings import UserSettings
 from app.models.user import RefreshToken, Role, User
+from app.models.webhook import NotificationChannel
 
 DOCUMENT_MODELS = [
     User,
@@ -27,6 +31,10 @@ DOCUMENT_MODELS = [
     Notification,
     UserSettings,
     SchedulerJob,
+    Approval,
+    QuestionAnswer,
+    Reminder,
+    NotificationChannel,
 ]
 
 __all__ = [
@@ -45,4 +53,8 @@ __all__ = [
     "Notification",
     "UserSettings",
     "SchedulerJob",
+    "Approval",
+    "QuestionAnswer",
+    "Reminder",
+    "NotificationChannel",
 ]

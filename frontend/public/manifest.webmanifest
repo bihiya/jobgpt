@@ -1,0 +1,24 @@
+{
+  "name": "JobPilot AI",
+  "short_name": "JobPilot",
+  "description": "Approve and track job applications on the go",
+  "start_url": "/approvals",
+  "display": "standalone",
+  "background_color": "#F3F7F5",
+  "theme_color": "#0F6E56",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/pwa-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/pwa-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

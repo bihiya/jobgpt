@@ -1,4 +1,4 @@
-"""Match jobs worker."""
+"""Match jobs worker with LLM ranking + human-in-the-loop gate."""
 
 from typing import Any
 
@@ -8,6 +8,7 @@ from app.core.logging import get_logger
 from app.models.enums import JobStatus
 from app.repository.job_repository import JobRepository
 from app.repository.settings_repository import SettingsRepository
+from app.services.approval_service import ApprovalService
 from app.services.job_service import JobService
 from app.workers.base import BaseWorker
 
@@ -23,6 +24,7 @@ class MatchWorker(BaseWorker):
         self.jobs = JobRepository()
         self.job_service = JobService()
         self.settings_repo = SettingsRepository()
+        self.approvals = ApprovalService()
 
     async def handle(self, topic: str, payload: dict[str, Any]) -> None:
         user_id = payload["user_id"]
@@ -35,8 +37,26 @@ class MatchWorker(BaseWorker):
         user_settings = await self.settings_repo.get_or_create(user_id)
         threshold = user_settings.match_threshold or settings.match_threshold
 
-        logger.info("job_matched", job_id=job_id, score=job.match_score, threshold=threshold)
-        if user_settings.auto_apply and job.match_score >= threshold:
+        logger.info(
+            "job_matched",
+            job_id=job_id,
+            score=job.match_score,
+            threshold=threshold,
+            reasons=job.match_breakdown.reasons[:3] if job.match_breakdown else [],
+        )
+
+        if job.match_score < threshold:
+            return
+
+        require_approval = getattr(user_settings, "require_approval", True)
+        auto_apply = user_settings.auto_apply and not require_approval
+
+        if require_approval or not user_settings.auto_apply:
+            summary = "; ".join(job.match_breakdown.reasons[:3]) if job.match_breakdown else ""
+            await self.approvals.enqueue(user_id, job, summary=summary)
+            return
+
+        if auto_apply:
             job.status = JobStatus.APPLYING
             await job.save()
             await publish(
