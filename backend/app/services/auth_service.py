@@ -34,11 +34,22 @@ class AuthService:
         existing = await self.users.get_by_email(payload.email)
         if existing:
             raise ConflictError("Email already registered", code="AUTH_EMAIL_EXISTS")
-        return await self.users.create_user(
+        user = await self.users.create_user(
             email=payload.email,
             hashed_password=hash_password(payload.password),
             full_name=payload.full_name,
         )
+        from app.services.audit_service import audit_event
+
+        await audit_event(
+            str(user.id),
+            "auth.registered",
+            message="Account created",
+            resource_type="auth",
+            source="user",
+            severity="success",
+        )
+        return user
 
     async def login(self, payload: LoginRequest) -> TokenResponse:
         user = await self.users.get_by_email(payload.email)
@@ -46,7 +57,18 @@ class AuthService:
             raise UnauthorizedError("Invalid credentials", code="AUTH_INVALID_CREDENTIALS")
         if not user.is_active:
             raise UnauthorizedError("Account disabled", code="AUTH_DISABLED")
-        return await self._issue_tokens(user)
+        tokens = await self._issue_tokens(user)
+        from app.services.audit_service import audit_event
+
+        await audit_event(
+            str(user.id),
+            "auth.login",
+            message="Signed in",
+            resource_type="auth",
+            source="user",
+            severity="success",
+        )
+        return tokens
 
     async def refresh(self, refresh_token: str) -> TokenResponse:
         try:

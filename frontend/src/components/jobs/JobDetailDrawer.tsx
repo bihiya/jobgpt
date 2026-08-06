@@ -10,7 +10,10 @@ import {
   Stack,
   Typography,
 } from '@mui/material';
+import { useQuery } from '@tanstack/react-query';
 import { memo, useMemo } from 'react';
+import { activityApi } from '../../api';
+import ActivityTimeline from '../activity/ActivityTimeline';
 
 export type JobDetail = {
   id: string;
@@ -58,9 +61,14 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
 function JobDetailDrawerComponent({ open, job, onClose }: Props) {
   const breakdown = job?.match_breakdown;
   const reasons = useMemo(() => breakdown?.reasons || [], [breakdown]);
+  const { data: activity } = useQuery({
+    queryKey: ['job-activity', job?.id],
+    queryFn: async () => (await activityApi.forJob(job!.id, { page_size: 50 })).data,
+    enabled: open && !!job?.id,
+  });
 
   return (
-    <Drawer anchor="right" open={open} onClose={onClose} PaperProps={{ sx: { width: { xs: '100%', sm: 420 } } }}>
+    <Drawer anchor="right" open={open} onClose={onClose} PaperProps={{ sx: { width: { xs: '100%', sm: 440 } } }}>
       {job && (
         <Box sx={{ p: 3 }}>
           <Typography variant="h5" sx={{ mb: 0.5 }}>
@@ -111,6 +119,19 @@ function JobDetailDrawerComponent({ open, job, onClose }: Props) {
               {breakdown.llm_rationale}
             </Typography>
           )}
+
+          <Divider sx={{ my: 2 }} />
+          <Typography variant="h6" sx={{ mb: 1 }}>
+            Job audit log
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            Full trail for this role — fetch, match, approval, apply, and outcomes.
+          </Typography>
+          <ActivityTimeline
+            dense
+            items={activity?.items || []}
+            emptyText="No audit events for this job yet."
+          />
         </Box>
       )}
     </Drawer>

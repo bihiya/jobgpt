@@ -44,6 +44,18 @@ class ApprovalService:
             type_="warning",
             metadata={"job_id": str(job.id), "approval_id": str(approval.id)},
         )
+        from app.services.audit_service import audit_event
+
+        await audit_event(
+            user_id,
+            "approval.needed",
+            message=f"Approval needed for {job.title}",
+            job_id=str(job.id),
+            resource_type="approval",
+            resource_id=str(approval.id),
+            source="worker",
+            severity="warning",
+        )
         return approval
 
     async def list(
@@ -132,5 +144,17 @@ class ApprovalService:
             title="Approval updated",
             body="Approved — applying now" if approve else "Rejected",
             severity="success" if approve else "info",
+        )
+        from app.services.audit_service import audit_event
+
+        await audit_event(
+            user_id,
+            "approval.approved" if approve else "approval.rejected",
+            message="Approved application" if approve else "Rejected application",
+            job_id=approval.job_id,
+            resource_type="approval",
+            resource_id=str(approval.id),
+            severity="success" if approve else "warning",
+            metadata={"note": note},
         )
         return {"id": str(approval.id), "status": approval.status}

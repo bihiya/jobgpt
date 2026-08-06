@@ -7,6 +7,7 @@ from app.automation.portals.registry import get_portal_adapter
 from app.core.kafka import publish
 from app.core.logging import get_logger
 from app.events.realtime import emit_realtime
+from app.services.audit_service import audit_event
 from app.models.enums import JobStatus, PortalStatus
 from app.models.job import Job
 from app.repository.portal_repository import PortalRepository
@@ -112,6 +113,16 @@ class FetchWorker(BaseWorker):
                             "company": job.company,
                             "portal": portal.name.value,
                         },
+                    )
+                    await audit_event(
+                        user_id,
+                        "job.created",
+                        message=f"Fetched {job.title} at {job.company}",
+                        job_id=str(job.id),
+                        resource_type="job",
+                        resource_id=str(job.id),
+                        source="worker",
+                        metadata={"portal": portal.name.value},
                     )
                 portal.last_sync_at = datetime.utcnow()
                 portal.status = PortalStatus.CONNECTED

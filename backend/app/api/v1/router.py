@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter
 
+from app.api.v1.activity.router import router as activity_router
 from app.api.v1.applications.router import router as applications_router
 from app.api.v1.approvals.router import router as approvals_router
 from app.api.v1.auth.router import router as auth_router
@@ -22,6 +23,7 @@ api_router = APIRouter()
 api_router.include_router(ws_router)
 api_router.include_router(auth_router)
 api_router.include_router(users_router)
+api_router.include_router(activity_router)
 api_router.include_router(jobs_router)
 api_router.include_router(applications_router)
 api_router.include_router(companies_router)

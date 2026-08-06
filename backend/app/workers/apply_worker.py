@@ -7,6 +7,7 @@ from app.automation.portals.registry import get_portal_adapter
 from app.core.kafka import publish
 from app.core.logging import get_logger
 from app.events.realtime import emit_realtime
+from app.services.audit_service import audit_event
 from app.models.application import Application
 from app.models.automation_log import AutomationLog
 from app.models.enums import ApplicationStatus, JobStatus
@@ -193,6 +194,17 @@ class ApplyWorker(BaseWorker):
                 {"user_id": user_id, "job_id": job_id, "application_id": str(app.id)},
                 key=user_id,
             )
+            await audit_event(
+                user_id,
+                "application.succeeded",
+                message=f"Applied to {job.title} at {job.company}",
+                job_id=job_id,
+                application_id=str(app.id),
+                resource_type="application",
+                resource_id=str(app.id),
+                source="worker",
+                severity="success",
+            )
             logger.info("apply_success", job_id=job_id)
         else:
             if portal_doc:
@@ -225,6 +237,17 @@ class ApplyWorker(BaseWorker):
                 "error": message,
             },
             key=app.user_id,
+        )
+        await audit_event(
+            app.user_id,
+            "application.failed",
+            message=message or "Application failed",
+            job_id=app.job_id,
+            application_id=str(app.id),
+            resource_type="application",
+            resource_id=str(app.id),
+            source="worker",
+            severity="error",
         )
         logger.warning("apply_failed", job_id=app.job_id, error=message)
 
