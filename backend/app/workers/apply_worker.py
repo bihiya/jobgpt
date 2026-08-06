@@ -1,4 +1,4 @@
-"""Apply jobs worker using Playwright + question bank + S3 screenshots."""
+"""Apply jobs worker using Playwright + question bank + session vault."""
 
 from datetime import datetime, timedelta
 from typing import Any
@@ -7,7 +7,6 @@ from app.automation.portals.registry import get_portal_adapter
 from app.core.kafka import publish
 from app.core.logging import get_logger
 from app.events.realtime import emit_realtime
-from app.services.audit_service import audit_event
 from app.models.application import Application
 from app.models.automation_log import AutomationLog
 from app.models.enums import ApplicationStatus, JobStatus
@@ -16,10 +15,13 @@ from app.repository.portal_repository import PortalRepository
 from app.repository.resume_repository import ResumeRepository
 from app.repository.settings_repository import SettingsRepository
 from app.repository.user_repository import UserRepository
+from app.services.apply_rate_limit import ApplyRateLimiter
+from app.services.audit_service import audit_event
 from app.services.notifications.dispatcher import NotificationDispatcher
 from app.services.portal_health_service import PortalHealthService
 from app.services.question_bank_service import QuestionBankService
 from app.services.reminder_service import ReminderService
+from app.services.session_vault import SessionVault
 from app.services.storage_service import StorageService
 from app.workers.base import BaseWorker
 
@@ -42,6 +44,8 @@ class ApplyWorker(BaseWorker):
         self.health = PortalHealthService()
         self.reminders = ReminderService()
         self.notifier = NotificationDispatcher()
+        self.vault = SessionVault()
+        self.rate_limiter = ApplyRateLimiter()
 
     async def handle(self, topic: str, payload: dict[str, Any]) -> None:
         user_id = payload["user_id"]
@@ -59,8 +63,36 @@ class ApplyWorker(BaseWorker):
             app = Application(user_id=user_id, job_id=job_id, status=ApplicationStatus.IN_PROGRESS)
             await app.insert()
 
+        user_settings = await self.settings.get_or_create(user_id)
+        limit = await self.rate_limiter.check(user_id, user_settings, portal=job.portal)
+        if not limit.allowed:
+            app.status = ApplicationStatus.PENDING
+            app.error_message = limit.reason
+            app.next_retry_at = datetime.utcnow() + timedelta(seconds=max(limit.retry_after_seconds, 60))
+            app.updated_at = datetime.utcnow()
+            await app.save()
+            await emit_realtime(
+                user_id,
+                "application.rate_limited",
+                {
+                    "job_id": job_id,
+                    "application_id": str(app.id),
+                    "reason": limit.reason,
+                    "applied_today": limit.applied_today,
+                    "max_per_day": limit.max_per_day,
+                },
+                title="Apply delayed",
+                body=limit.reason,
+                severity="warning",
+            )
+            logger.info("apply_rate_limited", job_id=job_id, reason=limit.reason)
+            return
+
         app.status = ApplicationStatus.IN_PROGRESS
         app.attempts += 1
+        app.blocker_type = ""
+        app.unknown_questions = []
+        app.updated_at = datetime.utcnow()
         await app.save()
 
         resume = None
@@ -79,7 +111,21 @@ class ApplyWorker(BaseWorker):
 
         credentials = portal_doc.credentials.model_dump() if portal_doc else {}
         proxy = portal_doc.proxy.model_dump() if portal_doc and portal_doc.proxy.server else None
-        adapter = get_portal_adapter(job.portal, credentials=credentials, proxy=proxy)
+        cookies = self.vault.load_cookies(portal_doc) if portal_doc else []
+        totp_secret = self.vault.load_totp_secret(portal_doc) if portal_doc else ""
+        selector_version = getattr(portal_doc, "selector_version", 1) if portal_doc else 1
+        headless = bool(getattr(user_settings, "headless", True))
+
+        adapter = get_portal_adapter(
+            job.portal,
+            credentials=credentials,
+            cookies=cookies,
+            proxy=proxy,
+            headless=headless,
+            totp_secret=totp_secret,
+            otp_code=str(payload.get("otp_code") or ""),
+            selector_version=selector_version,
+        )
 
         from app.automation.base.portal import ExtractedJob
 
@@ -94,16 +140,19 @@ class ApplyWorker(BaseWorker):
         )
 
         user = await self.users.get_by_id(user_id)
-        bank = await self.questions.resolve_answers(
-            user_id,
-            [
-                "How many years of experience do you have?",
-                "What is your notice period?",
-                "What is your current location?",
-                "Are you authorized to work?",
-                "Do you require sponsorship?",
-            ],
-        )
+        question_prompts = [
+            "How many years of experience do you have?",
+            "What is your notice period?",
+            "What is your current location?",
+            "Are you authorized to work?",
+            "Do you require sponsorship?",
+            "Expected salary",
+        ]
+        bank = await self.questions.resolve_answers(user_id, question_prompts)
+        # Also load full bank for form label matching
+        for item in await self.questions.list(user_id):
+            bank.setdefault(item["question"], item["answer"])
+
         answers = {
             "years": bank.get(
                 "How many years of experience do you have?",
@@ -128,6 +177,7 @@ class ApplyWorker(BaseWorker):
             action="apply",
             level="info",
             message="Starting application",
+            correlation_id=adapter.recorder.correlation_id,
         ).insert()
         await emit_realtime(
             user_id,
@@ -142,19 +192,40 @@ class ApplyWorker(BaseWorker):
             body=f"Starting application for {job.title}",
             severity="info",
         )
-        await emit_realtime(
-            user_id,
-            "automation.log",
-            {
-                "action": "apply",
-                "level": "info",
-                "message": "Starting application",
-                "job_id": job_id,
-                "portal": job.portal,
-            },
-        )
 
         result = await adapter.apply_with_retry(extracted, resume.file_path, answers)
+
+        # Persist refreshed session cookies
+        if portal_doc and result.cookies:
+            self.vault.save_cookies(portal_doc, result.cookies)
+            portal_doc.updated_at = datetime.utcnow()
+            await portal_doc.save()
+
+        app.session_steps = result.steps or []
+        app.correlation_id = result.correlation_id or ""
+        app.updated_at = datetime.utcnow()
+
+        # Persist step logs
+        for step in app.session_steps:
+            await AutomationLog(
+                user_id=user_id,
+                job_id=job_id,
+                application_id=str(app.id),
+                portal=job.portal,
+                action=str(step.get("key") or "step"),
+                level="error" if step.get("status") == "error" else "info",
+                message=str(step.get("label") or ""),
+                metadata=step,
+                correlation_id=app.correlation_id,
+            ).insert()
+
+        if result.needs_input:
+            await self._pause_for_input(app, job, result)
+            return
+        if result.needs_otp:
+            await self._pause_for_otp(app, job, result)
+            return
+
         if result.success:
             screenshot_url = ""
             if result.screenshot_path:
@@ -170,13 +241,13 @@ class ApplyWorker(BaseWorker):
             app.status = ApplicationStatus.SUCCESS
             app.applied_at = datetime.utcnow()
             app.error_message = ""
+            app.blocker_type = ""
             await app.save()
             job.status = JobStatus.APPLIED
             await job.save()
             if portal_doc:
                 await self.health.record_success(portal_doc)
 
-            user_settings = await self.settings.get_or_create(user_id)
             await self.reminders.schedule_follow_up(
                 user_id, app, days=getattr(user_settings, "follow_up_days", 7)
             )
@@ -194,6 +265,14 @@ class ApplyWorker(BaseWorker):
                 {"user_id": user_id, "job_id": job_id, "application_id": str(app.id)},
                 key=user_id,
             )
+            await emit_realtime(
+                user_id,
+                "application.session",
+                {"application_id": str(app.id), "job_id": job_id, "steps": app.session_steps},
+                title="Apply session complete",
+                body=job.title,
+                severity="success",
+            )
             await audit_event(
                 user_id,
                 "application.succeeded",
@@ -204,19 +283,114 @@ class ApplyWorker(BaseWorker):
                 resource_id=str(app.id),
                 source="worker",
                 severity="success",
+                metadata={"steps": len(app.session_steps)},
             )
             logger.info("apply_success", job_id=job_id)
         else:
             if portal_doc:
                 await self.health.record_failure(portal_doc, result.message)
+            app.fail_proof_html = (result.fail_proof_html or "")[:120_000]
+            app.fail_proof_path = result.fail_proof_path or ""
             await self._fail(app, job, result.message, screenshot=result.screenshot_path)
+
+    async def _pause_for_input(self, app: Application, job, result) -> None:
+        app.status = ApplicationStatus.NEEDS_INPUT
+        app.blocker_type = "unknown_question"
+        app.unknown_questions = list(result.unknown_questions or [])
+        app.error_message = result.message or "Answer unknown questions to resume"
+        if result.screenshot_path:
+            app.screenshot_path = result.screenshot_path
+        await app.save()
+        job.status = JobStatus.APPLYING
+        await job.save()
+        await self.notifier.dispatch(
+            app.user_id,
+            event="application.needs_input",
+            title="Answer needed to continue apply",
+            body=f"{len(app.unknown_questions)} question(s) for {job.title}",
+            type_="warning",
+            metadata={
+                "job_id": app.job_id,
+                "application_id": str(app.id),
+                "questions": app.unknown_questions,
+            },
+        )
+        await emit_realtime(
+            app.user_id,
+            "application.needs_input",
+            {
+                "job_id": app.job_id,
+                "application_id": str(app.id),
+                "questions": app.unknown_questions,
+                "steps": app.session_steps,
+            },
+            title="Question bank needed",
+            body=job.title,
+            severity="warning",
+        )
+        await audit_event(
+            app.user_id,
+            "application.needs_input",
+            message="Paused apply for unknown questions",
+            job_id=app.job_id,
+            application_id=str(app.id),
+            resource_type="application",
+            resource_id=str(app.id),
+            source="worker",
+            severity="warning",
+            metadata={"questions": app.unknown_questions},
+        )
+
+    async def _pause_for_otp(self, app: Application, job, result) -> None:
+        app.status = ApplicationStatus.NEEDS_OTP
+        app.blocker_type = "otp"
+        app.error_message = result.message or "Enter portal OTP to continue"
+        if result.screenshot_path:
+            app.screenshot_path = result.screenshot_path
+        await app.save()
+        job.status = JobStatus.APPLYING
+        await job.save()
+        await self.notifier.dispatch(
+            app.user_id,
+            event="application.needs_otp",
+            title="OTP needed",
+            body=f"{job.portal} requires your 2FA code for {job.title}",
+            type_="warning",
+            metadata={"job_id": app.job_id, "application_id": str(app.id), "portal": job.portal},
+        )
+        await emit_realtime(
+            app.user_id,
+            "application.needs_otp",
+            {
+                "job_id": app.job_id,
+                "application_id": str(app.id),
+                "portal": job.portal,
+                "steps": app.session_steps,
+            },
+            title="OTP required",
+            body=job.title,
+            severity="warning",
+        )
+        await audit_event(
+            app.user_id,
+            "application.needs_otp",
+            message="Paused apply — portal OTP required",
+            job_id=app.job_id,
+            application_id=str(app.id),
+            resource_type="application",
+            resource_id=str(app.id),
+            source="worker",
+            severity="warning",
+        )
 
     async def _fail(self, app: Application, job, message: str, screenshot: str = "") -> None:
         app.status = ApplicationStatus.FAILED
         app.error_message = message
-        app.screenshot_path = screenshot
+        if screenshot:
+            app.screenshot_path = screenshot
         delay = min(2 ** app.attempts * 60, 3600)
         app.next_retry_at = datetime.utcnow() + timedelta(seconds=delay)
+        app.updated_at = datetime.utcnow()
         await app.save()
         job.status = JobStatus.FAILED
         await job.save()
@@ -248,6 +422,7 @@ class ApplyWorker(BaseWorker):
             resource_id=str(app.id),
             source="worker",
             severity="error",
+            metadata={"steps": app.session_steps},
         )
         logger.warning("apply_failed", job_id=app.job_id, error=message)
 

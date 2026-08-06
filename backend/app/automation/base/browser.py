@@ -24,6 +24,7 @@ class BaseBrowser:
         self.headless = settings.playwright_headless if headless is None else headless
         self.proxy = proxy
         self.cookies = cookies or []
+        self.last_cookies: list[dict[str, Any]] = []
 
     @asynccontextmanager
     async def session(self) -> AsyncIterator[tuple[Browser, BrowserContext, Page]]:
@@ -41,12 +42,19 @@ class BaseBrowser:
                 ),
             )
             if self.cookies:
-                await context.add_cookies(self.cookies)
+                try:
+                    await context.add_cookies(self.cookies)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("cookie_inject_failed", error=str(exc))
             page = await context.new_page()
-            logger.info("browser_session_started", headless=self.headless)
+            logger.info("browser_session_started", headless=self.headless, cookies=len(self.cookies))
             try:
                 yield browser, context, page
             finally:
+                try:
+                    self.last_cookies = await context.cookies()
+                except Exception:  # noqa: BLE001
+                    self.last_cookies = []
                 await context.close()
                 await browser.close()
-                logger.info("browser_session_closed")
+                logger.info("browser_session_closed", cookies_exported=len(self.last_cookies))

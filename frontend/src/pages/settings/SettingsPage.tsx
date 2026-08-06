@@ -15,7 +15,9 @@ export default function SettingsPage() {
     auto_apply: false,
     require_approval: true,
     use_llm_ranking: true,
-    max_applications_per_day: 50,
+    max_applications_per_day: 15,
+    apply_cooldown_seconds: 45,
+    batch_min_score: 0.85,
     headless: true,
     timezone: 'UTC',
     notification_email: true,
@@ -49,6 +51,24 @@ export default function SettingsPage() {
         value={form.max_applications_per_day}
         onChange={(e) => setForm({ ...form, max_applications_per_day: Number(e.target.value) })}
         fullWidth
+        helperText="Daily cap for batch + auto apply (anti-ban)"
+      />
+      <TextField
+        label="Apply cooldown (seconds)"
+        type="number"
+        value={form.apply_cooldown_seconds}
+        onChange={(e) => setForm({ ...form, apply_cooldown_seconds: Number(e.target.value) })}
+        fullWidth
+        helperText="Minimum wait between applications"
+      />
+      <TextField
+        label="Batch min match score"
+        type="number"
+        inputProps={{ step: 0.05, min: 0, max: 1 }}
+        value={form.batch_min_score}
+        onChange={(e) => setForm({ ...form, batch_min_score: Number(e.target.value) })}
+        fullWidth
+        helperText="Default threshold for Smart batch approve (e.g. 0.85)"
       />
       <TextField
         label="Follow-up reminder (days)"

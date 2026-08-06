@@ -151,12 +151,53 @@ export const demoSettings = {
   auto_apply: false,
   require_approval: true,
   use_llm_ranking: true,
-  max_applications_per_day: 50,
+  max_applications_per_day: 15,
+  apply_cooldown_seconds: 45,
+  batch_min_score: 0.85,
   headless: true,
   timezone: 'UTC',
   notification_email: true,
   follow_up_days: 7,
 };
+
+export const demoQuestions = [
+  {
+    id: 'demo-q-1',
+    question: 'How many years of experience do you have?',
+    answer: '5',
+    tags: ['default'],
+    portals: [],
+    use_count: 12,
+  },
+  {
+    id: 'demo-q-2',
+    question: 'Do you require sponsorship?',
+    answer: 'No',
+    tags: ['default'],
+    portals: [],
+    use_count: 8,
+  },
+];
+
+export const demoBlockers = [
+  {
+    application_id: 'demo-app-1',
+    job_id: 'demo-job-1',
+    status: 'needs_input',
+    blocker_type: 'unknown_question',
+    unknown_questions: ['Are you willing to relocate?'],
+    error_message: 'Paused — answer unknown form questions to resume',
+    session_steps: [
+      { key: 'opened_jd', label: 'Opened job description', status: 'ok' },
+      { key: 'clicked_apply', label: 'Clicked Easy Apply / Apply', status: 'ok' },
+      { key: 'needs_input', label: 'Paused for unknown questions', status: 'pending' },
+    ],
+    portal: 'linkedin',
+    title: 'Senior Frontend Engineer',
+    company: 'Northwind Labs',
+    updated_at: now,
+  },
+];
 
 export const demoProfile = {
   id: 'demo-user',
@@ -234,6 +275,7 @@ export function resolveDemoData(url = '', method = 'get'): unknown | undefined {
     return demoJobs.items[0];
   }
   if (path.endsWith('/jobs') || path.includes('/jobs?')) return demoJobs;
+  if (path.includes('/approvals/blockers')) return demoBlockers;
   if (path.includes('/approvals')) return demoApprovals;
   if (path.includes('/activity') || path.includes('/users/me/activity')) return demoActivity;
   if (path.includes('/job-portals')) return demoPortals;
@@ -249,7 +291,7 @@ export function resolveDemoData(url = '', method = 'get'): unknown | undefined {
   if (path.includes('/onboarding')) return demoOnboarding;
   if (path.includes('/calendar')) return demoCalendar;
   if (path.includes('/reminders')) return demoReminders;
-  if (path.includes('/questions')) return [];
+  if (path.includes('/questions')) return demoQuestions;
   if (path.includes('/notification-channels')) return [];
   if (path.includes('/applications')) return { items: [], total: 0, page: 1, page_size: 20, pages: 0 };
 

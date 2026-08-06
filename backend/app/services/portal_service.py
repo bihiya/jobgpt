@@ -27,6 +27,14 @@ class PortalService:
             last_sync_at=portal.last_sync_at.isoformat() if portal.last_sync_at else None,
             created_at=portal.created_at.isoformat(),
             has_credentials=bool(portal.credentials.username),
+            has_session=bool(getattr(portal, "session_blob", "") or portal.cookies),
+            has_totp=bool(getattr(portal, "totp_secret_encrypted", "")),
+            session_updated_at=(
+                portal.session_updated_at.isoformat()
+                if getattr(portal, "session_updated_at", None)
+                else None
+            ),
+            selector_version=int(getattr(portal, "selector_version", 1) or 1),
             health=PortalHealthSchema(**health),
         )
 
@@ -38,16 +46,26 @@ class PortalService:
         existing = await self.portals.get_by_name(user_id, payload.name)
         if existing:
             raise ConflictError("Portal already connected")
+        from app.services.session_vault import SessionVault, normalize_cookies
+
+        vault = SessionVault()
         portal = await self.portals.create(
             {
                 "user_id": user_id,
                 "name": payload.name,
                 "credentials": payload.credentials.model_dump(),
                 "proxy": payload.proxy.model_dump(),
-                "cookies": payload.cookies,
+                "cookies": {},
+                "selector_version": payload.selector_version or 1,
                 "status": PortalStatus.CONNECTED,
             }
         )
+        cookies = normalize_cookies(payload.cookies)
+        if cookies:
+            vault.save_cookies(portal, cookies)
+        if payload.totp_secret:
+            vault.save_totp_secret(portal, payload.totp_secret)
+        await portal.save()
         from app.services.audit_service import audit_event
 
         await audit_event(
@@ -63,9 +81,19 @@ class PortalService:
 
     async def update(self, user_id: str, portal_id: str, payload: PortalUpdate) -> PortalResponse:
         portal = await self._owned(user_id, portal_id)
+        from app.services.session_vault import SessionVault, normalize_cookies
+
+        vault = SessionVault()
         data = payload.model_dump(exclude_unset=True)
+        totp = data.pop("totp_secret", None)
+        cookies_raw = data.pop("cookies", None)
         data["updated_at"] = datetime.utcnow()
         portal = await self.portals.update(portal, data)
+        if cookies_raw is not None:
+            vault.save_cookies(portal, normalize_cookies(cookies_raw))
+        if totp is not None:
+            vault.save_totp_secret(portal, totp)
+        await portal.save()
         return self._to_response(portal)
 
     async def sync(self, user_id: str, portal_id: str) -> PortalResponse:

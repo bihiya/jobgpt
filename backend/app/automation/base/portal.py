@@ -12,6 +12,9 @@ from tenacity import AsyncRetrying, stop_after_attempt, wait_exponential
 
 from app.automation.base.browser import BaseBrowser
 from app.automation.base.page import BasePage
+from app.automation.captcha import CaptchaHookResult
+from app.automation.session_recorder import ApplySessionRecorder
+from app.automation.verify import capture_fail_proof
 from app.core.config import settings
 from app.core.logging import get_logger
 
@@ -37,6 +40,14 @@ class ApplyResult:
     screenshot_path: str = ""
     message: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
+    needs_input: bool = False
+    unknown_questions: list[str] = field(default_factory=list)
+    needs_otp: bool = False
+    steps: list[dict[str, Any]] = field(default_factory=list)
+    fail_proof_html: str = ""
+    fail_proof_path: str = ""
+    cookies: list[dict[str, Any]] = field(default_factory=list)
+    correlation_id: str = ""
 
 
 class BasePortal(ABC):
@@ -50,16 +61,23 @@ class BasePortal(ABC):
         proxy: dict[str, str] | None = None,
         headless: bool | None = None,
         captcha_hook: Any | None = None,
+        totp_secret: str = "",
+        otp_code: str = "",
+        selector_version: int = 1,
     ) -> None:
         self.credentials = credentials or {}
         self.cookies = cookies or []
         self.proxy = proxy
+        self.totp_secret = totp_secret or ""
+        self.otp_code = otp_code or ""
+        self.selector_version = selector_version
         if captcha_hook is None:
             from app.automation.captcha import default_captcha_hook
 
             captcha_hook = default_captcha_hook
         self.captcha_hook = captcha_hook
         self.browser = BaseBrowser(headless=headless, proxy=proxy, cookies=cookies)
+        self.recorder = ApplySessionRecorder()
 
     @abstractmethod
     async def login(self, page: BasePage) -> None: ...
@@ -80,9 +98,20 @@ class BasePortal(ABC):
         path = Path(settings.screenshot_dir) / f"{prefix}-{uuid4().hex}.png"
         return await page.screenshot(str(path))
 
-    async def handle_captcha(self, page: BasePage) -> None:
-        if self.captcha_hook:
-            await self.captcha_hook(page)
+    async def handle_captcha(self, page: BasePage) -> CaptchaHookResult:
+        if not self.captcha_hook:
+            return CaptchaHookResult()
+        result = await self.captcha_hook(
+            page,
+            {"totp_secret": self.totp_secret, "otp_code": self.otp_code},
+        )
+        if isinstance(result, CaptchaHookResult):
+            if result.captcha_solved or result.detail:
+                self.recorder.captcha(result.captcha_solved, result.detail)
+            if result.otp_handled or result.needs_otp:
+                self.recorder.otp(result.otp_handled, result.detail)
+            return result
+        return CaptchaHookResult()
 
     async def fetch_jobs(self, query: str, location: str = "") -> list[ExtractedJob]:
         async for attempt in AsyncRetrying(
@@ -108,6 +137,7 @@ class BasePortal(ABC):
         answers: dict | None = None,
     ) -> ApplyResult:
         answers = answers or {}
+        self.recorder = ApplySessionRecorder()
         last_error = "unknown"
         async for attempt in AsyncRetrying(
             stop=stop_after_attempt(3),
@@ -119,7 +149,35 @@ class BasePortal(ABC):
                     async with self.browser.session() as (_, _, raw_page):
                         page = BasePage(raw_page)
                         await self.login(page)
+                        captcha = await self.handle_captcha(page)
+                        if captcha.needs_otp:
+                            proof = await capture_fail_proof(page, prefix=f"{self.name}-otp")
+                            result = ApplyResult(
+                                success=False,
+                                needs_otp=True,
+                                message="Portal requires OTP / 2FA from you",
+                                screenshot_path=proof["screenshot_path"],
+                                fail_proof_html=proof["html"],
+                                fail_proof_path=proof["html_path"],
+                                steps=self.recorder.to_list(),
+                                correlation_id=self.recorder.correlation_id,
+                                cookies=list(self.browser.last_cookies),
+                            )
+                            return result
+
                         result = await self.apply(page, job, resume_path, answers)
+                        result.steps = result.steps or self.recorder.to_list()
+                        result.correlation_id = self.recorder.correlation_id
+                        result.cookies = list(self.browser.last_cookies)
+
+                        if result.needs_input or result.needs_otp:
+                            if not result.screenshot_path:
+                                proof = await capture_fail_proof(page, prefix=f"{self.name}-pause")
+                                result.screenshot_path = proof["screenshot_path"]
+                                result.fail_proof_html = proof["html"]
+                                result.fail_proof_path = proof["html_path"]
+                            return result
+
                         if not result.screenshot_path:
                             result.screenshot_path = await self.capture_screenshot(
                                 page, prefix=f"{self.name}-apply"
@@ -127,6 +185,13 @@ class BasePortal(ABC):
                         return result
                 except Exception as exc:  # noqa: BLE001
                     last_error = str(exc)
+                    self.recorder.failed(last_error)
                     logger.warning("apply_attempt_failed", portal=self.name, error=last_error)
                     raise
-        return ApplyResult(success=False, message=last_error)
+        return ApplyResult(
+            success=False,
+            message=last_error,
+            steps=self.recorder.to_list(),
+            correlation_id=self.recorder.correlation_id,
+            cookies=list(self.browser.last_cookies),
+        )

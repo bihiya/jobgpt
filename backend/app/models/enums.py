@@ -67,6 +67,8 @@ class ApplicationStatus(StrEnum):
     FAILED = "failed"
     RETRYING = "retrying"
     FOLLOW_UP = "follow_up"
+    NEEDS_INPUT = "needs_input"  # unknown form question — pause for user
+    NEEDS_OTP = "needs_otp"  # portal 2FA — wait for user OTP
 
 
 class ApprovalStatus(StrEnum):

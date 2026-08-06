@@ -32,6 +32,9 @@ def get_portal_adapter(
     cookies: list[dict[str, Any]] | None = None,
     proxy: dict[str, str] | None = None,
     headless: bool | None = None,
+    totp_secret: str = "",
+    otp_code: str = "",
+    selector_version: int = 1,
 ) -> BasePortal:
     portal_name = PortalName(name) if isinstance(name, str) else name
     kwargs = {
@@ -39,6 +42,9 @@ def get_portal_adapter(
         "cookies": cookies,
         "proxy": proxy,
         "headless": headless,
+        "totp_secret": totp_secret,
+        "otp_code": otp_code,
+        "selector_version": selector_version,
     }
 
     if portal_name == PortalName.LINKEDIN:
@@ -51,4 +57,11 @@ def get_portal_adapter(
         return LeverPortal(**kwargs)
 
     base_url = PORTAL_BASE_URLS.get(portal_name, "https://example.com")
-    return GenericPortal(name=portal_name.value, base_url=base_url, **kwargs)
+    # GenericPortal may not accept newer kwargs — filter safely
+    generic_kwargs = {
+        "credentials": credentials,
+        "cookies": cookies,
+        "proxy": proxy,
+        "headless": headless,
+    }
+    return GenericPortal(name=portal_name.value, base_url=base_url, **generic_kwargs)

@@ -32,13 +32,17 @@ class PortalCreate(BaseModel):
     name: PortalName
     credentials: CredentialsSchema = Field(default_factory=CredentialsSchema)
     proxy: ProxySchema = Field(default_factory=ProxySchema)
-    cookies: dict = Field(default_factory=dict)
+    cookies: dict | list = Field(default_factory=dict)
+    totp_secret: str = ""
+    selector_version: int = 1
 
 
 class PortalUpdate(BaseModel):
     credentials: CredentialsSchema | None = None
     proxy: ProxySchema | None = None
-    cookies: dict | None = None
+    cookies: dict | list | None = None
+    totp_secret: str | None = None
+    selector_version: int | None = None
     status: PortalStatus | None = None
 
 
@@ -49,6 +53,10 @@ class PortalResponse(BaseModel):
     last_sync_at: str | None = None
     created_at: str
     has_credentials: bool = False
+    has_session: bool = False
+    has_totp: bool = False
+    session_updated_at: str | None = None
+    selector_version: int = 1
     health: PortalHealthSchema = Field(default_factory=PortalHealthSchema)
 
     model_config = {"from_attributes": True}

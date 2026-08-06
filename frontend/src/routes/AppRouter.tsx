@@ -23,6 +23,7 @@ const SettingsPage = lazy(() => import('../pages/settings/SettingsPage'));
 const AdminPage = lazy(() => import('../pages/admin/AdminPage'));
 const OnboardingPage = lazy(() => import('../pages/onboarding/OnboardingPage'));
 const ApprovalsPage = lazy(() => import('../pages/approvals/ApprovalsPage'));
+const QuestionsPage = lazy(() => import('../pages/questions/QuestionsPage'));
 const CalendarPage = lazy(() => import('../pages/calendar/CalendarPage'));
 const ActivityPage = lazy(() => import('../pages/activity/ActivityPage'));
 
@@ -50,6 +51,7 @@ export default function AppRouter() {
           <Route path="/onboarding" element={<Lazy><OnboardingPage /></Lazy>} />
           <Route path="/dashboard" element={<Lazy><DashboardPage /></Lazy>} />
           <Route path="/approvals" element={<Lazy><ApprovalsPage /></Lazy>} />
+          <Route path="/questions" element={<Lazy><QuestionsPage /></Lazy>} />
           <Route path="/calendar" element={<Lazy><CalendarPage /></Lazy>} />
           <Route path="/activity" element={<Lazy><ActivityPage /></Lazy>} />
           <Route path="/jobs" element={<Lazy><JobsPage /></Lazy>} />

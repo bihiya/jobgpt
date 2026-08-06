@@ -15,4 +15,16 @@ describe('guest demo data', () => {
   it('does not resolve write methods', () => {
     expect(resolveDemoData('/api/v1/jobs', 'post')).toBeUndefined();
   });
+
+  it('returns question bank demo data', () => {
+    const data = resolveDemoData('/api/v1/questions', 'get');
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.length).toBeGreaterThan(0);
+  });
+
+  it('returns approval blockers demo data', () => {
+    const data = resolveDemoData('/api/v1/approvals/blockers', 'get');
+    expect(Array.isArray(data)).toBe(true);
+    expect(data[0].blocker_type).toBe('unknown_question');
+  });
 });

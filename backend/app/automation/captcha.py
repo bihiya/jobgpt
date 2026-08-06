@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -14,12 +16,41 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 
+@dataclass
+class CaptchaHookResult:
+    captcha_solved: bool = False
+    otp_handled: bool = False
+    needs_otp: bool = False
+    detail: str = ""
+
+
 class CaptchaProvider(ABC):
     @abstractmethod
     async def solve(self, page: BasePage, site_key: str = "", page_url: str = "") -> str: ...
 
     @abstractmethod
-    async def handle_2fa(self, page: BasePage, hint: str = "") -> bool: ...
+    async def handle_2fa(
+        self,
+        page: BasePage,
+        hint: str = "",
+        totp_secret: str = "",
+        otp_code: str = "",
+    ) -> bool: ...
+
+
+def _generate_totp(secret: str = "", one_shot_code: str = "") -> str:
+    if one_shot_code:
+        return str(one_shot_code).strip()
+    secret = (secret or "").strip().replace(" ", "")
+    if not secret:
+        return settings.totp_test_code or ""
+    try:
+        import pyotp
+
+        return pyotp.TOTP(secret).now()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("totp_generate_failed", error=str(exc))
+        return settings.totp_test_code or ""
 
 
 class NoopCaptchaProvider(CaptchaProvider):
@@ -27,21 +58,32 @@ class NoopCaptchaProvider(CaptchaProvider):
         logger.info("captcha_noop", url=page_url or page.page.url)
         return ""
 
-    async def handle_2fa(self, page: BasePage, hint: str = "") -> bool:
-        logger.info("2fa_noop", hint=hint)
-        return False
+    async def handle_2fa(
+        self,
+        page: BasePage,
+        hint: str = "",
+        totp_secret: str = "",
+        otp_code: str = "",
+    ) -> bool:
+        code = _generate_totp(totp_secret, one_shot_code=otp_code)
+        if not code:
+            logger.info("2fa_noop", hint=hint)
+            return False
+        return await _fill_otp(page, code)
 
 
 class TwoCaptchaProvider(CaptchaProvider):
-    """Example integration with a 2captcha-like API."""
+    """2Captcha / AntiCaptcha-compatible createTask + getTaskResult poll loop."""
 
     async def solve(self, page: BasePage, site_key: str = "", page_url: str = "") -> str:
-        if not settings.captcha_api_key:
+        if not settings.captcha_api_key or not site_key:
             return await NoopCaptchaProvider().solve(page, site_key, page_url)
-        async with httpx.AsyncClient(timeout=60) as client:
-            # Placeholder protocol — swap for real provider endpoints
-            resp = await client.post(
-                settings.captcha_api_url,
+
+        create_url = settings.captcha_api_url
+        result_url = settings.captcha_result_url
+        async with httpx.AsyncClient(timeout=90) as client:
+            create = await client.post(
+                create_url,
                 json={
                     "clientKey": settings.captcha_api_key,
                     "task": {
@@ -51,28 +93,73 @@ class TwoCaptchaProvider(CaptchaProvider):
                     },
                 },
             )
-            data = resp.json()
-            token = data.get("solution", {}).get("gRecaptchaResponse", "")
+            created = create.json()
+            task_id = created.get("taskId")
+            if created.get("errorId") and not task_id:
+                logger.warning("captcha_create_failed", response=created)
+                return ""
+
+            token = ""
+            for _ in range(int(settings.captcha_poll_attempts)):
+                await asyncio.sleep(float(settings.captcha_poll_interval_seconds))
+                poll = await client.post(
+                    result_url,
+                    json={"clientKey": settings.captcha_api_key, "taskId": task_id},
+                )
+                data = poll.json()
+                status = data.get("status")
+                if status == "ready":
+                    token = (
+                        data.get("solution", {}).get("gRecaptchaResponse")
+                        or data.get("solution", {}).get("token")
+                        or ""
+                    )
+                    break
+                if data.get("errorId"):
+                    logger.warning("captcha_poll_error", response=data)
+                    break
+
             if token:
                 await page.page.evaluate(
-                    "(token) => { const el = document.querySelector('[name=\"g-recaptcha-response\"]'); if (el) el.value = token; }",
+                    """(token) => {
+                        const el = document.querySelector('[name="g-recaptcha-response"]');
+                        if (el) { el.value = token; el.innerHTML = token; }
+                        if (typeof ___grecaptcha_cfg !== 'undefined') {
+                          try { window.___grecaptcha_cfg.clients && Object.values(window.___grecaptcha_cfg.clients); } catch (e) {}
+                        }
+                    }""",
                     token,
                 )
+                logger.info("captcha_solved", url=page_url or page.page.url)
             return token
 
-    async def handle_2fa(self, page: BasePage, hint: str = "") -> bool:
-        # Hook for TOTP / email code injection via settings or external vault
-        code = settings.totp_test_code
+    async def handle_2fa(
+        self,
+        page: BasePage,
+        hint: str = "",
+        totp_secret: str = "",
+        otp_code: str = "",
+    ) -> bool:
+        code = _generate_totp(totp_secret, one_shot_code=otp_code)
         if not code:
             return False
-        if await page.page.query_selector("input[name*='otp'], input[name*='code'], input[autocomplete='one-time-code']"):
-            await page.fill(
-                "input[name*='otp'], input[name*='code'], input[autocomplete='one-time-code']",
-                code,
-            )
-            await page.safe_click("button[type='submit']")
+        return await _fill_otp(page, code)
+
+
+async def _fill_otp(page: BasePage, code: str) -> bool:
+    selectors = [
+        "input[name*='otp']",
+        "input[name*='code']",
+        "input[name*='pin']",
+        "input[autocomplete='one-time-code']",
+        "input#input__email_verification_pin",
+    ]
+    for sel in selectors:
+        if await page.page.query_selector(sel):
+            await page.fill(sel, code)
+            await page.safe_click("button[type='submit'], button:has-text('Submit'), button:has-text('Verify')")
             return True
-        return False
+    return False
 
 
 def get_captcha_provider() -> CaptchaProvider:
@@ -82,15 +169,38 @@ def get_captcha_provider() -> CaptchaProvider:
     return NoopCaptchaProvider()
 
 
-async def default_captcha_hook(page: BasePage, context: dict[str, Any] | None = None) -> None:
+async def default_captcha_hook(
+    page: BasePage,
+    context: dict[str, Any] | None = None,
+) -> CaptchaHookResult:
     context = context or {}
     provider = get_captcha_provider()
-    # Detect common captcha widgets
+    result = CaptchaHookResult()
+
     site_key = ""
-    frame = await page.page.query_selector("[data-sitekey], .g-recaptcha")
+    frame = await page.page.query_selector("[data-sitekey], .g-recaptcha, iframe[src*='recaptcha']")
     if frame:
         site_key = (await frame.get_attribute("data-sitekey")) or ""
-        await provider.solve(page, site_key=site_key, page_url=page.page.url)
-    # Detect 2FA
-    if await page.page.query_selector("input[name*='otp'], input[name*='code']"):
-        await provider.handle_2fa(page)
+        if not site_key:
+            src = (await frame.get_attribute("src")) or ""
+            if "k=" in src:
+                site_key = src.split("k=")[-1].split("&")[0]
+        token = await provider.solve(page, site_key=site_key, page_url=page.page.url)
+        result.captcha_solved = bool(token)
+        result.detail = "captcha_solved" if token else "captcha_unsolved"
+
+    otp_sel = await page.page.query_selector(
+        "input[name*='otp'], input[name*='code'], input[name*='pin'], input[autocomplete='one-time-code']"
+    )
+    if otp_sel:
+        handled = await provider.handle_2fa(
+            page,
+            totp_secret=str(context.get("totp_secret") or ""),
+            otp_code=str(context.get("otp_code") or ""),
+        )
+        result.otp_handled = handled
+        result.needs_otp = not handled
+        result.detail = (result.detail + "; " if result.detail else "") + (
+            "otp_filled" if handled else "needs_otp"
+        )
+    return result

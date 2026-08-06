@@ -21,8 +21,11 @@ export const portalsApi = {
 
 export const applicationsApi = {
   list: (params?: Record<string, unknown>) => api.get('/applications', { params }),
+  get: (id: string) => api.get(`/applications/${id}`),
   create: (payload: { job_id: string; resume_id?: string }) => api.post('/applications', payload),
   retry: (id: string) => api.post(`/applications/${id}/retry`),
+  submitOtp: (id: string, payload: { code: string; save_totp_secret?: string }) =>
+    api.post(`/applications/${id}/otp`, payload),
 };
 
 export const reportsApi = {
@@ -45,6 +48,8 @@ export const settingsApi = {
 
 export const approvalsApi = {
   list: (params?: Record<string, unknown>) => api.get('/approvals', { params }),
+  blockers: () => api.get('/approvals/blockers'),
+  batch: (payload: Record<string, unknown>) => api.post('/approvals/batch', payload),
   approve: (id: string, note = '') => api.post(`/approvals/${id}/approve`, { note }),
   reject: (id: string, note = '') => api.post(`/approvals/${id}/reject`, { note }),
 };
@@ -53,6 +58,8 @@ export const questionsApi = {
   list: () => api.get('/questions'),
   upsert: (payload: Record<string, unknown>) => api.post('/questions', payload),
   remove: (id: string) => api.delete(`/questions/${id}`),
+  answerAndResume: (payload: Record<string, unknown>) =>
+    api.post('/questions/answer-and-resume', payload),
 };
 
 export const onboardingApi = {

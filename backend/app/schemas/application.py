@@ -19,8 +19,13 @@ class ApplicationResponse(BaseModel):
     status: ApplicationStatus
     attempts: int
     screenshot_path: str
+    screenshot_url: str = ""
     error_message: str
     applied_at: str | None
     created_at: str
+    session_steps: list[dict] = []
+    unknown_questions: list[str] = []
+    blocker_type: str = ""
+    correlation_id: str = ""
 
     model_config = {"from_attributes": True}
