@@ -1,0 +1,115 @@
+import {
+  Button,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  MenuItem,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material';
+import { DataGrid, GridColDef } from '@mui/x-data-grid';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { portalsApi } from '../../api';
+
+const PORTALS = [
+  'linkedin', 'naukri', 'indeed', 'foundit', 'wellfound', 'greenhouse',
+  'lever', 'ashby', 'workday', 'smartrecruiters', 'oracle', 'sap_successfactors', 'taleo',
+];
+
+export default function PortalsPage() {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('linkedin');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const queryClient = useQueryClient();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['portals'],
+    queryFn: async () => (await portalsApi.list()).data,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: () =>
+      portalsApi.create({
+        name,
+        credentials: { username, password },
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['portals'] });
+      setOpen(false);
+    },
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: (id: string) => portalsApi.sync(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['portals'] }),
+  });
+
+  const columns: GridColDef[] = [
+    { field: 'name', headerName: 'Portal', flex: 1 },
+    {
+      field: 'status',
+      headerName: 'Status',
+      width: 140,
+      renderCell: (params) => (
+        <Chip
+          size="small"
+          label={params.value}
+          color={params.value === 'connected' ? 'success' : params.value === 'error' ? 'error' : 'default'}
+        />
+      ),
+    },
+    { field: 'last_sync_at', headerName: 'Last sync', flex: 1 },
+    {
+      field: 'actions',
+      headerName: '',
+      width: 140,
+      renderCell: (params) => (
+        <Button size="small" variant="outlined" onClick={() => syncMutation.mutate(params.row.id)}>
+          Sync
+        </Button>
+      ),
+    },
+  ];
+
+  return (
+    <Stack spacing={2}>
+      <Stack direction="row" justifyContent="space-between" alignItems="center">
+        <Typography variant="h4">Job portals</Typography>
+        <Button variant="contained" onClick={() => setOpen(true)}>Connect portal</Button>
+      </Stack>
+      <DataGrid
+        autoHeight
+        rows={data || []}
+        columns={columns}
+        loading={isLoading}
+        pageSizeOptions={[10, 25]}
+        initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
+        sx={{ bgcolor: 'background.paper', borderRadius: 2 }}
+      />
+
+      <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Connect portal</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField select label="Portal" value={name} onChange={(e) => setName(e.target.value)}>
+              {PORTALS.map((p) => (
+                <MenuItem key={p} value={p}>{p}</MenuItem>
+              ))}
+            </TextField>
+            <TextField label="Username / Email" value={username} onChange={(e) => setUsername(e.target.value)} />
+            <TextField label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={() => createMutation.mutate()}>Connect</Button>
+        </DialogActions>
+      </Dialog>
+    </Stack>
+  );
+}
