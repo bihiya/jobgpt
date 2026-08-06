@@ -29,6 +29,7 @@ import {
   LightMode,
   Menu as MenuIcon,
 } from '@mui/icons-material';
+import { alpha } from '@mui/material/styles';
 import { memo, startTransition, useCallback, useMemo } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { usePrefetch } from '../contexts/PrefetchContext';
@@ -38,6 +39,7 @@ import { selectDarkMode, selectSidebarOpen } from '../store/selectors/uiSelector
 import { logout } from '../store/slices/authSlice';
 import { toggleDarkMode, toggleSidebar } from '../store/slices/uiSlice';
 import { useThrottleCallback } from '../hooks/useThrottleCallback';
+import { useToast } from '../hooks/useToast';
 
 const drawerWidth = 260;
 
@@ -82,9 +84,8 @@ const NavItem = memo(function NavItem({
       onClick={handleClick}
       onMouseEnter={onPrefetch}
       onFocus={onPrefetch}
-      sx={{ borderRadius: 2, mb: 0.5 }}
     >
-      <ListItemIcon sx={{ minWidth: 40 }}>{icon}</ListItemIcon>
+      <ListItemIcon sx={{ minWidth: 40, color: 'inherit' }}>{icon}</ListItemIcon>
       <ListItemText primary={label} />
     </ListItemButton>
   );
@@ -99,6 +100,7 @@ function DashboardLayout() {
   const displayName = useAppSelector(selectUserDisplayName);
   const isMobile = useMediaQuery('(max-width:900px)');
   const { prefetchDashboard, prefetchJobs } = usePrefetch();
+  const { info } = useToast();
 
   const handleNavigate = useCallback(
     (path: string) => {
@@ -114,8 +116,9 @@ function DashboardLayout() {
   const handleLogout = useCallback(() => {
     localStorage.removeItem('refresh_token');
     dispatch(logout());
+    info('Signed out');
     navigate('/login');
-  }, [dispatch, navigate]);
+  }, [dispatch, navigate, info]);
 
   const prefetchMap = useMemo(
     () => ({
@@ -131,16 +134,25 @@ function DashboardLayout() {
   );
 
   const drawer = (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', color: '#F4FFF9' }}>
       <Box sx={{ px: 2.5, py: 2.5 }}>
-        <Typography variant="h5" sx={{ letterSpacing: '-0.03em' }}>
+        <Typography
+          variant="h5"
+          sx={{
+            letterSpacing: '-0.03em',
+            background: 'linear-gradient(135deg, #F4FFF9, #7EE0C3)',
+            backgroundClip: 'text',
+            WebkitBackgroundClip: 'text',
+            color: 'transparent',
+          }}
+        >
           JobPilot AI
         </Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{ opacity: 0.75, mt: 0.5 }}>
           {displayName}
         </Typography>
       </Box>
-      <List sx={{ px: 1, flex: 1 }}>
+      <List sx={{ px: 0.5, flex: 1, overflowY: 'auto' }}>
         {NAV_ITEMS.map((item) => (
           <NavItem
             key={item.path}
@@ -153,9 +165,9 @@ function DashboardLayout() {
           />
         ))}
       </List>
-      <List sx={{ px: 1, pb: 2 }}>
-        <ListItemButton onClick={handleLogout} sx={{ borderRadius: 2 }}>
-          <ListItemIcon sx={{ minWidth: 40 }}>
+      <List sx={{ px: 0.5, pb: 2 }}>
+        <ListItemButton onClick={handleLogout}>
+          <ListItemIcon sx={{ minWidth: 40, color: 'inherit' }}>
             <Logout />
           </ListItemIcon>
           <ListItemText primary="Logout" />
@@ -169,19 +181,27 @@ function DashboardLayout() {
       <AppBar
         position="fixed"
         color="transparent"
+        elevation={0}
         sx={{
-          backdropFilter: 'blur(10px)',
-          borderBottom: '1px solid',
-          borderColor: 'divider',
-          width: { md: `calc(100% - ${sidebarOpen ? drawerWidth : 0}px)` },
-          ml: { md: sidebarOpen ? `${drawerWidth}px` : 0 },
+          width: { md: `calc(100% - ${sidebarOpen && !isMobile ? drawerWidth : 0}px)` },
+          ml: { md: sidebarOpen && !isMobile ? `${drawerWidth}px` : 0 },
+          transition: 'width 0.25s ease, margin 0.25s ease',
         }}
       >
-        <Toolbar>
+        <Toolbar sx={{ gap: 1 }}>
           <IconButton edge="start" onClick={handleToggleSidebar} aria-label="Toggle sidebar">
             <MenuIcon />
           </IconButton>
-          <Typography sx={{ flex: 1, fontWeight: 600 }}>{pageTitle}</Typography>
+          <Typography
+            sx={{
+              flex: 1,
+              fontWeight: 700,
+              fontFamily: '"Fraunces", Georgia, serif',
+              fontSize: { xs: '1.05rem', sm: '1.25rem' },
+            }}
+          >
+            {pageTitle}
+          </Typography>
           <IconButton onClick={handleToggleDark} aria-label="Toggle theme">
             {darkMode ? <LightMode /> : <DarkMode />}
           </IconButton>
@@ -198,10 +218,6 @@ function DashboardLayout() {
           '& .MuiDrawer-paper': {
             width: drawerWidth,
             boxSizing: 'border-box',
-            borderRight: '1px solid',
-            borderColor: 'divider',
-            background:
-              'linear-gradient(180deg, rgba(15,110,86,0.08), transparent 40%), var(--mui-palette-background-paper)',
           },
         }}
       >
@@ -212,14 +228,16 @@ function DashboardLayout() {
         component="main"
         sx={{
           flexGrow: 1,
-          p: { xs: 2, md: 3 },
+          p: { xs: 1.5, sm: 2, md: 3 },
           mt: 8,
-          width: { md: `calc(100% - ${sidebarOpen ? drawerWidth : 0}px)` },
-          background:
-            'radial-gradient(800px 300px at 100% 0%, rgba(15,110,86,0.08), transparent)',
+          width: { md: `calc(100% - ${sidebarOpen && !isMobile ? drawerWidth : 0}px)` },
+          transition: 'width 0.25s ease',
+          minWidth: 0,
+          background: (t) =>
+            `radial-gradient(700px 260px at 100% 0%, ${alpha(t.palette.secondary.main, 0.1)}, transparent)`,
         }}
       >
-        <Outlet />
+        <Outlet key={location.pathname} />
       </Box>
     </Box>
   );

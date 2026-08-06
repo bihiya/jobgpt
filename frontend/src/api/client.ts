@@ -1,12 +1,14 @@
 import axios from 'axios';
 import store from '../store/store';
 import { logout, setAccessToken } from '../store/slices/authSlice';
+import { toastFromStore } from '../hooks/useToast';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
 
 export const api = axios.create({
   baseURL: API_BASE,
   headers: { 'Content-Type': 'application/json' },
+  timeout: 30_000,
 });
 
 api.interceptors.request.use((config) => {
@@ -40,16 +42,23 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const original = error.config;
-    if (error.response?.status === 401 && !original._retry) {
+    const silent = Boolean(original?.headers?.['X-Silent-Toast']);
+
+    if (error.response?.status === 401 && original && !original._retry) {
       original._retry = true;
-      refreshing = refreshing ?? refreshAccessToken();
+      refreshing = refreshing ?? refreshAccessToken().finally(() => {
+        refreshing = null;
+      });
       const token = await refreshing;
-      refreshing = null;
       if (token) {
         original.headers.Authorization = `Bearer ${token}`;
         return api(original);
       }
+      if (!silent) {
+        toastFromStore('Session expired — please sign in again', 'warning', 5000);
+      }
     }
+
     return Promise.reject(error);
   },
 );

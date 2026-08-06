@@ -1,28 +1,15 @@
 import { CssBaseline, ThemeProvider } from '@mui/material';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { Provider } from 'react-redux';
 import { BrowserRouter } from 'react-router-dom';
+import ToastHost from './components/common/ToastHost';
 import { PrefetchProvider } from './contexts/PrefetchContext';
+import { queryClient } from './lib/queryClient';
 import AppRouter from './routes/AppRouter';
 import { useAppSelector } from './store/hooks';
 import { selectDarkMode } from './store/selectors/uiSelectors';
 import store from './store/store';
 import { darkTheme, lightTheme } from './theme/theme';
-
-// API response caching defaults (React Query)
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      refetchOnWindowFocus: false,
-      retry: 1,
-      staleTime: 30_000,
-      gcTime: 5 * 60_000,
-    },
-    mutations: {
-      retry: 0,
-    },
-  },
-});
 
 function ThemedApp() {
   const darkMode = useAppSelector(selectDarkMode);
@@ -32,6 +19,7 @@ function ThemedApp() {
       <BrowserRouter>
         <PrefetchProvider>
           <AppRouter />
+          <ToastHost />
         </PrefetchProvider>
       </BrowserRouter>
     </ThemeProvider>

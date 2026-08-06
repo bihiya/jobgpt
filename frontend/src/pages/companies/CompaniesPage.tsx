@@ -13,6 +13,7 @@ import { DataGrid, GridColDef } from '@mui/x-data-grid';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { companiesApi } from '../../api';
+import PageShell from '../../components/common/PageShell';
 
 const empty = {
   name: '',
@@ -39,6 +40,7 @@ export default function CompaniesPage() {
         tags: form.tags.split(',').map((t) => t.trim()).filter(Boolean),
         priority: Number(form.priority),
       }),
+    meta: { successMessage: 'Company added', errorMessage: 'Could not add company' },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['companies'] });
       setOpen(false);
@@ -48,15 +50,16 @@ export default function CompaniesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => companiesApi.remove(id),
+    meta: { successMessage: 'Company removed', errorMessage: 'Could not delete company' },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['companies'] }),
   });
 
   const columns: GridColDef[] = [
-    { field: 'name', headerName: 'Company', flex: 1 },
+    { field: 'name', headerName: 'Company', flex: 1, minWidth: 140 },
     { field: 'platform', headerName: 'Platform', width: 140 },
     { field: 'priority', headerName: 'Priority', width: 100 },
     { field: 'status', headerName: 'Status', width: 120 },
-    { field: 'career_url', headerName: 'Career URL', flex: 1.4 },
+    { field: 'career_url', headerName: 'Career URL', flex: 1.4, minWidth: 160 },
     {
       field: 'actions',
       headerName: '',
@@ -70,8 +73,13 @@ export default function CompaniesPage() {
   ];
 
   return (
-    <Stack spacing={2}>
-      <Stack direction="row" justifyContent="space-between" alignItems="center">
+    <PageShell>
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        justifyContent="space-between"
+        alignItems={{ xs: 'stretch', sm: 'center' }}
+        spacing={1.5}
+      >
         <Typography variant="h4">Companies</Typography>
         <Button variant="contained" onClick={() => setOpen(true)}>
           Add company
@@ -84,31 +92,31 @@ export default function CompaniesPage() {
         loading={isLoading}
         pageSizeOptions={[10, 25]}
         initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
-        sx={{ bgcolor: 'background.paper', borderRadius: 2 }}
+        sx={{ bgcolor: 'background.paper', borderRadius: 3, width: '100%' }}
       />
 
       <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>Add company</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField label="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-            <TextField label="Career URL" value={form.career_url} onChange={(e) => setForm({ ...form, career_url: e.target.value })} />
-            <TextField select label="Platform" value={form.platform} onChange={(e) => setForm({ ...form, platform: e.target.value })}>
+            <TextField label="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} fullWidth />
+            <TextField label="Career URL" value={form.career_url} onChange={(e) => setForm({ ...form, career_url: e.target.value })} fullWidth />
+            <TextField select label="Platform" value={form.platform} onChange={(e) => setForm({ ...form, platform: e.target.value })} fullWidth>
               {['custom', 'greenhouse', 'lever', 'ashby', 'workday'].map((p) => (
                 <MenuItem key={p} value={p}>{p}</MenuItem>
               ))}
             </TextField>
-            <TextField label="Priority" type="number" value={form.priority} onChange={(e) => setForm({ ...form, priority: Number(e.target.value) })} />
-            <TextField label="Tags (comma separated)" value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} />
+            <TextField label="Priority" type="number" value={form.priority} onChange={(e) => setForm({ ...form, priority: Number(e.target.value) })} fullWidth />
+            <TextField label="Tags (comma separated)" value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} fullWidth />
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => createMutation.mutate()} disabled={!form.name || !form.career_url}>
+          <Button variant="contained" onClick={() => createMutation.mutate()} disabled={!form.name || !form.career_url || createMutation.isPending}>
             Save
           </Button>
         </DialogActions>
       </Dialog>
-    </Stack>
+    </PageShell>
   );
 }
