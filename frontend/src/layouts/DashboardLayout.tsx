@@ -162,6 +162,9 @@ function DashboardLayout() {
     [location.pathname],
   );
 
+  const desktopSidebarVisible = sidebarOpen && !isMobile;
+  const contentOffset = desktopSidebarVisible ? drawerWidth : 0;
+
   const drawer = (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', color: '#F4FFF9' }}>
       <Box sx={{ px: 2.5, py: 2.5 }}>
@@ -221,8 +224,8 @@ function DashboardLayout() {
         color="transparent"
         elevation={0}
         sx={{
-          width: { md: `calc(100% - ${sidebarOpen && !isMobile ? drawerWidth : 0}px)` },
-          ml: { md: sidebarOpen && !isMobile ? `${drawerWidth}px` : 0 },
+          width: { md: `calc(100% - ${contentOffset}px)` },
+          ml: { md: `${contentOffset}px` },
           transition: 'width 0.25s ease, margin 0.25s ease',
         }}
       >
@@ -280,11 +283,22 @@ function DashboardLayout() {
         open={sidebarOpen}
         onClose={handleToggleSidebar}
         sx={{
-          width: drawerWidth,
+          width: { md: contentOffset },
           flexShrink: 0,
+          whiteSpace: 'nowrap',
+          transition: (theme) =>
+            theme.transitions.create('width', {
+              easing: theme.transitions.easing.sharp,
+              duration: theme.transitions.duration.enteringScreen,
+            }),
           '& .MuiDrawer-paper': {
             width: drawerWidth,
             boxSizing: 'border-box',
+            transition: (theme) =>
+              theme.transitions.create('transform', {
+                easing: theme.transitions.easing.sharp,
+                duration: theme.transitions.duration.enteringScreen,
+              }),
           },
         }}
       >
@@ -295,9 +309,11 @@ function DashboardLayout() {
         component="main"
         sx={{
           flexGrow: 1,
+          flexBasis: 0,
           p: { xs: 1.5, sm: 2, md: 3 },
           mt: 8,
-          width: { md: `calc(100% - ${sidebarOpen && !isMobile ? drawerWidth : 0}px)` },
+          width: { xs: '100%', md: `calc(100% - ${contentOffset}px)` },
+          maxWidth: '100%',
           transition: 'width 0.25s ease',
           minWidth: 0,
           background: (t) =>
