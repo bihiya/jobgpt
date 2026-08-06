@@ -6,6 +6,7 @@ from typing import Any
 from app.automation.portals.registry import get_portal_adapter
 from app.core.kafka import publish
 from app.core.logging import get_logger
+from app.events.realtime import emit_realtime
 from app.models.application import Application
 from app.models.automation_log import AutomationLog
 from app.models.enums import ApplicationStatus, JobStatus
@@ -127,6 +128,30 @@ class ApplyWorker(BaseWorker):
             level="info",
             message="Starting application",
         ).insert()
+        await emit_realtime(
+            user_id,
+            "application.started",
+            {
+                "job_id": job_id,
+                "application_id": str(app.id),
+                "portal": job.portal,
+                "title": job.title,
+            },
+            title="Applying…",
+            body=f"Starting application for {job.title}",
+            severity="info",
+        )
+        await emit_realtime(
+            user_id,
+            "automation.log",
+            {
+                "action": "apply",
+                "level": "info",
+                "message": "Starting application",
+                "job_id": job_id,
+                "portal": job.portal,
+            },
+        )
 
         result = await adapter.apply_with_retry(extracted, resume.file_path, answers)
         if result.success:

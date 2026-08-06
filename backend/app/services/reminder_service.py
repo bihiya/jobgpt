@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from math import ceil
 
 from app.core.exceptions import NotFoundError
+from app.events.realtime import emit_realtime
 from app.models.application import Application
 from app.models.enums import ApplicationStatus
 from app.models.job import Job
@@ -38,6 +39,19 @@ class ReminderService:
             due_at=due,
         )
         await reminder.insert()
+        await emit_realtime(
+            user_id,
+            "reminder.scheduled",
+            {
+                "reminder_id": str(reminder.id),
+                "application_id": str(application.id),
+                "job_id": application.job_id,
+                "due_at": due.isoformat(),
+            },
+            title="Follow-up scheduled",
+            body=title,
+            severity="info",
+        )
         return reminder
 
     async def calendar(self, user_id: str, month: int | None = None, year: int | None = None) -> list[dict]:
@@ -105,6 +119,14 @@ class ReminderService:
             raise NotFoundError("Reminder not found")
         reminder.is_completed = True
         await reminder.save()
+        await emit_realtime(
+            user_id,
+            "reminder.completed",
+            {"reminder_id": reminder_id},
+            title="Follow-up completed",
+            body=reminder.title,
+            severity="success",
+        )
 
     async def notify_due(self, user_id: str) -> int:
         items = await self.due(user_id)

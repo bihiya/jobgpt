@@ -7,6 +7,7 @@ from math import ceil
 
 from app.core.exceptions import NotFoundError
 from app.core.kafka import publish
+from app.events.realtime import emit_realtime
 from app.models.approval import Approval
 from app.models.enums import ApprovalStatus, JobStatus
 from app.models.job import Job
@@ -119,4 +120,17 @@ class ApprovalService:
             else:
                 job.status = JobStatus.REJECTED
                 await job.save()
+        await emit_realtime(
+            user_id,
+            "approval.decided",
+            {
+                "approval_id": str(approval.id),
+                "job_id": approval.job_id,
+                "status": approval.status,
+                "approved": approve,
+            },
+            title="Approval updated",
+            body="Approved — applying now" if approve else "Rejected",
+            severity="success" if approve else "info",
+        )
         return {"id": str(approval.id), "status": approval.status}

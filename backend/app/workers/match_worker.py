@@ -5,6 +5,7 @@ from typing import Any
 from app.core.config import settings
 from app.core.kafka import publish
 from app.core.logging import get_logger
+from app.events.realtime import emit_realtime
 from app.models.enums import JobStatus
 from app.repository.job_repository import JobRepository
 from app.repository.settings_repository import SettingsRepository
@@ -43,6 +44,16 @@ class MatchWorker(BaseWorker):
             score=job.match_score,
             threshold=threshold,
             reasons=job.match_breakdown.reasons[:3] if job.match_breakdown else [],
+        )
+        await emit_realtime(
+            user_id,
+            "job.matched",
+            {
+                "job_id": job_id,
+                "match_score": job.match_score,
+                "title": job.title,
+                "company": job.company,
+            },
         )
 
         if job.match_score < threshold:

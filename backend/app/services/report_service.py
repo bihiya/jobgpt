@@ -9,6 +9,7 @@ from uuid import uuid4
 from app.core.config import settings
 from app.core.exceptions import NotFoundError
 from app.core.kafka import publish
+from app.events.realtime import emit_realtime
 from app.models.enums import ApplicationStatus, JobStatus, ReportStatus
 from app.models.report import Report
 from app.repository.application_repository import ApplicationRepository
@@ -85,6 +86,14 @@ class ReportService:
         report.file_path = str(path)
         report.status = ReportStatus.READY
         await report.save()
+        await emit_realtime(
+            user_id,
+            "report.ready",
+            {"report_id": str(report.id), "status": "ready"},
+            title="Report ready",
+            body="Your report is ready to download",
+            severity="success",
+        )
         return report
 
     async def get_download_path(self, user_id: str, report_id: str) -> str:

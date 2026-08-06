@@ -6,6 +6,7 @@ from typing import Any
 from app.automation.portals.registry import get_portal_adapter
 from app.core.kafka import publish
 from app.core.logging import get_logger
+from app.events.realtime import emit_realtime
 from app.models.enums import JobStatus, PortalStatus
 from app.models.job import Job
 from app.repository.portal_repository import PortalRepository
@@ -102,9 +103,31 @@ class FetchWorker(BaseWorker):
                         {"user_id": user_id, "job_id": str(job.id)},
                         key=user_id,
                     )
+                    await emit_realtime(
+                        user_id,
+                        "job.created",
+                        {
+                            "job_id": str(job.id),
+                            "title": job.title,
+                            "company": job.company,
+                            "portal": portal.name.value,
+                        },
+                    )
                 portal.last_sync_at = datetime.utcnow()
                 portal.status = PortalStatus.CONNECTED
                 await self.health.record_success(portal)
+                await emit_realtime(
+                    user_id,
+                    "portal.synced",
+                    {
+                        "portal": portal.name.value,
+                        "inserted": inserted,
+                        "fetched": len(extracted),
+                    },
+                    title=f"{portal.name.value} sync complete",
+                    body=f"Added {inserted} new jobs",
+                    severity="success" if inserted else "info",
+                )
                 logger.info(
                     "fetch_complete",
                     user_id=user_id,
@@ -114,6 +137,14 @@ class FetchWorker(BaseWorker):
                 )
             except Exception as exc:  # noqa: BLE001
                 await self.health.record_failure(portal, str(exc))
+                await emit_realtime(
+                    user_id,
+                    "portal.health",
+                    {"portal": portal.name.value, "error": str(exc)},
+                    title="Portal sync failed",
+                    body=str(exc),
+                    severity="error",
+                )
                 logger.exception("fetch_failed", portal=portal.name.value, error=str(exc))
                 raise
 
