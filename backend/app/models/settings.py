@@ -13,7 +13,9 @@ class UserSettings(Document):
     auto_apply: bool = False  # safer default: human-in-the-loop
     require_approval: bool = True
     use_llm_ranking: bool = True
-    max_applications_per_day: int = 50
+    max_applications_per_day: int = 15  # safer default for portal anti-ban
+    apply_cooldown_seconds: int = 45
+    batch_min_score: float = 0.85
     headless: bool = True
     timezone: str = "UTC"
     notification_email: bool = True

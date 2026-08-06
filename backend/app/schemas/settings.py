@@ -11,6 +11,8 @@ class SettingsUpdate(BaseModel):
     require_approval: bool | None = None
     use_llm_ranking: bool | None = None
     max_applications_per_day: int | None = Field(default=None, ge=1, le=500)
+    apply_cooldown_seconds: int | None = Field(default=None, ge=0, le=3600)
+    batch_min_score: float | None = Field(default=None, ge=0, le=1)
     headless: bool | None = None
     timezone: str | None = None
     notification_email: bool | None = None
@@ -23,6 +25,8 @@ class SettingsResponse(BaseModel):
     require_approval: bool = True
     use_llm_ranking: bool = True
     max_applications_per_day: int
+    apply_cooldown_seconds: int = 45
+    batch_min_score: float = 0.85
     headless: bool
     timezone: str
     notification_email: bool

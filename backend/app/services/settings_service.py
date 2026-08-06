@@ -19,6 +19,8 @@ class SettingsService:
             require_approval=getattr(doc, "require_approval", True),
             use_llm_ranking=getattr(doc, "use_llm_ranking", True),
             max_applications_per_day=doc.max_applications_per_day,
+            apply_cooldown_seconds=getattr(doc, "apply_cooldown_seconds", 45),
+            batch_min_score=getattr(doc, "batch_min_score", 0.85),
             headless=doc.headless,
             timezone=doc.timezone,
             notification_email=doc.notification_email,

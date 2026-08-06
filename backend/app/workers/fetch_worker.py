@@ -56,13 +56,24 @@ class FetchWorker(BaseWorker):
                 logger.info("portal_skipped_unhealthy", portal=portal.name.value, score=portal.health.score)
                 continue
 
+            from app.services.session_vault import SessionVault
+
+            vault = SessionVault()
             adapter = get_portal_adapter(
                 portal.name,
                 credentials=portal.credentials.model_dump(),
+                cookies=vault.load_cookies(portal),
                 proxy=portal.proxy.model_dump() if portal.proxy.server else None,
+                totp_secret=vault.load_totp_secret(portal),
+                selector_version=getattr(portal, "selector_version", 1) or 1,
             )
             try:
                 extracted = await adapter.fetch_jobs(query, location)
+                # Persist refreshed session after successful fetch login
+                if adapter.browser.last_cookies:
+                    vault.save_cookies(portal, adapter.browser.last_cookies)
+                    portal.updated_at = datetime.utcnow()
+                    await portal.save()
                 inserted = 0
                 for item in extracted:
                     fingerprint = self.dedupe.content_hash(

@@ -79,6 +79,9 @@ class Settings(BaseSettings):
     captcha_provider: str = "noop"
     captcha_api_key: str = ""
     captcha_api_url: str = "https://api.2captcha.com/createTask"
+    captcha_result_url: str = "https://api.2captcha.com/getTaskResult"
+    captcha_poll_interval_seconds: float = 3.0
+    captcha_poll_attempts: int = 40
     totp_test_code: str = ""
 
     # Email alerts

@@ -22,14 +22,28 @@
 | WebSocket realtime | `GET/WS /api/v1/ws`, Redis pub/sub bridge, live UI invalidation |
 | User + job audit logs | `AuditLog`, `/activity`, `/users/me/activity`, `/jobs/{id}/activity`, Activity UI |
 | Guest browse mode | All app pages viewable without login; actions open Sign-in gate + demo data |
+| Portal reliability pack | Session cookie vault, selector versioning, verified apply, fail screenshot+DOM |
+| Apply session recorder | Step timeline on applications / Approvals blockers |
+| Question bank UX | Pause on unknown field → answer once → resume (`/questions`) |
+| Captcha / 2FA path | 2captcha poll + TOTP vault; OTP blockers on Approvals |
+| Smart batch apply | Approve ≥ threshold for a portal with daily caps + cooldown |
 
 ## Default safer flow
 
 1. Fetch → Match (heuristic + optional LLM)  
 2. If score ≥ threshold → **Approval queue** (not blind apply)  
-3. User approves (web/PWA) → `job.apply`  
-4. Question bank fills forms; screenshot stored in S3/local  
-5. Follow-up reminder scheduled; Slack/email/webhook notified  
+3. User approves (web/PWA) or **smart batch** (≥85% + portal + caps) → `job.apply`  
+4. Session vault restores cookies; captcha/TOTP handled; question bank fills forms  
+5. Unknown field or OTP → pause → user answers on Approvals/Questions → resume  
+6. Success **verified** (not assumed); screenshot + DOM proof on fail; follow-up reminder  
+
+## Automation reliability notes
+
+- Cookies encrypted in `Portal.session_blob` via Fernet derived from `SECRET_KEY`
+- Selector packs versioned under `backend/app/automation/selectors/`
+- Apply steps stored on `Application.session_steps` + `AutomationLog`
+- Rate limits: `max_applications_per_day`, `apply_cooldown_seconds`, `batch_min_score`  
+
 
 ## Enable LLM / S3 / Captcha / SMTP
 

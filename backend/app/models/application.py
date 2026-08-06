@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from beanie import Document, Indexed
 from pydantic import Field
@@ -23,6 +23,13 @@ class Application(Document):
     screenshot_url: str = ""  # S3 URL when using object storage
     error_message: str = ""
     applied_at: datetime | None = None
+    # Apply session recorder + human blockers
+    session_steps: list[dict[str, Any]] = Field(default_factory=list)
+    correlation_id: str = ""
+    unknown_questions: list[str] = Field(default_factory=list)
+    blocker_type: str = ""  # unknown_question | otp | ""
+    fail_proof_html: str = ""
+    fail_proof_path: str = ""
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

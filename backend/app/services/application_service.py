@@ -34,9 +34,14 @@ class ApplicationService:
             status=app.status,
             attempts=app.attempts,
             screenshot_path=app.screenshot_path,
+            screenshot_url=getattr(app, "screenshot_url", "") or "",
             error_message=app.error_message,
             applied_at=app.applied_at.isoformat() if app.applied_at else None,
             created_at=app.created_at.isoformat(),
+            session_steps=list(getattr(app, "session_steps", None) or []),
+            unknown_questions=list(getattr(app, "unknown_questions", None) or []),
+            blocker_type=getattr(app, "blocker_type", "") or "",
+            correlation_id=getattr(app, "correlation_id", "") or "",
         )
 
     async def list(

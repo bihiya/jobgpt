@@ -36,7 +36,13 @@ class Portal(Document):
     user_id: Annotated[str, Indexed()]
     name: PortalName
     credentials: PortalCredentials = Field(default_factory=PortalCredentials)
+    # Legacy / display shape; SessionVault also writes encrypted session_blob
     cookies: dict[str, Any] = Field(default_factory=dict)
+    session_blob: str = ""  # Fernet-encrypted Playwright cookie list
+    session_updated_at: datetime | None = None
+    totp_secret: str = ""  # transient plaintext on write; cleared after vault encrypt
+    totp_secret_encrypted: str = ""
+    selector_version: int = 1
     proxy: ProxyConfig = Field(default_factory=ProxyConfig)
     status: PortalStatus = PortalStatus.DISCONNECTED
     health: PortalHealth = Field(default_factory=PortalHealth)
