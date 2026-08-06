@@ -36,3 +36,17 @@ class AnalyticsResponse(BaseModel):
     top_companies: list[dict[str, Any]]
     skill_demand: list[dict[str, Any]]
     applications_per_day: float
+
+
+class WeeklyStoryResponse(BaseModel):
+    headline: str
+    narrative: str
+    applied: int
+    replies: int
+    interviews: int
+    offers: int
+    approvals_pending: int
+    blockers: int
+    top_portal: str = ""
+    period_label: str = "This week"
+    highlights: list[str] = Field(default_factory=list)

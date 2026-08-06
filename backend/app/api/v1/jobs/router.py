@@ -82,10 +82,19 @@ async def job_history(
 ):
     return await service.list_by_statuses(
         str(user.id),
-        [JobStatus.APPLIED, JobStatus.FAILED, JobStatus.IGNORED],
+        [JobStatus.APPLIED, JobStatus.FAILED, JobStatus.IGNORED, JobStatus.INTERVIEW, JobStatus.OFFER],
         page,
         page_size,
     )
+
+
+@router.get("/pipeline")
+async def job_pipeline(
+    per_column: int = Query(40, ge=5, le=100),
+    user: User = Depends(get_current_user),
+    service: JobService = Depends(get_job_service),
+):
+    return await service.pipeline(str(user.id), per_column=per_column)
 
 
 @router.get("/{job_id}", response_model=JobResponse)

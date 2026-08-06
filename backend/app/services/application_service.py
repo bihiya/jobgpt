@@ -149,6 +149,56 @@ class ApplicationService:
         )
         return self._to_response(app)
 
+    async def cancel(self, user_id: str, application_id: str) -> ApplicationResponse:
+        """Cancel a queued / in-progress / paused apply (best-effort)."""
+        app = await self._owned(user_id, application_id)
+        cancellable = {
+            ApplicationStatus.PENDING,
+            ApplicationStatus.IN_PROGRESS,
+            ApplicationStatus.RETRYING,
+            ApplicationStatus.NEEDS_INPUT,
+            ApplicationStatus.NEEDS_OTP,
+        }
+        if app.status not in cancellable:
+            raise NotFoundError("Application cannot be cancelled in its current state")
+        app.status = ApplicationStatus.CANCELLED
+        app.blocker_type = ""
+        app.error_message = "Cancelled by user"
+        app.session_steps = list(app.session_steps or []) + [
+            {
+                "key": "cancelled",
+                "label": "Cancelled by user",
+                "status": "warn",
+                "detail": "",
+            }
+        ]
+        app.updated_at = datetime.utcnow()
+        await app.save()
+        job = await self.jobs.get_by_id(app.job_id)
+        if job and job.status == JobStatus.APPLYING:
+            job.status = JobStatus.APPROVED
+            job.updated_at = datetime.utcnow()
+            await job.save()
+        await emit_realtime(
+            user_id,
+            "application.cancelled",
+            {"job_id": app.job_id, "application_id": str(app.id)},
+            title="Apply cancelled",
+            body="Application cancelled",
+            severity="info",
+        )
+        await audit_event(
+            user_id,
+            "application.cancelled",
+            message="Application cancelled",
+            job_id=app.job_id,
+            application_id=str(app.id),
+            resource_type="application",
+            resource_id=str(app.id),
+            severity="warning",
+        )
+        return self._to_response(app)
+
     async def _owned(self, user_id: str, application_id: str) -> Application:
         app = await self.applications.get_by_id(application_id)
         if not app or app.user_id != user_id:

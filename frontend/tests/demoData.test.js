@@ -27,4 +27,11 @@ describe('guest demo data', () => {
     expect(Array.isArray(data)).toBe(true);
     expect(data[0].blocker_type).toBe('unknown_question');
   });
+
+  it('returns weekly story and pipeline for digest', () => {
+    const story = resolveDemoData('/api/v1/reports/weekly-story', 'get');
+    expect(story.applied).toBeGreaterThan(0);
+    const pipeline = resolveDemoData('/api/v1/jobs/pipeline', 'get');
+    expect(pipeline.columns.matched.length).toBeGreaterThan(0);
+  });
 });

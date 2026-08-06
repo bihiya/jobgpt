@@ -55,6 +55,8 @@ class JobStatus(StrEnum):
     REJECTED = "rejected"
     APPLYING = "applying"
     APPLIED = "applied"
+    INTERVIEW = "interview"
+    OFFER = "offer"
     FAILED = "failed"
     IGNORED = "ignored"
     DUPLICATE = "duplicate"
@@ -69,6 +71,7 @@ class ApplicationStatus(StrEnum):
     FOLLOW_UP = "follow_up"
     NEEDS_INPUT = "needs_input"  # unknown form question — pause for user
     NEEDS_OTP = "needs_otp"  # portal 2FA — wait for user OTP
+    CANCELLED = "cancelled"
 
 
 class ApprovalStatus(StrEnum):

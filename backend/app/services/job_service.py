@@ -128,6 +128,35 @@ class JobService:
             pages=pages,
         )
 
+    async def pipeline(self, user_id: str, *, per_column: int = 40) -> dict:
+        """Kanban columns: Matched → Approved → Applied → Interview → Offer → Rejected."""
+        columns = [
+            ("matched", [JobStatus.MATCHED, JobStatus.AWAITING_APPROVAL, JobStatus.TRACKED]),
+            ("approved", [JobStatus.APPROVED, JobStatus.APPLYING]),
+            ("applied", [JobStatus.APPLIED]),
+            ("interview", [JobStatus.INTERVIEW]),
+            ("offer", [JobStatus.OFFER]),
+            ("rejected", [JobStatus.REJECTED, JobStatus.FAILED, JobStatus.IGNORED]),
+        ]
+        result: dict[str, list] = {}
+        counts: dict[str, int] = {}
+        for key, statuses in columns:
+            page = await self.list_by_statuses(user_id, statuses, page=1, page_size=per_column)
+            result[key] = [
+                {
+                    "id": j.id,
+                    "title": j.title,
+                    "company": j.company,
+                    "portal": j.portal,
+                    "status": getattr(j.status, "value", j.status),
+                    "match_score": j.match_score,
+                    "location": j.location,
+                }
+                for j in page.items
+            ]
+            counts[key] = page.total
+        return {"columns": result, "counts": counts}
+
     async def get(self, user_id: str, job_id: str) -> JobResponse:
         job = await self._owned(user_id, job_id)
         return self._to_response(job)

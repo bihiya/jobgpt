@@ -48,6 +48,16 @@ async def sync_portal(
     return await service.sync(str(user.id), portal_id)
 
 
+@router.post("/{portal_id}/reauth", response_model=PortalResponse)
+async def reauth_portal(
+    portal_id: str,
+    payload: PortalUpdate | None = None,
+    user: User = Depends(get_current_user),
+    service: PortalService = Depends(get_portal_service),
+):
+    return await service.reauth(str(user.id), portal_id, payload or PortalUpdate())
+
+
 @router.delete("/{portal_id}", response_model=MessageResponse)
 async def delete_portal(
     portal_id: str,

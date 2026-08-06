@@ -16,6 +16,8 @@ export const portalsApi = {
   create: (payload: Record<string, unknown>) => api.post('/job-portals', payload),
   update: (id: string, payload: Record<string, unknown>) => api.patch(`/job-portals/${id}`, payload),
   sync: (id: string) => api.post(`/job-portals/${id}/sync`),
+  reauth: (id: string, payload?: Record<string, unknown>) =>
+    api.post(`/job-portals/${id}/reauth`, payload || {}),
   remove: (id: string) => api.delete(`/job-portals/${id}`),
 };
 
@@ -24,6 +26,7 @@ export const applicationsApi = {
   get: (id: string) => api.get(`/applications/${id}`),
   create: (payload: { job_id: string; resume_id?: string }) => api.post('/applications', payload),
   retry: (id: string) => api.post(`/applications/${id}/retry`),
+  cancel: (id: string) => api.post(`/applications/${id}/cancel`),
   submitOtp: (id: string, payload: { code: string; save_totp_secret?: string }) =>
     api.post(`/applications/${id}/otp`, payload),
 };
@@ -32,6 +35,7 @@ export const reportsApi = {
   list: () => api.get('/reports'),
   create: (payload: Record<string, unknown>) => api.post('/reports', payload),
   analytics: () => api.get('/reports/analytics'),
+  weeklyStory: () => api.get('/reports/weekly-story'),
   download: (id: string) => api.get(`/reports/${id}/download`, { responseType: 'blob' }),
 };
 

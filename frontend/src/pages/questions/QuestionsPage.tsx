@@ -1,13 +1,15 @@
+import { Search } from '@mui/icons-material';
 import {
   Button,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  InputAdornment,
   Stack,
   TextField,
   Typography,
-  Chip,
 } from '@mui/material';
 import { DataGrid, GridColDef } from '@mui/x-data-grid';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -23,6 +25,8 @@ function QuestionsPage() {
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
+  const [search, setSearch] = useState('');
+  const [learnedOnly, setLearnedOnly] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['questions'],
@@ -30,7 +34,12 @@ function QuestionsPage() {
   });
 
   const upsert = useMutation({
-    mutationFn: () => questionsApi.upsert({ question, answer, tags: ['manual'] }),
+    mutationFn: () =>
+      questionsApi.upsert({
+        question,
+        answer,
+        tags: learnedOnly ? ['from_apply'] : ['manual'],
+      }),
     meta: { successMessage: 'Answer saved', errorMessage: 'Could not save answer' },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['questions'] });
@@ -51,10 +60,41 @@ function QuestionsPage() {
     setOpen(true);
   }, [requireAuth]);
 
+  const rows = useMemo(() => {
+    const list = Array.isArray(data) ? data : [];
+    const q = search.trim().toLowerCase();
+    return list.filter((item: Record<string, unknown>) => {
+      const tags = (item.tags as string[]) || [];
+      if (learnedOnly && !tags.includes('from_apply')) return false;
+      if (!q) return true;
+      const hay = `${item.question || ''} ${item.answer || ''}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [data, search, learnedOnly]);
+
+  const learnedCount = useMemo(() => {
+    const list = Array.isArray(data) ? data : [];
+    return list.filter((i: Record<string, unknown>) =>
+      ((i.tags as string[]) || []).includes('from_apply'),
+    ).length;
+  }, [data]);
+
   const columns: GridColDef[] = useMemo(
     () => [
       { field: 'question', headerName: 'Question', flex: 1.4, minWidth: 200 },
       { field: 'answer', headerName: 'Answer', flex: 1, minWidth: 160 },
+      {
+        field: 'tags',
+        headerName: 'Source',
+        width: 140,
+        renderCell: (p) => {
+          const tags = (p.value as string[]) || [];
+          if (tags.includes('from_apply')) {
+            return <Chip size="small" color="success" label="Learned from apply" />;
+          }
+          return <Chip size="small" variant="outlined" label={tags[0] || 'manual'} />;
+        },
+      },
       {
         field: 'use_count',
         headerName: 'Used',
@@ -91,8 +131,7 @@ function QuestionsPage() {
         <div>
           <Typography variant="h4">Question bank</Typography>
           <Typography color="text.secondary">
-            Answer once — automation reuses these on every apply. Unknown fields pause until you teach
-            them.
+            Searchable Q&A — answers learned from the last apply resume here automatically.
           </Typography>
         </div>
         <Button variant="contained" onClick={openCreate}>
@@ -100,14 +139,38 @@ function QuestionsPage() {
         </Button>
       </Stack>
 
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }}>
+        <TextField
+          size="small"
+          placeholder="Search questions or answers…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          sx={{ minWidth: { sm: 280 }, flex: 1 }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <Search fontSize="small" />
+              </InputAdornment>
+            ),
+          }}
+        />
+        <Chip
+          clickable
+          color={learnedOnly ? 'success' : 'default'}
+          variant={learnedOnly ? 'filled' : 'outlined'}
+          label={`Learned from apply (${learnedCount})`}
+          onClick={() => setLearnedOnly((v) => !v)}
+        />
+      </Stack>
+
       <DataGrid
         autoHeight
-        rows={Array.isArray(data) ? data : []}
+        rows={rows}
         columns={columns}
         getRowId={(row) => row.id}
         pageSizeOptions={[10, 25]}
         initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
-        sx={{ bgcolor: 'background.paper', borderRadius: 3, width: '100%', mt: 2 }}
+        sx={{ bgcolor: 'background.paper', borderRadius: 3, width: '100%', mt: 1 }}
         disableRowSelectionOnClick
       />
 

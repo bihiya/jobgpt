@@ -18,7 +18,9 @@ from app.repository.application_repository import ApplicationRepository
 from app.repository.job_repository import JobRepository
 from app.repository.report_repository import ReportRepository
 from app.schemas.common import PaginatedResponse
-from app.schemas.report import AnalyticsResponse, ReportCreate, ReportResponse
+from app.models.approval import Approval
+from app.models.enums import ApprovalStatus
+from app.schemas.report import AnalyticsResponse, ReportCreate, ReportResponse, WeeklyStoryResponse
 
 
 class ReportService:
@@ -175,4 +177,84 @@ class ReportService:
             top_companies=top_companies,
             skill_demand=skill_demand,
             applications_per_day=apps_per_day,
+        )
+
+    async def weekly_story(self, user_id: str) -> WeeklyStoryResponse:
+        """Narrative weekly digest — not chart soup."""
+        week_ago = datetime.utcnow() - timedelta(days=7)
+        apps, _ = await self.applications.list_for_user(user_id, page=1, page_size=500)
+        week_apps = [a for a in apps if a.created_at and a.created_at >= week_ago]
+        applied = sum(1 for a in week_apps if a.status == ApplicationStatus.SUCCESS)
+        follow_ups = sum(1 for a in week_apps if a.status == ApplicationStatus.FOLLOW_UP)
+        # "Replies" approximated by follow-ups + reminders completed would be nicer;
+        # use follow_up + interviews as engagement signal.
+        interview_jobs = await self.jobs.find_many(
+            {"user_id": user_id, "status": JobStatus.INTERVIEW}, limit=100
+        )
+        offer_jobs = await self.jobs.find_many(
+            {"user_id": user_id, "status": JobStatus.OFFER}, limit=100
+        )
+        interviews = sum(
+            1
+            for j in interview_jobs
+            if not getattr(j, "updated_at", None) or j.updated_at >= week_ago
+        )
+        offers = sum(
+            1 for j in offer_jobs if not getattr(j, "updated_at", None) or j.updated_at >= week_ago
+        )
+
+        replies = follow_ups + interviews
+        approvals_pending = await Approval.find(
+            {"user_id": user_id, "status": ApprovalStatus.PENDING}
+        ).count()
+        blockers = await Application.find(
+            {
+                "user_id": user_id,
+                "status": {"$in": [ApplicationStatus.NEEDS_INPUT, ApplicationStatus.NEEDS_OTP]},
+            }
+        ).count()
+
+        analytics = await self._compute_analytics(user_id)
+        top_portal = ""
+        if analytics.portal_stats:
+            top_portal = max(analytics.portal_stats, key=lambda p: p.get("count", 0)).get("portal", "")
+
+        highlights: list[str] = []
+        if applied:
+            highlights.append(f"You pushed {applied} application{'s' if applied != 1 else ''} this week.")
+        if replies:
+            highlights.append(f"{replies} reply signal{'s' if replies != 1 else ''} (follow-ups / interviews).")
+        if interviews:
+            highlights.append(f"{interviews} interview stage move{'s' if interviews != 1 else ''}.")
+        if offers:
+            highlights.append(f"{offers} offer{'s' if offers != 1 else ''} — nice work.")
+        if approvals_pending:
+            highlights.append(f"{approvals_pending} match{'es' if approvals_pending != 1 else ''} waiting for your yes/no.")
+        if blockers:
+            highlights.append(f"{blockers} apply blocker{'s' if blockers != 1 else ''} need a quick fix.")
+        if top_portal:
+            highlights.append(f"Most activity came from {top_portal}.")
+        if not highlights:
+            highlights.append("Quiet week so far — approve a few digest matches to get momentum.")
+
+        headline = f"{applied} applied · {replies} replies · {interviews} interviews"
+        narrative = (
+            f"This week you applied to {applied} role{'s' if applied != 1 else ''}. "
+            f"{replies} engagement signal{'s' if replies != 1 else ''} showed up"
+            f"{' and ' + str(interviews) + ' moved to interview' if interviews else ''}"
+            f"{', with ' + str(offers) + ' offer' + ('s' if offers != 1 else '') if offers else ''}. "
+            f"{'Clear ' + str(approvals_pending) + ' pending approvals to keep the pipeline moving.' if approvals_pending else 'Pipeline looks clear on approvals.'}"
+        )
+        return WeeklyStoryResponse(
+            headline=headline,
+            narrative=narrative,
+            applied=applied,
+            replies=replies,
+            interviews=interviews,
+            offers=offers,
+            approvals_pending=approvals_pending,
+            blockers=blockers,
+            top_portal=top_portal,
+            period_label="This week",
+            highlights=highlights,
         )

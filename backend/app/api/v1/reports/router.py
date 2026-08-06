@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 from app.dependencies.auth import get_current_user
 from app.models.user import User
 from app.schemas.common import PaginatedResponse
-from app.schemas.report import AnalyticsResponse, ReportCreate, ReportResponse
+from app.schemas.report import AnalyticsResponse, ReportCreate, ReportResponse, WeeklyStoryResponse
 from app.dependencies.services import get_report_service
 from app.services.report_service import ReportService
 
@@ -40,6 +40,14 @@ async def analytics(
     service: ReportService = Depends(get_report_service),
 ):
     return await service.analytics(str(user.id))
+
+
+@router.get("/weekly-story", response_model=WeeklyStoryResponse)
+async def weekly_story(
+    user: User = Depends(get_current_user),
+    service: ReportService = Depends(get_report_service),
+):
+    return await service.weekly_story(str(user.id))
 
 
 @router.get("/{report_id}/download")
