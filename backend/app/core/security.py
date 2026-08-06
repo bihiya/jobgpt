@@ -1,6 +1,8 @@
 """Password hashing and JWT helpers."""
 
-from datetime import UTC, datetime, timedelta
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
@@ -10,6 +12,7 @@ from passlib.context import CryptContext
 from app.core.config import settings
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+UTC = timezone.utc
 
 
 def hash_password(password: str) -> str:

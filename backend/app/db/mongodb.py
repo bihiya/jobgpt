@@ -1,5 +1,7 @@
 """MongoDB connection with connection pooling and Beanie initialization."""
 
+from __future__ import annotations
+
 from beanie import init_beanie
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 

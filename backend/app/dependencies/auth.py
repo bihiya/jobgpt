@@ -1,5 +1,7 @@
 """Auth and RBAC dependencies with token blacklist check."""
 
+from __future__ import annotations
+
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 

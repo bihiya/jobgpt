@@ -1,5 +1,7 @@
 """Base Kafka worker loop with dead-letter queue for poison messages."""
 
+from __future__ import annotations
+
 import asyncio
 from abc import ABC, abstractmethod
 from typing import Any

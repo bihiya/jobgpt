@@ -1,5 +1,7 @@
 """Portal repository."""
 
+from __future__ import annotations
+
 from app.models.enums import PortalName
 from app.models.portal import Portal
 from app.repository.base import BaseRepository

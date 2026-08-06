@@ -1,5 +1,7 @@
 """Resume repository."""
 
+from __future__ import annotations
+
 from app.models.resume import Resume
 from app.repository.base import BaseRepository
 

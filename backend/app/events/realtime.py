@@ -12,8 +12,10 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
+
+UTC = timezone.utc
 
 from fastapi import WebSocket
 from starlette.websockets import WebSocketState

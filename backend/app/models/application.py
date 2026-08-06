@@ -1,5 +1,7 @@
 """Job application documents with follow-up support."""
 
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Annotated
 
