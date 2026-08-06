@@ -21,6 +21,9 @@ const ReportsPage = lazy(() => import('../pages/reports/ReportsPage'));
 const ProfilePage = lazy(() => import('../pages/profile/ProfilePage'));
 const SettingsPage = lazy(() => import('../pages/settings/SettingsPage'));
 const AdminPage = lazy(() => import('../pages/admin/AdminPage'));
+const OnboardingPage = lazy(() => import('../pages/onboarding/OnboardingPage'));
+const ApprovalsPage = lazy(() => import('../pages/approvals/ApprovalsPage'));
+const CalendarPage = lazy(() => import('../pages/calendar/CalendarPage'));
 
 function Lazy({ children }: { children: React.ReactNode }) {
   return <PageSuspense>{children}</PageSuspense>;
@@ -43,7 +46,10 @@ export default function AppRouter() {
 
       <Route element={<ProtectedRoute />}>
         <Route element={<DashboardLayout />}>
+          <Route path="/onboarding" element={<Lazy><OnboardingPage /></Lazy>} />
           <Route path="/dashboard" element={<Lazy><DashboardPage /></Lazy>} />
+          <Route path="/approvals" element={<Lazy><ApprovalsPage /></Lazy>} />
+          <Route path="/calendar" element={<Lazy><CalendarPage /></Lazy>} />
           <Route path="/jobs" element={<Lazy><JobsPage /></Lazy>} />
           <Route path="/jobs/tracked" element={<Lazy><TrackedJobsPage /></Lazy>} />
           <Route path="/jobs/applied" element={<Lazy><AppliedJobsPage /></Lazy>} />
@@ -58,7 +64,7 @@ export default function AppRouter() {
         </Route>
       </Route>
 
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/" element={<Navigate to="/onboarding" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );

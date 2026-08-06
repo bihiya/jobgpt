@@ -11,15 +11,18 @@ export default function SettingsPage() {
   });
   const [form, setForm] = useState({
     match_threshold: 0.7,
-    auto_apply: true,
+    auto_apply: false,
+    require_approval: true,
+    use_llm_ranking: true,
     max_applications_per_day: 50,
     headless: true,
     timezone: 'UTC',
     notification_email: true,
+    follow_up_days: 7,
   });
 
   useEffect(() => {
-    if (data) setForm(data);
+    if (data) setForm((prev) => ({ ...prev, ...data }));
   }, [data]);
 
   const saveMutation = useMutation({
@@ -44,20 +47,54 @@ export default function SettingsPage() {
         onChange={(e) => setForm({ ...form, max_applications_per_day: Number(e.target.value) })}
       />
       <TextField
+        label="Follow-up reminder (days)"
+        type="number"
+        value={form.follow_up_days}
+        onChange={(e) => setForm({ ...form, follow_up_days: Number(e.target.value) })}
+      />
+      <TextField
         label="Timezone"
         value={form.timezone}
         onChange={(e) => setForm({ ...form, timezone: e.target.value })}
       />
       <FormControlLabel
-        control={<Switch checked={form.auto_apply} onChange={(e) => setForm({ ...form, auto_apply: e.target.checked })} />}
-        label="Auto apply matched jobs"
+        control={
+          <Switch
+            checked={form.require_approval}
+            onChange={(e) => setForm({ ...form, require_approval: e.target.checked })}
+          />
+        }
+        label="Require approval before apply (human-in-the-loop)"
+      />
+      <FormControlLabel
+        control={
+          <Switch
+            checked={form.auto_apply}
+            onChange={(e) => setForm({ ...form, auto_apply: e.target.checked })}
+          />
+        }
+        label="Auto apply when approval is not required"
+      />
+      <FormControlLabel
+        control={
+          <Switch
+            checked={form.use_llm_ranking}
+            onChange={(e) => setForm({ ...form, use_llm_ranking: e.target.checked })}
+          />
+        }
+        label="Use LLM-assisted ranking"
       />
       <FormControlLabel
         control={<Switch checked={form.headless} onChange={(e) => setForm({ ...form, headless: e.target.checked })} />}
         label="Headless browser automation"
       />
       <FormControlLabel
-        control={<Switch checked={form.notification_email} onChange={(e) => setForm({ ...form, notification_email: e.target.checked })} />}
+        control={
+          <Switch
+            checked={form.notification_email}
+            onChange={(e) => setForm({ ...form, notification_email: e.target.checked })}
+          />
+        }
         label="Email notifications"
       />
       <Button variant="contained" onClick={() => saveMutation.mutate()} sx={{ alignSelf: 'flex-start' }}>

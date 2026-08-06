@@ -8,4 +8,5 @@ export const jobsApi = {
   get: (id: string) => api.get(`/jobs/${id}`),
   track: (id: string) => api.post(`/jobs/${id}/track`),
   ignore: (id: string) => api.post(`/jobs/${id}/ignore`),
+  ingest: (payload: Record<string, unknown>) => api.post('/jobs/ingest', payload),
 };

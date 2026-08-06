@@ -26,6 +26,9 @@ class JobService:
         self.matcher = matcher or MatchService()
 
     def _to_response(self, job: Job) -> JobResponse:
+        from app.schemas.job import MatchBreakdownSchema
+
+        breakdown = job.match_breakdown.model_dump() if job.match_breakdown else {}
         return JobResponse(
             id=str(job.id),
             title=job.title,
@@ -39,6 +42,8 @@ class JobService:
             portal=job.portal,
             status=job.status,
             match_score=job.match_score,
+            match_breakdown=MatchBreakdownSchema(**breakdown),
+            source=getattr(job, "source", "portal"),
             fetched_at=job.fetched_at.isoformat(),
             created_at=job.created_at.isoformat(),
         )
@@ -151,13 +156,55 @@ class JobService:
             pass
 
     async def match_job(self, user_id: str, job: Job) -> Job:
+        from app.services.llm.ranking import LLMRankingService
+
         user = await self.users.get_profile(user_id)
-        score = self.matcher.score(user, job)
-        job.match_score = score
-        job.status = JobStatus.MATCHED if score >= 0.5 else job.status
+        ranking = LLMRankingService(self.matcher)
+        breakdown = await ranking.rank(user, job)
+        job.match_score = breakdown.total
+        job.match_breakdown = breakdown
+        job.status = JobStatus.MATCHED if breakdown.total >= 0.5 else job.status
         job.updated_at = datetime.utcnow()
         await job.save()
         return job
+
+    async def ingest_external(self, user_id: str, payload) -> JobResponse:
+        """Ingest a job from Chrome extension or manual share."""
+        from app.services.dedupe_service import DedupeService
+
+        dedupe = DedupeService(self.jobs)
+        external_id = payload.external_id or payload.apply_url
+        fingerprint = dedupe.content_hash(
+            payload.title, payload.company, str(payload.apply_url), str(external_id)
+        )
+        if await dedupe.is_duplicate(user_id, fingerprint, str(payload.apply_url)):
+            existing = await self.jobs.find_one({"user_id": user_id, "content_hash": fingerprint})
+            if existing:
+                existing.status = JobStatus.DUPLICATE
+                await existing.save()
+                return self._to_response(existing)
+
+        job = await self.jobs.create(
+            {
+                "user_id": user_id,
+                "external_id": str(external_id),
+                "title": payload.title,
+                "company": payload.company,
+                "location": payload.location,
+                "salary": payload.salary,
+                "experience": payload.experience,
+                "description": payload.description,
+                "skills": payload.skills,
+                "apply_url": str(payload.apply_url),
+                "portal": payload.portal,
+                "content_hash": fingerprint,
+                "source": "extension",
+            }
+        )
+        await dedupe.remember(user_id, fingerprint)
+        await publish("job.match", {"user_id": user_id, "job_id": str(job.id)}, key=user_id)
+        await self._invalidate_job_cache(user_id)
+        return self._to_response(job)
 
     async def trigger_fetch(self, user_id: str) -> None:
         await publish("job.fetch", {"user_id": user_id}, key=user_id)

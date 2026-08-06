@@ -15,6 +15,9 @@ class PortalService:
         self.portals = portals or PortalRepository()
 
     def _to_response(self, portal: Portal) -> PortalResponse:
+        from app.schemas.portal import PortalHealthSchema
+
+        health = portal.health.model_dump() if getattr(portal, "health", None) else {}
         return PortalResponse(
             id=str(portal.id),
             name=portal.name,
@@ -22,6 +25,7 @@ class PortalService:
             last_sync_at=portal.last_sync_at.isoformat() if portal.last_sync_at else None,
             created_at=portal.created_at.isoformat(),
             has_credentials=bool(portal.credentials.username),
+            health=PortalHealthSchema(**health),
         )
 
     async def list(self, user_id: str) -> list[PortalResponse]:

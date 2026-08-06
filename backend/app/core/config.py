@@ -54,8 +54,38 @@ class Settings(BaseSettings):
             "job.failed",
             "notifications",
             "reports",
+            "job.dlq",
         ]
     )
+
+    # LLM ranking
+    llm_enabled: bool = False
+    llm_api_url: str = "https://api.openai.com/v1/chat/completions"
+    llm_api_key: str = ""
+    llm_model: str = "gpt-4o-mini"
+
+    # Object storage (S3-compatible)
+    s3_enabled: bool = False
+    s3_bucket: str = ""
+    s3_region: str = "us-east-1"
+    s3_access_key: str = ""
+    s3_secret_key: str = ""
+    s3_endpoint_url: str = ""
+    s3_public_base_url: str = ""
+
+    # Captcha / 2FA
+    captcha_provider: str = "noop"
+    captcha_api_key: str = ""
+    captcha_api_url: str = "https://api.2captcha.com/createTask"
+    totp_test_code: str = ""
+
+    # Email alerts
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from: str = "noreply@jobpilot.ai"
+    smtp_tls: bool = True
 
     cors_origins: list[str] = Field(
         default_factory=lambda: ["http://localhost:5173", "http://localhost:3000"]

@@ -99,6 +99,18 @@ npx playwright install
 npm test
 ```
 
+## Product enhancements
+
+See [docs/FEATURES.md](docs/FEATURES.md) for:
+
+- LLM ranking + match breakdown drawer
+- Human-in-the-loop approvals (PWA)
+- Question bank, dedupe, portal health, DLQ
+- Onboarding wizard, calendar/reminders
+- Chrome extension (`chrome-extension/`)
+- Marketing SSR site (`marketing/`)
+- S3 storage + Slack/email/webhook alerts
+
 ## Performance
 
 See [docs/PERFORMANCE.md](docs/PERFORMANCE.md) for the full optimization map:

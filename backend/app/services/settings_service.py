@@ -14,10 +14,15 @@ class SettingsService:
         return SettingsResponse(
             match_threshold=doc.match_threshold,
             auto_apply=doc.auto_apply,
+            require_approval=getattr(doc, "require_approval", True),
+            use_llm_ranking=getattr(doc, "use_llm_ranking", True),
             max_applications_per_day=doc.max_applications_per_day,
             headless=doc.headless,
             timezone=doc.timezone,
             notification_email=doc.notification_email,
+            onboarding_completed=getattr(doc, "onboarding_completed", False),
+            onboarding_step=getattr(doc, "onboarding_step", "profile"),
+            follow_up_days=getattr(doc, "follow_up_days", 7),
         )
 
     async def get(self, user_id: str) -> SettingsResponse:

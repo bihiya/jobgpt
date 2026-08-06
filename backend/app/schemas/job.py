@@ -1,8 +1,20 @@
 """Job schemas."""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, HttpUrl
 
 from app.models.enums import JobStatus
+
+
+class MatchBreakdownSchema(BaseModel):
+    total: float = 0.0
+    skills: float = 0.0
+    keywords: float = 0.0
+    location: float = 0.0
+    experience: float = 0.0
+    llm_score: float | None = None
+    llm_rationale: str = ""
+    reasons: list[str] = Field(default_factory=list)
+    missing_skills: list[str] = Field(default_factory=list)
 
 
 class JobResponse(BaseModel):
@@ -18,6 +30,8 @@ class JobResponse(BaseModel):
     portal: str
     status: JobStatus
     match_score: float
+    match_breakdown: MatchBreakdownSchema = Field(default_factory=MatchBreakdownSchema)
+    source: str = "portal"
     fetched_at: str
     created_at: str
 
@@ -38,3 +52,18 @@ class JobFilterParams(BaseModel):
     page_size: int = Field(default=20, ge=1, le=100)
     sort_by: str = "fetched_at"
     sort_dir: str = "desc"
+
+
+class JobIngestRequest(BaseModel):
+    """Chrome extension / manual ingest."""
+
+    title: str
+    company: str
+    apply_url: HttpUrl | str
+    location: str = ""
+    description: str = ""
+    skills: list[str] = Field(default_factory=list)
+    portal: str = "extension"
+    external_id: str | None = None
+    salary: str = ""
+    experience: str = ""

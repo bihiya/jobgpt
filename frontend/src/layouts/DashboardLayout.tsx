@@ -14,11 +14,14 @@ import {
 import {
   Assessment,
   Business,
+  CalendarMonth,
+  Checklist,
   Dashboard,
   History,
   Hub,
   Logout,
   Person,
+  RocketLaunch,
   Settings,
   SmartToy,
   Work,
@@ -39,7 +42,10 @@ import { useThrottleCallback } from '../hooks/useThrottleCallback';
 const drawerWidth = 260;
 
 const NAV_ITEMS = [
+  { label: 'Onboarding', path: '/onboarding', icon: <RocketLaunch /> },
   { label: 'Dashboard', path: '/dashboard', icon: <Dashboard />, prefetch: 'dashboard' as const },
+  { label: 'Approvals', path: '/approvals', icon: <Checklist /> },
+  { label: 'Calendar', path: '/calendar', icon: <CalendarMonth /> },
   { label: 'Jobs', path: '/jobs', icon: <Work />, prefetch: 'jobs' as const },
   { label: 'Tracked', path: '/jobs/tracked', icon: <Work /> },
   { label: 'Applied', path: '/jobs/applied', icon: <Work /> },

@@ -1,4 +1,4 @@
-"""Job portal connector documents."""
+"""Job portal connector documents with health scoring."""
 
 from datetime import datetime
 from typing import Annotated, Any
@@ -20,6 +20,16 @@ class PortalCredentials(BaseModel):
     password: str = ""
 
 
+class PortalHealth(BaseModel):
+    score: float = 100.0  # 0-100
+    success_count: int = 0
+    failure_count: int = 0
+    consecutive_failures: int = 0
+    last_error: str = ""
+    auto_paused: bool = False
+    paused_reason: str = ""
+
+
 class Portal(Document):
     user_id: Annotated[str, Indexed()]
     name: PortalName
@@ -27,6 +37,7 @@ class Portal(Document):
     cookies: dict[str, Any] = Field(default_factory=dict)
     proxy: ProxyConfig = Field(default_factory=ProxyConfig)
     status: PortalStatus = PortalStatus.DISCONNECTED
+    health: PortalHealth = Field(default_factory=PortalHealth)
     last_sync_at: datetime | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

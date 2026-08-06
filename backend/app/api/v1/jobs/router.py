@@ -6,11 +6,21 @@ from app.dependencies.auth import get_current_user
 from app.models.enums import JobStatus
 from app.models.user import User
 from app.schemas.common import PaginatedResponse
-from app.schemas.job import JobFilterParams, JobResponse, JobUpdateRequest
+from app.schemas.job import JobFilterParams, JobIngestRequest, JobResponse, JobUpdateRequest
 from app.dependencies.services import get_job_service
 from app.services.job_service import JobService
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
+
+
+@router.post("/ingest", response_model=JobResponse, status_code=201)
+async def ingest_job(
+    payload: JobIngestRequest,
+    user: User = Depends(get_current_user),
+    service: JobService = Depends(get_job_service),
+):
+    """Chrome extension / share-to-JobPilot ingest endpoint."""
+    return await service.ingest_external(str(user.id), payload)
 
 
 @router.get("", response_model=PaginatedResponse[JobResponse])
