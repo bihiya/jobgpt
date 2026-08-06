@@ -4,7 +4,7 @@
 
 - Docker & Docker Compose
 - Node.js 22+ (local frontend)
-- Python 3.9+ (local backend; 3.11+ recommended)
+- **Python 3.11+** (local backend; 3.12/3.13 recommended — Apple CLT Python 3.9 is not supported)
 - Git
 
 ## 1. Clone and configure
@@ -53,10 +53,35 @@ Services:
 
 ### Backend
 
+JobPilot uses Pydantic v2 typing (`str | None`, etc.). That requires **Python 3.11+**.  
+Do not use macOS Command Line Tools Python 3.9.
+
+#### Install a modern Python (macOS)
+
+```bash
+# Homebrew
+brew install python@3.12
+
+# Confirm
+$(brew --prefix python@3.12)/bin/python3.12 --version
+```
+
+Or with [pyenv](https://github.com/pyenv/pyenv):
+
+```bash
+pyenv install 3.12.8
+pyenv local 3.12.8
+```
+
+#### Create a fresh venv (important after upgrading)
+
 ```bash
 cd backend
-python -m venv .venv
+rm -rf .venv
+python3.12 -m venv .venv          # or: python3.11 / python3.13
 source .venv/bin/activate
+python --version                  # must show 3.11+
+pip install -U pip
 pip install -r requirements.txt
 playwright install --with-deps chromium
 export MONGODB_URL=mongodb://localhost:27017
