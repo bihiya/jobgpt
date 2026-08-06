@@ -38,3 +38,5 @@ backend/.uploads/
 e2e/test-results/
 e2e/playwright-report/
 tsconfig.tsbuildinfo
+
+!frontend/public/*.png
