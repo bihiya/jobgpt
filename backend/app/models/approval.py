@@ -1,5 +1,7 @@
 """Human-in-the-loop approval queue."""
 
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Annotated
 

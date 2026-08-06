@@ -1,5 +1,7 @@
 """User repository."""
 
+from __future__ import annotations
+
 from datetime import datetime
 
 from app.models.user import RefreshToken, User

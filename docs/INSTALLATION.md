@@ -4,7 +4,7 @@
 
 - Docker & Docker Compose
 - Node.js 22+ (local frontend)
-- Python 3.13+ (local backend)
+- Python 3.9+ (local backend; 3.11+ recommended)
 - Git
 
 ## 1. Clone and configure

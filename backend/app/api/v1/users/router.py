@@ -1,5 +1,7 @@
 """User profile and resume endpoints."""
 
+from __future__ import annotations
+
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 
 from app.dependencies.auth import get_current_user

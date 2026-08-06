@@ -1,5 +1,7 @@
 """Reports and analytics service."""
 
+from __future__ import annotations
+
 import csv
 from datetime import datetime, timedelta
 from math import ceil

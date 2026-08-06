@@ -1,5 +1,7 @@
 """Automation status and manual trigger service."""
 
+from __future__ import annotations
+
 from math import ceil
 
 from app.core.kafka import publish

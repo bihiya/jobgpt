@@ -1,5 +1,7 @@
 """Smart question bank for application forms."""
 
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Annotated
 

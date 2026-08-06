@@ -1,5 +1,7 @@
 """Human-in-the-loop approval endpoints (PWA-friendly)."""
 
+from __future__ import annotations
+
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 

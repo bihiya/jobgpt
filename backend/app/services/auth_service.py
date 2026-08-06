@@ -1,7 +1,11 @@
 """Authentication service."""
 
+from __future__ import annotations
+
 import hashlib
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+UTC = timezone.utc
 
 from app.core.config import settings
 from app.core.exceptions import ConflictError, UnauthorizedError

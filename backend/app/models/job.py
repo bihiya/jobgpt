@@ -1,5 +1,7 @@
 """Job listing documents with match breakdown and dedupe fingerprint."""
 
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Annotated, Any
 

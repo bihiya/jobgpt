@@ -1,5 +1,7 @@
 """User settings service."""
 
+from __future__ import annotations
+
 from datetime import datetime
 
 from app.repository.settings_repository import SettingsRepository

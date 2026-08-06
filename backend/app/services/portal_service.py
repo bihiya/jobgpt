@@ -1,5 +1,7 @@
 """Job portal connector service."""
 
+from __future__ import annotations
+
 from datetime import datetime
 
 from app.core.exceptions import ConflictError, NotFoundError

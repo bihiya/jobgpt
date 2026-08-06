@@ -1,5 +1,7 @@
 """Structured logging with correlation IDs."""
 
+from __future__ import annotations
+
 import logging
 import sys
 from contextvars import ContextVar

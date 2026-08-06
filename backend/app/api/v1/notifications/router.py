@@ -1,5 +1,7 @@
 """Notification channel configuration + calendar/reminders."""
 
+from __future__ import annotations
+
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
