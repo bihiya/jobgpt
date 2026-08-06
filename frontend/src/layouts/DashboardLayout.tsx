@@ -162,8 +162,6 @@ function DashboardLayout() {
     [location.pathname],
   );
 
-  // Persistent drawer reserves flex space via root width; collapse that when closed
-  // so AppBar + main can expand to the full viewport.
   const desktopSidebarVisible = sidebarOpen && !isMobile;
   const contentOffset = desktopSidebarVisible ? drawerWidth : 0;
 
