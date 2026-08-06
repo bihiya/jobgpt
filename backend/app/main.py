@@ -1,7 +1,17 @@
 """JobPilot AI FastAPI application entrypoint."""
 
+from __future__ import annotations
+
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
+
+# Vercel loads this module as `backend.app.main:app` from the repo root.
+# Local/Docker runs use `app.main:app` with PYTHONPATH=backend. Ensure both work.
+_BACKEND_ROOT = Path(__file__).resolve().parents[1]
+_backend_root = str(_BACKEND_ROOT)
+if _backend_root not in sys.path:
+    sys.path.insert(0, _backend_root)
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

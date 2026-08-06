@@ -1,0 +1,10 @@
+[project]
+name = "jobpilot-ai"
+version = "1.0.0"
+description = "JobPilot AI — FastAPI backend deployable on Vercel"
+requires-python = ">=3.11"
+
+# Vercel discovers FastAPI under backend/app/main.py (not a default root entrypoint).
+# https://vercel.com/docs/frameworks/backend/fastapi#exporting-the-fastapi-application
+[tool.vercel]
+entrypoint = "backend.app.main:app"

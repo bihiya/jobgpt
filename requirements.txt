@@ -1,0 +1,2 @@
+# Vercel / root installs resolve dependencies from the backend package.
+-r backend/requirements.txt
