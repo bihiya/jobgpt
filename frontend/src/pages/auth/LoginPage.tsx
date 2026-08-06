@@ -1,10 +1,10 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Alert, Box, Button, Link, Paper, Stack, TextField, Typography } from '@mui/material';
-import { useState } from 'react';
+import { Box, Button, Link, Paper, Stack, TextField, Typography } from '@mui/material';
 import { useForm } from 'react-hook-form';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 import { authApi } from '../../api/auth';
+import { useToast } from '../../hooks/useToast';
 import { useAppDispatch } from '../../store/hooks';
 import { setCredentials } from '../../store/slices/authSlice';
 
@@ -18,7 +18,7 @@ type FormValues = z.infer<typeof schema>;
 export default function LoginPage() {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
-  const [error, setError] = useState('');
+  const { apiSuccess, apiError } = useToast();
   const {
     register,
     handleSubmit,
@@ -26,7 +26,6 @@ export default function LoginPage() {
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
 
   const onSubmit = async (values: FormValues) => {
-    setError('');
     try {
       const { data } = await authApi.login(values);
       localStorage.setItem('refresh_token', data.refresh_token);
@@ -43,20 +42,27 @@ export default function LoginPage() {
           accessToken: data.access_token,
         }),
       );
+      apiSuccess('Welcome back');
       navigate('/dashboard');
-    } catch {
-      setError('Invalid email or password');
+    } catch (err) {
+      apiError(err, 'Invalid email or password');
     }
   };
 
   return (
-    <Paper sx={{ p: 4 }}>
+    <Paper
+      elevation={1}
+      sx={{
+        p: { xs: 3, sm: 4 },
+        borderRadius: 3,
+        animation: 'jp-scale-in 0.4s cubic-bezier(0.22, 1, 0.36, 1)',
+      }}
+    >
       <Typography variant="h5" sx={{ mb: 2 }}>
         Sign in
       </Typography>
       <Box component="form" onSubmit={handleSubmit(onSubmit)}>
         <Stack spacing={2}>
-          {error && <Alert severity="error">{error}</Alert>}
           <TextField
             label="Email"
             type="email"

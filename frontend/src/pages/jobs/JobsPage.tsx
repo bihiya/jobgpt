@@ -15,10 +15,12 @@ import {
 } from '@tanstack/react-query';
 import { memo, useCallback, useMemo, useState } from 'react';
 import { applicationsApi, jobsApi } from '../../api';
+import PageShell from '../../components/common/PageShell';
+import PageSkeleton from '../../components/common/PageSkeleton';
 import VirtualizedJobList from '../../components/jobs/VirtualizedJobList';
 import JobDetailDrawer, { type JobDetail } from '../../components/jobs/JobDetailDrawer';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
-import PageSkeleton from '../../components/common/PageSkeleton';
+import { useToast } from '../../hooks/useToast';
 
 type Mode = 'all' | 'tracked' | 'applied' | 'history';
 
@@ -48,7 +50,7 @@ const ActionCell = memo(function ActionCell({ id, onTrack, onApply, onDetails }:
   const handleApply = useCallback(() => onApply(id), [id, onApply]);
   const handleDetails = useCallback(() => onDetails(id), [id, onDetails]);
   return (
-    <Stack direction="row" spacing={1}>
+    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
       <Button size="small" onClick={handleDetails}>
         Why
       </Button>
@@ -68,6 +70,7 @@ function JobsPage({ mode = 'all' }: { mode?: Mode }) {
   const [drawerJob, setDrawerJob] = useState<JobDetail | null>(null);
   const debouncedQ = useDebouncedValue(q, 350);
   const queryClient = useQueryClient();
+  const { apiError } = useToast();
 
   const listQuery = useQuery({
     queryKey: ['jobs', mode, debouncedQ],
@@ -77,7 +80,6 @@ function JobsPage({ mode = 'all' }: { mode?: Mode }) {
     enabled: !virtualized,
   });
 
-  // Infinite scrolling / pagination via React Query
   const infiniteQuery = useInfiniteQuery({
     queryKey: ['jobs-infinite', mode, debouncedQ],
     queryFn: async ({ pageParam }) =>
@@ -97,7 +99,7 @@ function JobsPage({ mode = 'all' }: { mode?: Mode }) {
 
   const trackMutation = useMutation({
     mutationFn: (id: string) => jobsApi.track(id),
-    // Optimistic UI update
+    meta: { successMessage: 'Job tracked', errorMessage: 'Could not track job' },
     onMutate: async (id) => {
       await queryClient.cancelQueries({ queryKey: ['jobs', mode, debouncedQ] });
       const previous = queryClient.getQueryData(['jobs', mode, debouncedQ]);
@@ -125,6 +127,7 @@ function JobsPage({ mode = 'all' }: { mode?: Mode }) {
 
   const applyMutation = useMutation({
     mutationFn: (id: string) => applicationsApi.create({ job_id: id }),
+    meta: { successMessage: 'Application queued', errorMessage: 'Could not apply' },
     onMutate: async (id) => {
       await queryClient.cancelQueries({ queryKey: ['jobs', mode, debouncedQ] });
       const previous = queryClient.getQueryData(['jobs', mode, debouncedQ]);
@@ -152,9 +155,13 @@ function JobsPage({ mode = 'all' }: { mode?: Mode }) {
   const onTrack = useCallback((id: string) => trackMutation.mutate(id), [trackMutation]);
   const onApply = useCallback((id: string) => applyMutation.mutate(id), [applyMutation]);
   const openDetails = useCallback(async (id: string) => {
-    const { data } = await jobsApi.get(id);
-    setDrawerJob(data);
-  }, []);
+    try {
+      const { data } = await jobsApi.get(id);
+      setDrawerJob(data);
+    } catch (err) {
+      apiError(err, 'Could not load job details');
+    }
+  }, [apiError]);
   const onSelect = useCallback((id: string) => {
     void openDetails(id);
   }, [openDetails]);
@@ -212,7 +219,7 @@ function JobsPage({ mode = 'all' }: { mode?: Mode }) {
   }
 
   return (
-    <Stack spacing={2}>
+    <PageShell>
       <Typography variant="h4">{titleMap[mode]}</Typography>
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }}>
         <TextField
@@ -220,7 +227,7 @@ function JobsPage({ mode = 'all' }: { mode?: Mode }) {
           placeholder="Search title, company, description"
           value={q}
           onChange={onSearchChange}
-          sx={{ maxWidth: 420, flex: 1 }}
+          sx={{ maxWidth: { sm: 420 }, flex: 1, width: '100%' }}
         />
         <FormControlLabel
           control={<Switch checked={virtualized} onChange={onToggleVirtual} />}
@@ -247,11 +254,11 @@ function JobsPage({ mode = 'all' }: { mode?: Mode }) {
           pageSizeOptions={[10, 25, 50]}
           initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
           disableRowSelectionOnClick
-          sx={{ bgcolor: 'background.paper', borderRadius: 2 }}
+          sx={{ bgcolor: 'background.paper', borderRadius: 3, width: '100%' }}
         />
       )}
       <JobDetailDrawer open={!!drawerJob} job={drawerJob} onClose={closeDrawer} />
-    </Stack>
+    </PageShell>
   );
 }
 

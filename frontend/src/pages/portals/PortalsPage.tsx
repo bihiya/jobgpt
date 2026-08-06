@@ -14,6 +14,7 @@ import { DataGrid, GridColDef } from '@mui/x-data-grid';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { portalsApi } from '../../api';
+import PageShell from '../../components/common/PageShell';
 
 const PORTALS = [
   'linkedin', 'naukri', 'indeed', 'foundit', 'wellfound', 'greenhouse',
@@ -38,6 +39,7 @@ export default function PortalsPage() {
         name,
         credentials: { username, password },
       }),
+    meta: { successMessage: 'Portal connected', errorMessage: 'Could not connect portal' },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['portals'] });
       setOpen(false);
@@ -46,11 +48,12 @@ export default function PortalsPage() {
 
   const syncMutation = useMutation({
     mutationFn: (id: string) => portalsApi.sync(id),
+    meta: { successMessage: 'Sync started', errorMessage: 'Sync failed' },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['portals'] }),
   });
 
   const columns: GridColDef[] = [
-    { field: 'name', headerName: 'Portal', flex: 1 },
+    { field: 'name', headerName: 'Portal', flex: 1, minWidth: 120 },
     {
       field: 'status',
       headerName: 'Status',
@@ -63,7 +66,7 @@ export default function PortalsPage() {
         />
       ),
     },
-    { field: 'last_sync_at', headerName: 'Last sync', flex: 1 },
+    { field: 'last_sync_at', headerName: 'Last sync', flex: 1, minWidth: 140 },
     {
       field: 'actions',
       headerName: '',
@@ -77,8 +80,13 @@ export default function PortalsPage() {
   ];
 
   return (
-    <Stack spacing={2}>
-      <Stack direction="row" justifyContent="space-between" alignItems="center">
+    <PageShell>
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        justifyContent="space-between"
+        alignItems={{ xs: 'stretch', sm: 'center' }}
+        spacing={1.5}
+      >
         <Typography variant="h4">Job portals</Typography>
         <Button variant="contained" onClick={() => setOpen(true)}>Connect portal</Button>
       </Stack>
@@ -89,27 +97,29 @@ export default function PortalsPage() {
         loading={isLoading}
         pageSizeOptions={[10, 25]}
         initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
-        sx={{ bgcolor: 'background.paper', borderRadius: 2 }}
+        sx={{ bgcolor: 'background.paper', borderRadius: 3, width: '100%' }}
       />
 
       <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>Connect portal</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField select label="Portal" value={name} onChange={(e) => setName(e.target.value)}>
+            <TextField select label="Portal" value={name} onChange={(e) => setName(e.target.value)} fullWidth>
               {PORTALS.map((p) => (
                 <MenuItem key={p} value={p}>{p}</MenuItem>
               ))}
             </TextField>
-            <TextField label="Username / Email" value={username} onChange={(e) => setUsername(e.target.value)} />
-            <TextField label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            <TextField label="Username / Email" value={username} onChange={(e) => setUsername(e.target.value)} fullWidth />
+            <TextField label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} fullWidth />
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => createMutation.mutate()}>Connect</Button>
+          <Button variant="contained" onClick={() => createMutation.mutate()} disabled={createMutation.isPending}>
+            Connect
+          </Button>
         </DialogActions>
       </Dialog>
-    </Stack>
+    </PageShell>
   );
 }

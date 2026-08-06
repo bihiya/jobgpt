@@ -1,7 +1,8 @@
-import { Button, FormControlLabel, Stack, Switch, TextField, Typography } from '@mui/material';
+import { Button, FormControlLabel, Switch, TextField, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { settingsApi } from '../../api';
+import PageShell from '../../components/common/PageShell';
 
 export default function SettingsPage() {
   const queryClient = useQueryClient();
@@ -27,11 +28,12 @@ export default function SettingsPage() {
 
   const saveMutation = useMutation({
     mutationFn: () => settingsApi.update(form),
+    meta: { successMessage: 'Settings saved', errorMessage: 'Could not save settings' },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['settings'] }),
   });
 
   return (
-    <Stack spacing={2} maxWidth={560}>
+    <PageShell sx={{ maxWidth: 560 }}>
       <Typography variant="h4">Settings</Typography>
       <TextField
         label="Match threshold"
@@ -39,23 +41,27 @@ export default function SettingsPage() {
         inputProps={{ step: 0.05, min: 0, max: 1 }}
         value={form.match_threshold}
         onChange={(e) => setForm({ ...form, match_threshold: Number(e.target.value) })}
+        fullWidth
       />
       <TextField
         label="Max applications / day"
         type="number"
         value={form.max_applications_per_day}
         onChange={(e) => setForm({ ...form, max_applications_per_day: Number(e.target.value) })}
+        fullWidth
       />
       <TextField
         label="Follow-up reminder (days)"
         type="number"
         value={form.follow_up_days}
         onChange={(e) => setForm({ ...form, follow_up_days: Number(e.target.value) })}
+        fullWidth
       />
       <TextField
         label="Timezone"
         value={form.timezone}
         onChange={(e) => setForm({ ...form, timezone: e.target.value })}
+        fullWidth
       />
       <FormControlLabel
         control={
@@ -97,9 +103,14 @@ export default function SettingsPage() {
         }
         label="Email notifications"
       />
-      <Button variant="contained" onClick={() => saveMutation.mutate()} sx={{ alignSelf: 'flex-start' }}>
-        Save settings
+      <Button
+        variant="contained"
+        onClick={() => saveMutation.mutate()}
+        disabled={saveMutation.isPending}
+        sx={{ alignSelf: 'flex-start' }}
+      >
+        {saveMutation.isPending ? 'Saving…' : 'Save settings'}
       </Button>
-    </Stack>
+    </PageShell>
   );
 }

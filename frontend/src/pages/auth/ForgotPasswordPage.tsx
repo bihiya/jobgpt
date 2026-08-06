@@ -1,12 +1,19 @@
-import { Alert, Box, Button, Link, Paper, Stack, TextField, Typography } from '@mui/material';
-import { useState } from 'react';
+import { Box, Button, Link, Paper, Stack, TextField, Typography } from '@mui/material';
 import { Link as RouterLink } from 'react-router-dom';
+import { useToast } from '../../hooks/useToast';
 
 export default function ForgotPasswordPage() {
-  const [sent, setSent] = useState(false);
+  const { success } = useToast();
 
   return (
-    <Paper sx={{ p: 4 }}>
+    <Paper
+      elevation={1}
+      sx={{
+        p: { xs: 3, sm: 4 },
+        borderRadius: 3,
+        animation: 'jp-scale-in 0.4s cubic-bezier(0.22, 1, 0.36, 1)',
+      }}
+    >
       <Typography variant="h5" sx={{ mb: 2 }}>
         Reset password
       </Typography>
@@ -14,11 +21,10 @@ export default function ForgotPasswordPage() {
         component="form"
         onSubmit={(e) => {
           e.preventDefault();
-          setSent(true);
+          success('If the email exists, a reset link will be sent');
         }}
       >
         <Stack spacing={2}>
-          {sent && <Alert severity="success">If the email exists, a reset link will be sent.</Alert>}
           <TextField label="Email" type="email" required fullWidth />
           <Button type="submit" variant="contained" size="large">
             Send reset link

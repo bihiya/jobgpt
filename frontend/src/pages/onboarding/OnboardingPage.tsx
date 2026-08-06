@@ -12,6 +12,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { memo, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { onboardingApi } from '../../api';
+import PageShell from '../../components/common/PageShell';
 import PageSkeleton from '../../components/common/PageSkeleton';
 
 const LABELS = ['Profile', 'Resume', 'Portals', 'First sync', 'Done'];
@@ -26,11 +27,13 @@ function OnboardingPage() {
 
   const advance = useMutation({
     mutationFn: (step: string) => onboardingApi.advance(step),
+    meta: { successMessage: 'Step completed', errorMessage: 'Could not advance' },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['onboarding'] }),
   });
 
   const firstSync = useMutation({
     mutationFn: () => onboardingApi.firstSync(),
+    meta: { successMessage: 'First sync started', errorMessage: 'Sync failed' },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['onboarding'] });
       navigate('/approvals');
@@ -46,10 +49,10 @@ function OnboardingPage() {
 
   if (data.completed) {
     return (
-      <Stack spacing={2} maxWidth={640}>
+      <PageShell sx={{ maxWidth: 640 }}>
         <Typography variant="h4">You&apos;re all set</Typography>
         <Alert severity="success">Onboarding complete. Review approvals or open the dashboard.</Alert>
-        <Stack direction="row" spacing={1}>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
           <Button variant="contained" onClick={() => navigate('/dashboard')}>
             Dashboard
           </Button>
@@ -57,19 +60,29 @@ function OnboardingPage() {
             Approvals
           </Button>
         </Stack>
-      </Stack>
+      </PageShell>
     );
   }
 
   return (
-    <Box maxWidth={720}>
-      <Typography variant="h4" sx={{ mb: 1 }}>
-        Welcome to JobPilot AI
-      </Typography>
-      <Typography color="text.secondary" sx={{ mb: 3 }}>
-        Configure once — profile, resume, portals — then start syncing.
-      </Typography>
-      <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 4 }}>
+    <PageShell sx={{ maxWidth: 720 }}>
+      <Box>
+        <Typography variant="h4" sx={{ mb: 1 }}>
+          Welcome to JobPilot AI
+        </Typography>
+        <Typography color="text.secondary">
+          Configure once — profile, resume, portals — then start syncing.
+        </Typography>
+      </Box>
+      <Stepper
+        activeStep={activeStep}
+        alternativeLabel
+        sx={{
+          mb: 1,
+          overflowX: 'auto',
+          '& .MuiStepLabel-label': { fontSize: { xs: '0.7rem', sm: '0.85rem' } },
+        }}
+      >
         {LABELS.map((label) => (
           <Step key={label}>
             <StepLabel>{label}</StepLabel>
@@ -80,12 +93,13 @@ function OnboardingPage() {
       {data.step === 'profile' && (
         <Stack spacing={2}>
           <Alert severity="info">Add skills, location, and keywords in your profile.</Alert>
-          <Button variant="contained" onClick={() => navigate('/profile')}>
+          <Button variant="contained" onClick={() => navigate('/profile')} sx={{ alignSelf: 'flex-start' }}>
             Open profile
           </Button>
           <Button
-            disabled={!data.checklist.profile}
+            disabled={!data.checklist.profile || advance.isPending}
             onClick={() => advance.mutate('resume')}
+            sx={{ alignSelf: 'flex-start' }}
           >
             Continue
           </Button>
@@ -95,10 +109,14 @@ function OnboardingPage() {
       {data.step === 'resume' && (
         <Stack spacing={2}>
           <Alert severity="info">Upload at least one resume (PDF/DOCX).</Alert>
-          <Button variant="contained" onClick={() => navigate('/profile')}>
+          <Button variant="contained" onClick={() => navigate('/profile')} sx={{ alignSelf: 'flex-start' }}>
             Upload resume
           </Button>
-          <Button disabled={!data.checklist.resume} onClick={() => advance.mutate('portals')}>
+          <Button
+            disabled={!data.checklist.resume || advance.isPending}
+            onClick={() => advance.mutate('portals')}
+            sx={{ alignSelf: 'flex-start' }}
+          >
             Continue
           </Button>
         </Stack>
@@ -107,10 +125,14 @@ function OnboardingPage() {
       {data.step === 'portals' && (
         <Stack spacing={2}>
           <Alert severity="info">Connect LinkedIn, Indeed, Greenhouse, or another portal.</Alert>
-          <Button variant="contained" onClick={() => navigate('/job-portals')}>
+          <Button variant="contained" onClick={() => navigate('/job-portals')} sx={{ alignSelf: 'flex-start' }}>
             Connect portals
           </Button>
-          <Button disabled={!data.checklist.portals} onClick={() => advance.mutate('sync')}>
+          <Button
+            disabled={!data.checklist.portals || advance.isPending}
+            onClick={() => advance.mutate('sync')}
+            sx={{ alignSelf: 'flex-start' }}
+          >
             Continue
           </Button>
         </Stack>
@@ -121,12 +143,17 @@ function OnboardingPage() {
           <Alert severity="info">
             Kick off the first job fetch. Matched roles will land in your approval queue.
           </Alert>
-          <Button variant="contained" onClick={() => firstSync.mutate()} disabled={firstSync.isPending}>
+          <Button
+            variant="contained"
+            onClick={() => firstSync.mutate()}
+            disabled={firstSync.isPending}
+            sx={{ alignSelf: 'flex-start' }}
+          >
             Start first sync
           </Button>
         </Stack>
       )}
-    </Box>
+    </PageShell>
   );
 }
 

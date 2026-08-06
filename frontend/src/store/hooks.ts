@@ -10,6 +10,12 @@ export type RootState = {
   ui: {
     darkMode: boolean;
     sidebarOpen: boolean;
+    toasts: Array<{
+      id: string;
+      message: string;
+      severity: 'success' | 'error' | 'info' | 'warning';
+      duration: number;
+    }>;
     snackbar: { open: boolean; message: string; severity: string };
   };
 };
