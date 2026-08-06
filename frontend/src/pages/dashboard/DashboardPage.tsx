@@ -1,120 +1,364 @@
-import { Box, Grid, Skeleton, Stack, Typography } from '@mui/material';
-import { alpha } from '@mui/material/styles';
-import { useQuery } from '@tanstack/react-query';
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
-import { reportsApi } from '../../api';
+  Box,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Grid,
+  Skeleton,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  applicationsApi,
+  approvalsApi,
+  jobsApi,
+  portalsApi,
+  questionsApi,
+  reportsApi,
+} from '../../api';
+import BlockersInbox, { type BlockerItem } from '../../components/digest/BlockersInbox';
+import DigestCard, { type DigestJob } from '../../components/digest/DigestCard';
+import LiveApplyTray, { type LiveApplication } from '../../components/digest/LiveApplyTray';
+import PortalHealthStrip from '../../components/digest/PortalHealthStrip';
+import WeeklyStory from '../../components/digest/WeeklyStory';
 import PageShell from '../../components/common/PageShell';
-import StatCard from '../../components/dashboard/StatCard';
+import JobDetailDrawer, { type JobDetail } from '../../components/jobs/JobDetailDrawer';
+import { useRequireAuth } from '../../hooks/useRequireAuth';
+import { useToast } from '../../hooks/useToast';
 
 export default function DashboardPage() {
-  const { data, isLoading } = useQuery({
-    queryKey: ['analytics'],
-    queryFn: async () => (await reportsApi.analytics()).data,
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { requireAuth } = useRequireAuth();
+  const { apiError, success } = useToast();
+  const [drawerJob, setDrawerJob] = useState<JobDetail | null>(null);
+  const [answerOpen, setAnswerOpen] = useState<null | { application_id: string; questions: string[] }>(
+    null,
+  );
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [otpOpen, setOtpOpen] = useState<null | { application_id: string; portal: string }>(null);
+  const [otpCode, setOtpCode] = useState('');
+  const [reauthId, setReauthId] = useState<string | null>(null);
+  const [cancelId, setCancelId] = useState<string | null>(null);
+
+  const storyQ = useQuery({
+    queryKey: ['weekly-story'],
+    queryFn: async () => (await reportsApi.weeklyStory()).data,
+  });
+  const approvalsQ = useQuery({
+    queryKey: ['approvals'],
+    queryFn: async () => (await approvalsApi.list({ status: 'pending', page_size: 20 })).data,
+  });
+  const blockersQ = useQuery({
+    queryKey: ['approval-blockers'],
+    queryFn: async () => (await approvalsApi.blockers()).data,
+  });
+  const portalsQ = useQuery({
+    queryKey: ['portals'],
+    queryFn: async () => (await portalsApi.list()).data,
+  });
+  const appsQ = useQuery({
+    queryKey: ['applications', 'live'],
+    queryFn: async () => (await applicationsApi.list({ page_size: 50 })).data,
   });
 
-  if (isLoading || !data) {
+  const invalidateAll = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['approvals'] });
+    queryClient.invalidateQueries({ queryKey: ['approval-blockers'] });
+    queryClient.invalidateQueries({ queryKey: ['applications'] });
+    queryClient.invalidateQueries({ queryKey: ['weekly-story'] });
+    queryClient.invalidateQueries({ queryKey: ['jobs'] });
+    queryClient.invalidateQueries({ queryKey: ['pipeline'] });
+    queryClient.invalidateQueries({ queryKey: ['portals'] });
+  }, [queryClient]);
+
+  const decide = useMutation({
+    mutationFn: ({ id, approve }: { id: string; approve: boolean }) =>
+      approve ? approvalsApi.approve(id) : approvalsApi.reject(id),
+    onSuccess: () => invalidateAll(),
+  });
+
+  const cancelMut = useMutation({
+    mutationFn: (id: string) => applicationsApi.cancel(id),
+    meta: { successMessage: 'Apply cancelled', errorMessage: 'Could not cancel' },
+    onMutate: (id) => setCancelId(id),
+    onSettled: () => {
+      setCancelId(null);
+      invalidateAll();
+    },
+  });
+
+  const reauthMut = useMutation({
+    mutationFn: (id: string) => portalsApi.reauth(id),
+    meta: { successMessage: 'Re-auth started', errorMessage: 'Re-auth failed' },
+    onMutate: (id) => setReauthId(id),
+    onSettled: () => {
+      setReauthId(null);
+      queryClient.invalidateQueries({ queryKey: ['portals'] });
+      queryClient.invalidateQueries({ queryKey: ['approval-blockers'] });
+    },
+  });
+
+  const resumeAnswers = useMutation({
+    mutationFn: () => {
+      if (!answerOpen) return Promise.reject(new Error('No application'));
+      return questionsApi.answerAndResume({
+        application_id: answerOpen.application_id,
+        answers: answerOpen.questions
+          .filter((q) => answers[q]?.trim())
+          .map((q) => ({ question: q, answer: answers[q], tags: ['from_apply'] })),
+      });
+    },
+    meta: { successMessage: 'Saved — apply resumed', errorMessage: 'Could not resume' },
+    onSuccess: () => {
+      setAnswerOpen(null);
+      setAnswers({});
+      invalidateAll();
+    },
+  });
+
+  const submitOtp = useMutation({
+    mutationFn: () => {
+      if (!otpOpen) return Promise.reject(new Error('No application'));
+      return applicationsApi.submitOtp(otpOpen.application_id, { code: otpCode });
+    },
+    meta: { successMessage: 'OTP submitted', errorMessage: 'OTP failed' },
+    onSuccess: () => {
+      setOtpOpen(null);
+      setOtpCode('');
+      invalidateAll();
+    },
+  });
+
+  const openJob = useCallback(
+    async (jobId: string) => {
+      try {
+        const { data: job } = await jobsApi.get(jobId);
+        setDrawerJob(job);
+      } catch (err) {
+        apiError(err, 'Could not load job');
+      }
+    },
+    [apiError],
+  );
+
+  const digestJobs: DigestJob[] = useMemo(() => {
+    const items = approvalsQ.data?.items || [];
+    return items.map((a: Record<string, unknown>) => ({
+      id: String(a.job_id),
+      approval_id: String(a.id),
+      title: String(a.title || a.summary || 'Match'),
+      company: String(a.company || ''),
+      portal: String(a.portal || ''),
+      match_score: Number(a.match_score || 0),
+      summary: String(a.summary || ''),
+      easy_apply: ['linkedin', 'indeed'].includes(String(a.portal || '').toLowerCase()),
+    }));
+  }, [approvalsQ.data]);
+
+  const liveApps: LiveApplication[] = useMemo(() => {
+    const items = appsQ.data?.items || [];
+    return items.map((a: Record<string, unknown>) => ({
+      id: String(a.id),
+      job_id: String(a.job_id),
+      status: String(a.status),
+      session_steps: (a.session_steps as LiveApplication['session_steps']) || [],
+      error_message: String(a.error_message || ''),
+    }));
+  }, [appsQ.data]);
+
+  const blockers: BlockerItem[] = useMemo(
+    () => (Array.isArray(blockersQ.data) ? blockersQ.data : []),
+    [blockersQ.data],
+  );
+
+  const handleBlocker = useCallback(
+    (b: BlockerItem) => {
+      if (!requireAuth('Sign in to clear blockers')) return;
+      if (b.blocker_type === 'login_expired' || b.blocker_type === 'portal_paused') {
+        if (b.portal_id) reauthMut.mutate(b.portal_id);
+        else navigate('/job-portals');
+        return;
+      }
+      if (b.blocker_type === 'otp' && b.application_id) {
+        setOtpOpen({ application_id: b.application_id, portal: b.portal || '' });
+        return;
+      }
+      if (b.application_id) {
+        const qs = b.unknown_questions || [];
+        setAnswers(Object.fromEntries(qs.map((q) => [q, ''])));
+        setAnswerOpen({ application_id: b.application_id, questions: qs });
+      }
+    },
+    [navigate, reauthMut, requireAuth],
+  );
+
+  const loading = storyQ.isLoading && approvalsQ.isLoading;
+
+  if (loading) {
     return (
       <PageShell>
-        <Skeleton height={48} width={280} />
-        <Grid container spacing={2}>
-          {[1, 2, 3, 4].map((i) => (
-            <Grid key={i} size={{ xs: 12, sm: 6, md: 3 }}>
-              <Skeleton variant="rounded" height={120} />
-            </Grid>
-          ))}
-        </Grid>
+        <Skeleton height={160} variant="rounded" />
+        <Skeleton height={220} variant="rounded" />
       </PageShell>
     );
   }
 
   return (
     <PageShell spacing={3}>
+      <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2}>
+        <Box>
+          <Typography
+            variant="h3"
+            sx={{ fontFamily: '"Fraunces", Georgia, serif', letterSpacing: '-0.03em' }}
+          >
+            Digest
+          </Typography>
+          <Typography color="text.secondary">
+            Ranked matches, live applies, and blockers — decide in under five minutes.
+          </Typography>
+        </Box>
+        <Stack direction="row" spacing={1}>
+          <Button variant="outlined" onClick={() => navigate('/pipeline')}>
+            Pipeline
+          </Button>
+          <Button variant="contained" onClick={() => navigate('/approvals')}>
+            All approvals
+          </Button>
+        </Stack>
+      </Stack>
+
+      {storyQ.data && <WeeklyStory story={storyQ.data} />}
+
       <Box>
-        <Typography variant="h4">Operations overview</Typography>
-        <Typography color="text.secondary">
-          Live snapshot of discovery, matching, and application outcomes.
+        <Typography variant="h6" sx={{ mb: 1 }}>
+          Portal health
         </Typography>
+        <PortalHealthStrip
+          portals={Array.isArray(portalsQ.data) ? portalsQ.data : []}
+          busyId={reauthId}
+          onReauth={(id) => {
+            if (!requireAuth('Sign in to re-auth portals')) return;
+            reauthMut.mutate(id);
+          }}
+        />
       </Box>
 
-      <Grid container spacing={2}>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <StatCard label="Jobs Found" value={data.jobs_found} tone="forest" />
+      <Grid container spacing={2.5}>
+        <Grid size={{ xs: 12, lg: 7 }}>
+          <Stack spacing={1.5}>
+            <Typography variant="h6">Today&apos;s matches</Typography>
+            {digestJobs.length === 0 ? (
+              <Typography color="text.secondary">No pending approvals — you&apos;re caught up.</Typography>
+            ) : (
+              digestJobs.map((job) => (
+                <DigestCard
+                  key={job.approval_id || job.id}
+                  job={job}
+                  busy={decide.isPending}
+                  onOpen={() => openJob(job.id)}
+                  onApprove={() => {
+                    if (!requireAuth('Sign in to approve')) return;
+                    if (!job.approval_id) return;
+                    decide.mutate(
+                      { id: job.approval_id, approve: true },
+                      { onSuccess: () => success('Approved — applying') },
+                    );
+                  }}
+                  onSkip={() => {
+                    if (!requireAuth('Sign in to skip')) return;
+                    if (!job.approval_id) return;
+                    decide.mutate(
+                      { id: job.approval_id, approve: false },
+                      { onSuccess: () => success('Skipped') },
+                    );
+                  }}
+                />
+              ))
+            )}
+          </Stack>
         </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <StatCard label="Applied" value={data.applied} tone="teal" />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <StatCard label="Pending" value={data.pending} tone="sky" />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <StatCard label="Success Rate" value={`${data.success_rate}%`} accent tone="coral" />
+
+        <Grid size={{ xs: 12, lg: 5 }}>
+          <Stack spacing={3}>
+            <Box>
+              <Typography variant="h6" sx={{ mb: 1 }}>
+                Live apply tray
+              </Typography>
+              <LiveApplyTray
+                applications={liveApps}
+                busyId={cancelId}
+                onCancel={(id) => {
+                  if (!requireAuth('Sign in to cancel applies')) return;
+                  cancelMut.mutate(id);
+                }}
+              />
+            </Box>
+            <Box>
+              <Typography variant="h6" sx={{ mb: 1 }}>
+                Blockers inbox
+              </Typography>
+              <BlockersInbox blockers={blockers} onAction={handleBlocker} />
+            </Box>
+          </Stack>
         </Grid>
       </Grid>
 
-      <Grid container spacing={2}>
-        <Grid size={{ xs: 12, md: 7 }}>
-          <Box
-            sx={{
-              p: { xs: 2, sm: 2.5 },
-              bgcolor: 'background.paper',
-              borderRadius: 3,
-              border: '1px solid',
-              borderColor: 'divider',
-              background: (t) =>
-                `linear-gradient(165deg, ${t.palette.background.paper}, ${alpha(t.palette.secondary.main, 0.05)})`,
-            }}
+      <JobDetailDrawer open={!!drawerJob} job={drawerJob} onClose={() => setDrawerJob(null)} />
+
+      <Dialog open={!!answerOpen} onClose={() => setAnswerOpen(null)} fullWidth maxWidth="sm">
+        <DialogTitle>Teach the question bank</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            {(answerOpen?.questions || []).map((q) => (
+              <TextField
+                key={q}
+                label={q}
+                value={answers[q] || ''}
+                onChange={(e) => setAnswers((prev) => ({ ...prev, [q]: e.target.value }))}
+                fullWidth
+                multiline
+              />
+            ))}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAnswerOpen(null)}>Cancel</Button>
+          <Button variant="contained" disabled={resumeAnswers.isPending} onClick={() => resumeAnswers.mutate()}>
+            Save & resume
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={!!otpOpen} onClose={() => setOtpOpen(null)} fullWidth maxWidth="xs">
+        <DialogTitle>Enter {otpOpen?.portal || 'portal'} OTP</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            label="One-time code"
+            value={otpCode}
+            onChange={(e) => setOtpCode(e.target.value)}
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOtpOpen(null)}>Cancel</Button>
+          <Button
+            variant="contained"
+            disabled={!otpCode.trim() || submitOtp.isPending}
+            onClick={() => submitOtp.mutate()}
           >
-            <Typography variant="h6" sx={{ mb: 2 }}>
-              Daily applications
-            </Typography>
-            <ResponsiveContainer width="100%" height={280}>
-              <LineChart data={data.daily_applications}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                <XAxis dataKey="date" />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Line type="monotone" dataKey="count" stroke="#1FA67A" strokeWidth={2.5} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </Box>
-        </Grid>
-        <Grid size={{ xs: 12, md: 5 }}>
-          <Box
-            sx={{
-              p: { xs: 2, sm: 2.5 },
-              bgcolor: 'background.paper',
-              borderRadius: 3,
-              border: '1px solid',
-              borderColor: 'divider',
-              background: (t) =>
-                `linear-gradient(165deg, ${t.palette.background.paper}, ${alpha(t.palette.info.main, 0.06)})`,
-            }}
-          >
-            <Typography variant="h6" sx={{ mb: 2 }}>
-              Portal statistics
-            </Typography>
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={data.portal_stats}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                <XAxis dataKey="portal" />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Bar dataKey="count" fill="#2BB3C0" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </Box>
-        </Grid>
-      </Grid>
+            Submit & resume
+          </Button>
+        </DialogActions>
+      </Dialog>
     </PageShell>
   );
 }

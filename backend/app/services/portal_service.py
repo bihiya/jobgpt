@@ -118,6 +118,34 @@ class PortalService:
         )
         return self._to_response(portal)
 
+    async def reauth(self, user_id: str, portal_id: str, payload: PortalUpdate) -> PortalResponse:
+        """One-click re-auth: refresh credentials/cookies/TOTP, clear auto-pause, sync."""
+        portal = await self._owned(user_id, portal_id)
+        updated = await self.update(user_id, portal_id, payload)
+        portal = await self._owned(user_id, portal_id)
+        if getattr(portal, "health", None):
+            portal.health.auto_paused = False
+            portal.health.paused_reason = ""
+            portal.health.consecutive_failures = 0
+            portal.health.score = max(portal.health.score, 60.0)
+            portal.health.last_error = ""
+        portal.status = PortalStatus.CONNECTED
+        portal.updated_at = datetime.utcnow()
+        await portal.save()
+        from app.services.audit_service import audit_event
+
+        await audit_event(
+            user_id,
+            "portal.reauth",
+            message=f"Re-authenticated {portal.name.value}",
+            resource_type="portal",
+            resource_id=str(portal.id),
+            severity="success",
+            metadata={"portal": portal.name.value},
+        )
+        _ = updated
+        return await self.sync(user_id, portal_id)
+
     async def delete(self, user_id: str, portal_id: str) -> None:
         portal = await self._owned(user_id, portal_id)
         await self.portals.delete(portal)

@@ -107,7 +107,7 @@ class ApprovalService:
         )
 
     async def list_blockers(self, user_id: str) -> list[dict]:
-        """OTP / unknown-question pauses that need human help (shown on Approvals)."""
+        """OTP / unknown-question / captcha / login-expired items needing human help."""
         apps = (
             await Application.find(
                 {
@@ -124,12 +124,21 @@ class ApprovalService:
         out: list[dict] = []
         for app in apps:
             job = await Job.get(app.job_id)
+            blocker = app.blocker_type or (
+                "otp" if app.status == ApplicationStatus.NEEDS_OTP else "unknown_question"
+            )
+            # Captcha pauses often surface as needs_otp / session step metadata
+            steps = app.session_steps or []
+            if any((s.get("key") == "captcha" and s.get("status") in {"warn", "error"}) for s in steps):
+                if blocker != "otp":
+                    blocker = "captcha"
             out.append(
                 {
+                    "id": f"app-{app.id}",
                     "application_id": str(app.id),
                     "job_id": app.job_id,
                     "status": app.status,
-                    "blocker_type": app.blocker_type,
+                    "blocker_type": blocker,
                     "unknown_questions": app.unknown_questions,
                     "error_message": app.error_message,
                     "session_steps": app.session_steps,
@@ -137,6 +146,48 @@ class ApprovalService:
                     "title": getattr(job, "title", "") if job else "",
                     "company": getattr(job, "company", "") if job else "",
                     "updated_at": app.updated_at.isoformat() if app.updated_at else None,
+                }
+            )
+
+        # Portal session / health blockers (login expired)
+        from app.models.portal import Portal
+
+        portals = await Portal.find({"user_id": user_id}).to_list()
+        for portal in portals:
+            health = getattr(portal, "health", None)
+            auto_paused = bool(getattr(health, "auto_paused", False)) if health else False
+            has_session = bool(getattr(portal, "session_blob", "") or portal.cookies)
+            last_error = (getattr(health, "last_error", "") if health else "") or ""
+            login_expired = (
+                auto_paused
+                or (not has_session and bool(portal.credentials.username))
+                or "login" in last_error.lower()
+                or "auth" in last_error.lower()
+                or "session" in last_error.lower()
+            )
+            if not login_expired and not auto_paused:
+                continue
+            out.append(
+                {
+                    "id": f"portal-{portal.id}",
+                    "application_id": "",
+                    "job_id": "",
+                    "portal_id": str(portal.id),
+                    "status": "login_expired" if login_expired else "portal_paused",
+                    "blocker_type": "login_expired" if login_expired else "portal_paused",
+                    "unknown_questions": [],
+                    "error_message": last_error
+                    or getattr(health, "paused_reason", "")
+                    or "Portal session expired — re-authenticate",
+                    "session_steps": [],
+                    "portal": portal.name.value if hasattr(portal.name, "value") else str(portal.name),
+                    "title": f"{portal.name} connection",
+                    "company": "",
+                    "updated_at": (
+                        portal.session_updated_at.isoformat()
+                        if getattr(portal, "session_updated_at", None)
+                        else portal.updated_at.isoformat()
+                    ),
                 }
             )
         return out

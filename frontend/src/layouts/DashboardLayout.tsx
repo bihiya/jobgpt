@@ -22,6 +22,7 @@ import {
   History,
   Timeline,
   Quiz,
+  ViewKanban,
   Hub,
   Logout,
   Login,
@@ -52,20 +53,21 @@ import { useToast } from '../hooks/useToast';
 const drawerWidth = 260;
 
 const NAV_ITEMS = [
-  { label: 'Onboarding', path: '/onboarding', icon: <RocketLaunch /> },
-  { label: 'Dashboard', path: '/dashboard', icon: <Dashboard />, prefetch: 'dashboard' as const },
+  { label: 'Digest', path: '/dashboard', icon: <Dashboard />, prefetch: 'dashboard' as const },
   { label: 'Approvals', path: '/approvals', icon: <Checklist /> },
+  { label: 'Pipeline', path: '/pipeline', icon: <ViewKanban /> },
   { label: 'Questions', path: '/questions', icon: <Quiz /> },
+  { label: 'Jobs', path: '/jobs', icon: <Work />, prefetch: 'jobs' as const },
+  { label: 'Job Portals', path: '/job-portals', icon: <Hub /> },
   { label: 'Calendar', path: '/calendar', icon: <CalendarMonth /> },
   { label: 'Activity', path: '/activity', icon: <Timeline /> },
-  { label: 'Jobs', path: '/jobs', icon: <Work />, prefetch: 'jobs' as const },
   { label: 'Tracked', path: '/jobs/tracked', icon: <Work /> },
   { label: 'Applied', path: '/jobs/applied', icon: <Work /> },
   { label: 'History', path: '/jobs/history', icon: <History /> },
-  { label: 'Job Portals', path: '/job-portals', icon: <Hub /> },
   { label: 'Companies', path: '/companies', icon: <Business /> },
   { label: 'Automation', path: '/automation', icon: <SmartToy /> },
   { label: 'Reports', path: '/reports', icon: <Assessment />, prefetch: 'dashboard' as const },
+  { label: 'Onboarding', path: '/onboarding', icon: <RocketLaunch /> },
   { label: 'Profile', path: '/profile', icon: <Person /> },
   { label: 'Settings', path: '/settings', icon: <Settings /> },
 ];

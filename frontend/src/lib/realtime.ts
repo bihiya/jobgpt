@@ -32,17 +32,30 @@ export function queryKeysForEvent(event: string): string[][] {
       return [['jobs'], ['jobs-infinite'], ['analytics']];
     case 'approval.needed':
     case 'approval.decided':
-      return [['approvals'], ['jobs'], ['jobs-infinite'], ['analytics']];
+    case 'approval.batch':
+      return [['approvals'], ['approval-blockers'], ['jobs'], ['jobs-infinite'], ['analytics'], ['weekly-story'], ['pipeline']];
     case 'application.queued':
     case 'application.started':
+    case 'application.session':
+    case 'application.succeeded':
+    case 'application.failed':
+    case 'application.cancelled':
+    case 'application.needs_input':
+    case 'application.needs_otp':
+    case 'application.rate_limited':
     case 'job.success':
     case 'job.failed':
       return [
         ['jobs'],
         ['jobs-infinite'],
+        ['applications'],
+        ['approval-blockers'],
+        ['approvals'],
         ['automation-logs'],
         ['automation-status'],
         ['analytics'],
+        ['weekly-story'],
+        ['pipeline'],
         ['calendar'],
       ];
     case 'automation.log':
@@ -53,7 +66,7 @@ export function queryKeysForEvent(event: string): string[][] {
       return [['reports']];
     case 'portal.synced':
     case 'portal.health':
-      return [['portals'], ['jobs'], ['jobs-infinite'], ['analytics']];
+      return [['portals'], ['jobs'], ['jobs-infinite'], ['analytics'], ['approval-blockers'], ['weekly-story']];
     case 'reminder.due':
     case 'reminder.scheduled':
     case 'reminder.completed':
@@ -73,6 +86,9 @@ export function shouldToastEvent(event: string): boolean {
     'job.success',
     'job.failed',
     'application.started',
+    'application.needs_input',
+    'application.needs_otp',
+    'application.cancelled',
     'report.ready',
     'report.failed',
     'portal.synced',

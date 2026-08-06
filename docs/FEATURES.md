@@ -27,6 +27,8 @@
 | Question bank UX | Pause on unknown field → answer once → resume (`/questions`) |
 | Captcha / 2FA path | 2captcha poll + TOTP vault; OTP blockers on Approvals |
 | Smart batch apply | Approve ≥ threshold for a portal with daily caps + cooldown |
+| Home Digest command center | Ranked match cards, live apply tray, blockers inbox, portal health, weekly story |
+| Pipeline Kanban | Matched → Approved → Applied → Interview → Offer → Rejected |
 
 ## Default safer flow
 

@@ -73,11 +73,110 @@ export const demoApprovals = {
   items: [
     {
       id: 'demo-approval-1',
+      job_id: 'demo-job-1',
+      summary: 'Senior Frontend Engineer at Northwind Labs',
+      title: 'Senior Frontend Engineer',
+      company: 'Northwind Labs',
+      portal: 'linkedin',
+      match_score: 0.92,
+      status: 'pending',
+      created_at: now,
+    },
+    {
+      id: 'demo-approval-2',
       job_id: 'demo-job-3',
       summary: 'Platform Engineer at Cedar Systems',
+      title: 'Platform Engineer',
+      company: 'Cedar Systems',
+      portal: 'lever',
       match_score: 0.76,
       status: 'pending',
       created_at: now,
+    },
+  ],
+  total: 2,
+  page: 1,
+  page_size: 50,
+  pages: 1,
+};
+
+export const demoWeeklyStory = {
+  headline: '24 applied · 6 replies · 2 interviews',
+  narrative:
+    'This week you applied to 24 roles. 6 engagement signals showed up and 2 moved to interview. Clear 2 pending approvals to keep the pipeline moving.',
+  applied: 24,
+  replies: 6,
+  interviews: 2,
+  offers: 0,
+  approvals_pending: 2,
+  blockers: 1,
+  top_portal: 'linkedin',
+  period_label: 'This week',
+  highlights: [
+    'You pushed 24 applications this week.',
+    '6 reply signals (follow-ups / interviews).',
+    '2 interview stage moves.',
+    'Most activity came from linkedin.',
+  ],
+};
+
+export const demoPipeline = {
+  columns: {
+    matched: [
+      {
+        id: 'demo-job-1',
+        title: 'Senior Frontend Engineer',
+        company: 'Northwind Labs',
+        portal: 'linkedin',
+        status: 'matched',
+        match_score: 0.92,
+      },
+    ],
+    approved: [
+      {
+        id: 'demo-job-2',
+        title: 'Full-Stack Engineer',
+        company: 'Harbor AI',
+        portal: 'greenhouse',
+        status: 'approved',
+        match_score: 0.81,
+      },
+    ],
+    applied: [
+      {
+        id: 'demo-job-3',
+        title: 'Platform Engineer',
+        company: 'Cedar Systems',
+        portal: 'lever',
+        status: 'applied',
+        match_score: 0.76,
+      },
+    ],
+    interview: [],
+    offer: [],
+    rejected: [],
+  },
+  counts: { matched: 1, approved: 1, applied: 1, interview: 0, offer: 0, rejected: 0 },
+};
+
+export const demoApplications = {
+  items: [
+    {
+      id: 'demo-app-live',
+      job_id: 'demo-job-2',
+      status: 'in_progress',
+      attempts: 1,
+      screenshot_path: '',
+      error_message: '',
+      applied_at: null,
+      created_at: now,
+      session_steps: [
+        { key: 'opened_jd', label: 'Opened job description', status: 'ok' },
+        { key: 'clicked_apply', label: 'Clicked Easy Apply / Apply', status: 'ok' },
+        { key: 'filled_fields', label: 'Filled 4 fields', status: 'ok' },
+      ],
+      unknown_questions: [],
+      blocker_type: '',
     },
   ],
   total: 1,
@@ -125,8 +224,24 @@ export const demoActivity = {
 };
 
 export const demoPortals = [
-  { id: 'demo-portal-1', name: 'linkedin', status: 'connected', last_sync_at: now },
-  { id: 'demo-portal-2', name: 'indeed', status: 'connected', last_sync_at: now },
+  {
+    id: 'demo-portal-1',
+    name: 'linkedin',
+    status: 'connected',
+    last_sync_at: now,
+    has_session: true,
+    session_updated_at: now,
+    health: { score: 92, auto_paused: false, last_error: '', consecutive_failures: 0 },
+  },
+  {
+    id: 'demo-portal-2',
+    name: 'indeed',
+    status: 'connected',
+    last_sync_at: now,
+    has_session: false,
+    session_updated_at: null,
+    health: { score: 48, auto_paused: true, last_error: 'login expired', consecutive_failures: 3 },
+  },
 ];
 
 export const demoCompanies = {
@@ -177,10 +292,19 @@ export const demoQuestions = [
     portals: [],
     use_count: 8,
   },
+  {
+    id: 'demo-q-3',
+    question: 'Are you willing to relocate?',
+    answer: 'Yes, for the right role',
+    tags: ['from_apply'],
+    portals: ['linkedin'],
+    use_count: 1,
+  },
 ];
 
 export const demoBlockers = [
   {
+    id: 'app-demo-app-1',
     application_id: 'demo-app-1',
     job_id: 'demo-job-1',
     status: 'needs_input',
@@ -195,6 +319,21 @@ export const demoBlockers = [
     portal: 'linkedin',
     title: 'Senior Frontend Engineer',
     company: 'Northwind Labs',
+    updated_at: now,
+  },
+  {
+    id: 'portal-demo-portal-2',
+    application_id: '',
+    portal_id: 'demo-portal-2',
+    job_id: '',
+    status: 'login_expired',
+    blocker_type: 'login_expired',
+    unknown_questions: [],
+    error_message: 'Portal session expired — re-authenticate',
+    session_steps: [],
+    portal: 'indeed',
+    title: 'indeed connection',
+    company: '',
     updated_at: now,
   },
 ];
@@ -267,6 +406,8 @@ export function resolveDemoData(url = '', method = 'get'): unknown | undefined {
   const path = url.split('?')[0].replace(/\/$/, '');
 
   if (path.endsWith('/reports/analytics') || path.includes('/reports/analytics')) return demoAnalytics;
+  if (path.includes('/reports/weekly-story')) return demoWeeklyStory;
+  if (path.includes('/jobs/pipeline')) return demoPipeline;
   if (path.match(/\/jobs\/[^/]+\/activity$/)) return demoActivity;
   if (path.includes('/jobs/tracked') || path.includes('/jobs/applied') || path.includes('/jobs/history')) {
     return demoJobs;
@@ -285,7 +426,12 @@ export function resolveDemoData(url = '', method = 'get'): unknown | undefined {
   if (path.includes('/users/me/resumes')) return [];
   if (path.includes('/automation/status')) return demoAutomationStatus;
   if (path.includes('/automation/logs')) return demoAutomationLogs;
-  if (path.includes('/reports') && !path.includes('analytics') && !path.includes('download')) {
+  if (
+    path.includes('/reports') &&
+    !path.includes('analytics') &&
+    !path.includes('download') &&
+    !path.includes('weekly-story')
+  ) {
     return demoReports;
   }
   if (path.includes('/onboarding')) return demoOnboarding;
@@ -293,7 +439,7 @@ export function resolveDemoData(url = '', method = 'get'): unknown | undefined {
   if (path.includes('/reminders')) return demoReminders;
   if (path.includes('/questions')) return demoQuestions;
   if (path.includes('/notification-channels')) return [];
-  if (path.includes('/applications')) return { items: [], total: 0, page: 1, page_size: 20, pages: 0 };
+  if (path.includes('/applications')) return demoApplications;
 
   return { items: [], total: 0, page: 1, page_size: 20, pages: 0 };
 }

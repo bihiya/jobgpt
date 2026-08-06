@@ -67,6 +67,15 @@ async def retry_application(
     return await service.retry(str(user.id), application_id)
 
 
+@router.post("/{application_id}/cancel", response_model=ApplicationResponse)
+async def cancel_application(
+    application_id: str,
+    user: User = Depends(get_current_user),
+    service: ApplicationService = Depends(get_application_service),
+):
+    return await service.cancel(str(user.id), application_id)
+
+
 @router.post("/{application_id}/otp")
 async def submit_otp(
     application_id: str,
