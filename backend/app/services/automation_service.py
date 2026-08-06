@@ -3,6 +3,7 @@
 from math import ceil
 
 from app.core.kafka import publish
+from app.events.realtime import emit_realtime
 from app.repository.report_repository import AutomationLogRepository
 from app.schemas.common import PaginatedResponse
 
@@ -74,4 +75,12 @@ class AutomationService:
         }
         topic = topic_map.get(job_type, "job.fetch")
         await publish(topic, {"user_id": user_id, "source": "manual"}, key=user_id)
+        await emit_realtime(
+            user_id,
+            "automation.triggered",
+            {"job_type": job_type, "topic": topic},
+            title="Automation started",
+            body=f"Triggered {job_type} worker",
+            severity="info",
+        )
         return {"detail": f"Triggered {job_type}", "topic": topic}

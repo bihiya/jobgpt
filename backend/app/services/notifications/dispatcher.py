@@ -41,6 +41,19 @@ class NotificationDispatcher:
             },
             key=user_id,
         )
+        try:
+            from app.events.realtime import emit_realtime
+
+            await emit_realtime(
+                user_id,
+                event,
+                metadata,
+                title=title,
+                body=body,
+                severity=type_ if type_ in {"success", "error", "warning", "info"} else "info",
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("realtime_emit_failed", error=str(exc))
 
         channels = await NotificationChannel.find(
             {"user_id": user_id, "is_enabled": True}

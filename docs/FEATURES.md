@@ -19,6 +19,7 @@
 | Dead-letter queue | Kafka topic `job.dlq` in `workers/base.py` |
 | Marketing SSR/ISR | `marketing/` Next.js site |
 | S3 object storage | `StorageService` for resumes/screenshots |
+| WebSocket realtime | `GET/WS /api/v1/ws`, Redis pub/sub bridge, live UI invalidation |
 
 ## Default safer flow
 

@@ -11,6 +11,7 @@ JobPilot AI is a full-stack job automation platform. Users configure resumes, pr
 - **Repository + Service Layer** — persistence isolated from business logic
 - **Dependency Injection** — FastAPI `Depends` for auth, DB, services
 - **Event-driven workers** — Kafka topics for fetch / match / apply / notify / report
+- **Realtime WebSockets** — workers/services publish to Redis pub/sub; API fans out to `/api/v1/ws`
 - **Portal Adapter Pattern** — Playwright adapters per job portal
 
 ## High-Level Architecture
@@ -59,6 +60,7 @@ flowchart TB
     end
 
     FE --> GW
+    FE -. WebSocket .-> GW
     GW --> AUTH --> RBAC
     RBAC --> US & JS & MS & AS & CS & PS & RS & AUTOS
     US & JS & MS & AS & CS & PS & RS & AUTOS --> REPO
@@ -67,10 +69,19 @@ flowchart TB
     SCH --> PROD --> KAFKA --> CONS
     CONS --> PW
     CONS --> REPO
+    CONS -. emit_realtime .-> REDIS
+    REDIS -. pub/sub bridge .-> GW
     GW --> PROM
     CONS --> LOGS
     PROM --> GRAF
 ```
+
+### Realtime channel
+
+- Endpoint: `WS /api/v1/ws?token=<access_jwt>`
+- Bridge: Redis `jobpilot:pubsub:user:{user_id}` → in-process WebSocket registry
+- Events: `job.created`, `job.matched`, `approval.needed`, `application.started`, `job.success` / `job.failed`, `automation.*`, `report.*`, `portal.*`, `reminder.*`
+- Frontend: `useRealtimeSocket` invalidates TanStack Query keys and shows toasts
 
 ## Clean Architecture Layers
 

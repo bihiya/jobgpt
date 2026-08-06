@@ -22,6 +22,7 @@ from app.db.mongodb import close_mongo_connection, connect_to_mongo, get_client
 from app.middleware.http_cache import ETagMiddleware
 from app.middleware.idempotency import IdempotencyMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
+from app.events.realtime import start_realtime_bridge, stop_realtime_bridge
 from app.scheduler.jobs import start_scheduler, stop_scheduler
 
 setup_logging()
@@ -38,6 +39,7 @@ async def lifespan(_: FastAPI):
     if settings.app_env != "test":
         try:
             await ping_redis()
+            await start_realtime_bridge()
         except Exception as exc:  # noqa: BLE001
             logger.warning("redis_ping_failed", error=str(exc))
         try:
@@ -50,6 +52,7 @@ async def lifespan(_: FastAPI):
     finally:
         # Graceful shutdown order: stop intake → drain → close IO
         stop_scheduler()
+        await stop_realtime_bridge()
         await close_producer()
         await close_redis()
         await close_mongo_connection()

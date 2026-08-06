@@ -3,6 +3,7 @@
 from typing import Any
 
 from app.core.logging import get_logger
+from app.events.realtime import emit_realtime
 from app.models.enums import ReportStatus
 from app.models.report import Report
 from app.services.report_service import ReportService
@@ -35,6 +36,14 @@ class ReportWorker(BaseWorker):
         except Exception as exc:  # noqa: BLE001
             report.status = ReportStatus.FAILED
             await report.save()
+            await emit_realtime(
+                user_id,
+                "report.failed",
+                {"report_id": report_id, "error": str(exc)},
+                title="Report failed",
+                body=str(exc),
+                severity="error",
+            )
             logger.exception("report_failed", report_id=report_id, error=str(exc))
 
 

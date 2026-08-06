@@ -1,6 +1,7 @@
 import {
   AppBar,
   Box,
+  Chip,
   Drawer,
   IconButton,
   List,
@@ -28,11 +29,13 @@ import {
   DarkMode,
   LightMode,
   Menu as MenuIcon,
+  Circle,
 } from '@mui/icons-material';
 import { alpha } from '@mui/material/styles';
 import { memo, startTransition, useCallback, useMemo } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { usePrefetch } from '../contexts/PrefetchContext';
+import { useRealtimeSocket } from '../hooks/useRealtimeSocket';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { selectUserDisplayName } from '../store/selectors/authSelectors';
 import { selectDarkMode, selectSidebarOpen } from '../store/selectors/uiSelectors';
@@ -101,6 +104,17 @@ function DashboardLayout() {
   const isMobile = useMediaQuery('(max-width:900px)');
   const { prefetchDashboard, prefetchJobs } = usePrefetch();
   const { info } = useToast();
+  const { status: liveStatus } = useRealtimeSocket(true);
+
+  const liveChip = useMemo(() => {
+    if (liveStatus === 'connected') {
+      return { label: 'Live', color: 'success' as const };
+    }
+    if (liveStatus === 'connecting' || liveStatus === 'reconnecting') {
+      return { label: 'Connecting', color: 'warning' as const };
+    }
+    return { label: 'Offline', color: 'default' as const };
+  }, [liveStatus]);
 
   const handleNavigate = useCallback(
     (path: string) => {
@@ -202,6 +216,20 @@ function DashboardLayout() {
           >
             {pageTitle}
           </Typography>
+          <Chip
+            size="small"
+            icon={<Circle sx={{ fontSize: '0.65rem !important' }} />}
+            label={liveChip.label}
+            color={liveChip.color}
+            variant={liveStatus === 'connected' ? 'filled' : 'outlined'}
+            sx={{
+              display: { xs: 'none', sm: 'inline-flex' },
+              fontWeight: 700,
+              '& .MuiChip-icon': {
+                animation: liveStatus === 'connected' ? 'jp-pulse-soft 2.2s ease infinite' : 'none',
+              },
+            }}
+          />
           <IconButton onClick={handleToggleDark} aria-label="Toggle theme">
             {darkMode ? <LightMode /> : <DarkMode />}
           </IconButton>
