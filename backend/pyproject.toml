@@ -4,6 +4,10 @@ version = "1.0.0"
 description = "JobPilot AI — Full Stack AI-powered Job Automation Platform"
 requires-python = ">=3.11"
 
+# Used when the Vercel project Root Directory is set to `backend/`.
+[tool.vercel]
+entrypoint = "app.main:app"
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
