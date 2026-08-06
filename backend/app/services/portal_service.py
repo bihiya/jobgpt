@@ -48,6 +48,17 @@ class PortalService:
                 "status": PortalStatus.CONNECTED,
             }
         )
+        from app.services.audit_service import audit_event
+
+        await audit_event(
+            user_id,
+            "portal.connected",
+            message=f"Connected portal {payload.name}",
+            resource_type="portal",
+            resource_id=str(portal.id),
+            severity="success",
+            metadata={"portal": getattr(payload.name, "value", payload.name)},
+        )
         return self._to_response(portal)
 
     async def update(self, user_id: str, portal_id: str, payload: PortalUpdate) -> PortalResponse:
@@ -66,6 +77,16 @@ class PortalService:
             "job.fetch",
             {"user_id": user_id, "portal": portal.name.value, "portal_id": str(portal.id)},
             key=user_id,
+        )
+        from app.services.audit_service import audit_event
+
+        await audit_event(
+            user_id,
+            "portal.sync_requested",
+            message=f"Sync requested for {portal.name.value}",
+            resource_type="portal",
+            resource_id=str(portal.id),
+            metadata={"portal": portal.name.value},
         )
         return self._to_response(portal)
 

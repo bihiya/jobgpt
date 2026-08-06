@@ -85,4 +85,14 @@ class AutomationService:
             body=f"Triggered {job_type} worker",
             severity="info",
         )
+        from app.services.audit_service import audit_event
+
+        await audit_event(
+            user_id,
+            "automation.triggered",
+            message=f"Triggered {job_type} worker",
+            resource_type="automation",
+            source="user",
+            metadata={"job_type": job_type, "topic": topic},
+        )
         return {"detail": f"Triggered {job_type}", "topic": topic}

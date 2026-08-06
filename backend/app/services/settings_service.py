@@ -36,4 +36,15 @@ class SettingsService:
         data = payload.model_dump(exclude_unset=True)
         data["updated_at"] = datetime.utcnow()
         doc = await self.settings_repo.update(doc, data)
+        from app.services.audit_service import audit_event
+
+        await audit_event(
+            user_id,
+            "settings.updated",
+            message="Settings updated",
+            resource_type="settings",
+            resource_id=user_id,
+            severity="success",
+            metadata={"fields": list(data.keys())},
+        )
         return self._to_response(doc)

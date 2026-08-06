@@ -58,6 +58,8 @@ export function queryKeysForEvent(event: string): string[][] {
     case 'reminder.scheduled':
     case 'reminder.completed':
       return [['reminders-due'], ['calendar']];
+    case 'audit.created':
+      return [['user-activity'], ['job-activity']];
     default:
       return [];
   }

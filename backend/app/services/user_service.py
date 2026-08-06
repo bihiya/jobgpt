@@ -41,7 +41,18 @@ class UserService:
             data["full_name"] = payload.full_name
         if payload.profile is not None:
             data["profile"] = payload.profile.model_dump()
-        return await self.users.update(user, data)
+        updated = await self.users.update(user, data)
+        from app.services.audit_service import audit_event
+
+        await audit_event(
+            user_id,
+            "profile.updated",
+            message="Profile updated",
+            resource_type="user",
+            resource_id=user_id,
+            severity="success",
+        )
+        return updated
 
     async def upload_resume(
         self,
@@ -66,7 +77,7 @@ class UserService:
                     existing.is_default = False
                     await existing.save()
 
-        return await self.resumes.create(
+        resume = await self.resumes.create(
             {
                 "user_id": user_id,
                 "name": name or file.filename or filename,
@@ -75,6 +86,18 @@ class UserService:
                 "is_default": is_default or not await self.resumes.list_for_user(user_id),
             }
         )
+        from app.services.audit_service import audit_event
+
+        await audit_event(
+            user_id,
+            "resume.uploaded",
+            message=f"Uploaded resume {resume.name}",
+            resource_type="resume",
+            resource_id=str(resume.id),
+            severity="success",
+            metadata={"file_type": resume.file_type},
+        )
+        return resume
 
     async def list_resumes(self, user_id: str) -> list[Resume]:
         return await self.resumes.list_for_user(user_id)
@@ -86,3 +109,13 @@ class UserService:
         if resume.file_path and os.path.exists(resume.file_path):
             os.remove(resume.file_path)
         await self.resumes.delete(resume)
+        from app.services.audit_service import audit_event
+
+        await audit_event(
+            user_id,
+            "resume.deleted",
+            message=f"Deleted resume {resume.name}",
+            resource_type="resume",
+            resource_id=resume_id,
+            severity="warning",
+        )

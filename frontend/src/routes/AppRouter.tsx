@@ -24,6 +24,7 @@ const AdminPage = lazy(() => import('../pages/admin/AdminPage'));
 const OnboardingPage = lazy(() => import('../pages/onboarding/OnboardingPage'));
 const ApprovalsPage = lazy(() => import('../pages/approvals/ApprovalsPage'));
 const CalendarPage = lazy(() => import('../pages/calendar/CalendarPage'));
+const ActivityPage = lazy(() => import('../pages/activity/ActivityPage'));
 
 function Lazy({ children }: { children: React.ReactNode }) {
   return <PageSuspense>{children}</PageSuspense>;
@@ -50,6 +51,7 @@ export default function AppRouter() {
           <Route path="/dashboard" element={<Lazy><DashboardPage /></Lazy>} />
           <Route path="/approvals" element={<Lazy><ApprovalsPage /></Lazy>} />
           <Route path="/calendar" element={<Lazy><CalendarPage /></Lazy>} />
+          <Route path="/activity" element={<Lazy><ActivityPage /></Lazy>} />
           <Route path="/jobs" element={<Lazy><JobsPage /></Lazy>} />
           <Route path="/jobs/tracked" element={<Lazy><TrackedJobsPage /></Lazy>} />
           <Route path="/jobs/applied" element={<Lazy><AppliedJobsPage /></Lazy>} />

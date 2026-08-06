@@ -20,6 +20,7 @@
 | Marketing SSR/ISR | `marketing/` Next.js site |
 | S3 object storage | `StorageService` for resumes/screenshots |
 | WebSocket realtime | `GET/WS /api/v1/ws`, Redis pub/sub bridge, live UI invalidation |
+| User + job audit logs | `AuditLog`, `/activity`, `/users/me/activity`, `/jobs/{id}/activity`, Activity UI |
 
 ## Default safer flow
 

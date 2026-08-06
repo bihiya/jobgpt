@@ -82,4 +82,11 @@ export const usersApi = {
     api.post('/users/me/resumes', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
+  activity: (params?: Record<string, unknown>) => api.get('/users/me/activity', { params }),
+};
+
+export const activityApi = {
+  list: (params?: Record<string, unknown>) => api.get('/activity', { params }),
+  forJob: (jobId: string, params?: Record<string, unknown>) =>
+    api.get(`/jobs/${jobId}/activity`, { params }),
 };

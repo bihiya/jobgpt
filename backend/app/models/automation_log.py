@@ -26,9 +26,19 @@ class AutomationLog(Document):
 
 
 class AuditLog(Document):
+    """Unified activity stream for users and jobs."""
+
     user_id: Annotated[str, Indexed()] = ""
-    action: str
-    resource: str = ""
+    actor_id: Annotated[str, Indexed()] = ""
+    action: Annotated[str, Indexed()] = ""
+    message: str = ""
+    resource: str = ""  # legacy / display label
+    resource_type: Annotated[str, Indexed()] = ""  # user|job|application|portal|settings|auth|…
+    resource_id: Annotated[str, Indexed()] = ""
+    job_id: Annotated[str, Indexed()] = ""
+    application_id: str = ""
+    source: str = "user"  # user|worker|system
+    severity: str = "info"  # info|success|warning|error
     ip: str = ""
     user_agent: str = ""
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -36,3 +46,8 @@ class AuditLog(Document):
 
     class Settings:
         name = "audit_logs"
+        indexes = [
+            [("user_id", 1), ("created_at", -1)],
+            [("job_id", 1), ("created_at", -1)],
+            [("actor_id", 1), ("created_at", -1)],
+        ]

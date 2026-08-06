@@ -1,7 +1,8 @@
-import { Button, Stack, TextField, Typography } from '@mui/material';
+import { Button, Divider, Stack, TextField, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { usersApi } from '../../api';
+import ActivityTimeline from '../../components/activity/ActivityTimeline';
 import PageShell from '../../components/common/PageShell';
 import { useToast } from '../../hooks/useToast';
 
@@ -11,6 +12,10 @@ export default function ProfilePage() {
   const { data } = useQuery({
     queryKey: ['profile'],
     queryFn: async () => (await usersApi.me()).data,
+  });
+  const { data: activity } = useQuery({
+    queryKey: ['user-activity', 'profile'],
+    queryFn: async () => (await usersApi.activity({ page_size: 20 })).data,
   });
   const [form, setForm] = useState({
     full_name: '',
@@ -102,6 +107,17 @@ export default function ProfilePage() {
           />
         </Button>
       </Stack>
+
+      <Divider sx={{ my: 1 }} />
+      <Typography variant="h5">Your activity</Typography>
+      <Typography color="text.secondary">
+        Account-level audit trail — sign-in, profile edits, resumes, settings, and more.
+      </Typography>
+      <ActivityTimeline
+        dense
+        items={activity?.items || []}
+        emptyText="No account activity recorded yet."
+      />
     </PageShell>
   );
 }

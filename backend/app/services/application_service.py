@@ -8,6 +8,7 @@ from math import ceil
 from app.core.exceptions import NotFoundError
 from app.core.kafka import publish
 from app.events.realtime import emit_realtime
+from app.services.audit_service import audit_event
 from app.models.application import Application
 from app.models.enums import ApplicationStatus, JobStatus
 from app.repository.application_repository import ApplicationRepository
@@ -94,6 +95,16 @@ class ApplicationService:
             body=f"Queued apply for {job.title}",
             severity="info",
         )
+        await audit_event(
+            user_id,
+            "application.queued",
+            message=f"Queued application for {job.title}",
+            job_id=str(job.id),
+            application_id=str(app.id),
+            resource_type="application",
+            resource_id=str(app.id),
+            severity="info",
+        )
         return self._to_response(app)
 
     async def retry(self, user_id: str, application_id: str) -> ApplicationResponse:
@@ -120,6 +131,16 @@ class ApplicationService:
             title="Retry queued",
             body="Application retry scheduled",
             severity="info",
+        )
+        await audit_event(
+            user_id,
+            "application.retry",
+            message="Application retry queued",
+            job_id=app.job_id,
+            application_id=str(app.id),
+            resource_type="application",
+            resource_id=str(app.id),
+            metadata={"attempt": app.attempts},
         )
         return self._to_response(app)
 

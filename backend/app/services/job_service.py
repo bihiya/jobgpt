@@ -132,20 +132,54 @@ class JobService:
         job = await self._owned(user_id, job_id)
         return self._to_response(job)
 
-    async def update(self, user_id: str, job_id: str, payload: JobUpdateRequest) -> JobResponse:
+    async def update(
+        self,
+        user_id: str,
+        job_id: str,
+        payload: JobUpdateRequest,
+        *,
+        audit_action: str | None = "job.updated",
+        audit_message: str | None = None,
+    ) -> JobResponse:
         job = await self._owned(user_id, job_id)
         data = payload.model_dump(exclude_unset=True)
         data["updated_at"] = datetime.utcnow()
         job = await self.jobs.update(job, data)
+        if audit_action:
+            from app.services.audit_service import audit_event
+
+            await audit_event(
+                user_id,
+                audit_action,
+                message=audit_message or f"Updated {job.title}",
+                job_id=job_id,
+                resource_type="job",
+                resource_id=job_id,
+                metadata={"fields": list(data.keys())},
+            )
         return self._to_response(job)
 
     async def track(self, user_id: str, job_id: str) -> JobResponse:
-        result = await self.update(user_id, job_id, JobUpdateRequest(status=JobStatus.TRACKED))
+        job = await self._owned(user_id, job_id)
+        result = await self.update(
+            user_id,
+            job_id,
+            JobUpdateRequest(status=JobStatus.TRACKED),
+            audit_action="job.tracked",
+            audit_message=f"Tracked {job.title}",
+        )
         await self._invalidate_job_cache(user_id)
         return result
 
     async def ignore(self, user_id: str, job_id: str) -> JobResponse:
-        result = await self.update(user_id, job_id, JobUpdateRequest(status=JobStatus.IGNORED))
+        job = await self._owned(user_id, job_id)
+        result = await self.update(
+            user_id,
+            job_id,
+            JobUpdateRequest(status=JobStatus.IGNORED),
+            audit_action="job.ignored",
+            audit_message=f"Ignored {job.title}",
+        )
         await self._invalidate_job_cache(user_id)
         return result
 
@@ -168,6 +202,18 @@ class JobService:
         job.status = JobStatus.MATCHED if breakdown.total >= 0.5 else job.status
         job.updated_at = datetime.utcnow()
         await job.save()
+        from app.services.audit_service import audit_event
+
+        await audit_event(
+            user_id,
+            "job.matched",
+            message=f"Matched {job.title} ({int(breakdown.total * 100)}%)",
+            job_id=str(job.id),
+            resource_type="job",
+            resource_id=str(job.id),
+            source="worker",
+            metadata={"match_score": breakdown.total},
+        )
         return job
 
     async def ingest_external(self, user_id: str, payload) -> JobResponse:
@@ -205,6 +251,19 @@ class JobService:
         )
         await dedupe.remember(user_id, fingerprint)
         await publish("job.match", {"user_id": user_id, "job_id": str(job.id)}, key=user_id)
+        from app.services.audit_service import audit_event
+
+        await audit_event(
+            user_id,
+            "job.ingested",
+            message=f"Ingested {job.title} at {job.company}",
+            job_id=str(job.id),
+            resource_type="job",
+            resource_id=str(job.id),
+            source="extension",
+            severity="success",
+            metadata={"portal": job.portal},
+        )
         await self._invalidate_job_cache(user_id)
         return self._to_response(job)
 
