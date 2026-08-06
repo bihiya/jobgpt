@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+dist/
+coverage/
+*.log
+
+# Env / secrets
+.env
+.env.local
+*.pem
+
+# Runtime data
+/tmp/jobpilot/
+backend/.uploads/
+*.png
+*.csv
+*.xlsx
+*.pdf
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Playwright
+e2e/test-results/
+e2e/playwright-report/
+tsconfig.tsbuildinfo

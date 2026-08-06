@@ -1,0 +1,54 @@
+import { api } from './client';
+
+export { api } from './client';
+export { authApi } from './auth';
+export { jobsApi } from './jobs';
+
+export const companiesApi = {
+  list: (params?: Record<string, unknown>) => api.get('/companies', { params }),
+  create: (payload: Record<string, unknown>) => api.post('/companies', payload),
+  update: (id: string, payload: Record<string, unknown>) => api.patch(`/companies/${id}`, payload),
+  remove: (id: string) => api.delete(`/companies/${id}`),
+};
+
+export const portalsApi = {
+  list: () => api.get('/job-portals'),
+  create: (payload: Record<string, unknown>) => api.post('/job-portals', payload),
+  update: (id: string, payload: Record<string, unknown>) => api.patch(`/job-portals/${id}`, payload),
+  sync: (id: string) => api.post(`/job-portals/${id}/sync`),
+  remove: (id: string) => api.delete(`/job-portals/${id}`),
+};
+
+export const applicationsApi = {
+  list: (params?: Record<string, unknown>) => api.get('/applications', { params }),
+  create: (payload: { job_id: string; resume_id?: string }) => api.post('/applications', payload),
+  retry: (id: string) => api.post(`/applications/${id}/retry`),
+};
+
+export const reportsApi = {
+  list: () => api.get('/reports'),
+  create: (payload: Record<string, unknown>) => api.post('/reports', payload),
+  analytics: () => api.get('/reports/analytics'),
+  download: (id: string) => api.get(`/reports/${id}/download`, { responseType: 'blob' }),
+};
+
+export const automationApi = {
+  status: () => api.get('/automation/status'),
+  logs: (params?: Record<string, unknown>) => api.get('/automation/logs', { params }),
+  run: (job_type = 'fetch') => api.post(`/automation/run?job_type=${job_type}`),
+};
+
+export const settingsApi = {
+  get: () => api.get('/settings'),
+  update: (payload: Record<string, unknown>) => api.patch('/settings', payload),
+};
+
+export const usersApi = {
+  me: () => api.get('/users/me'),
+  update: (payload: Record<string, unknown>) => api.patch('/users/me', payload),
+  resumes: () => api.get('/users/me/resumes'),
+  uploadResume: (form: FormData) =>
+    api.post('/users/me/resumes', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+};

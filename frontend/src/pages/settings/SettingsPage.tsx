@@ -1,0 +1,68 @@
+import { Button, FormControlLabel, Stack, Switch, TextField, Typography } from '@mui/material';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { settingsApi } from '../../api';
+
+export default function SettingsPage() {
+  const queryClient = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ['settings'],
+    queryFn: async () => (await settingsApi.get()).data,
+  });
+  const [form, setForm] = useState({
+    match_threshold: 0.7,
+    auto_apply: true,
+    max_applications_per_day: 50,
+    headless: true,
+    timezone: 'UTC',
+    notification_email: true,
+  });
+
+  useEffect(() => {
+    if (data) setForm(data);
+  }, [data]);
+
+  const saveMutation = useMutation({
+    mutationFn: () => settingsApi.update(form),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['settings'] }),
+  });
+
+  return (
+    <Stack spacing={2} maxWidth={560}>
+      <Typography variant="h4">Settings</Typography>
+      <TextField
+        label="Match threshold"
+        type="number"
+        inputProps={{ step: 0.05, min: 0, max: 1 }}
+        value={form.match_threshold}
+        onChange={(e) => setForm({ ...form, match_threshold: Number(e.target.value) })}
+      />
+      <TextField
+        label="Max applications / day"
+        type="number"
+        value={form.max_applications_per_day}
+        onChange={(e) => setForm({ ...form, max_applications_per_day: Number(e.target.value) })}
+      />
+      <TextField
+        label="Timezone"
+        value={form.timezone}
+        onChange={(e) => setForm({ ...form, timezone: e.target.value })}
+      />
+      <FormControlLabel
+        control={<Switch checked={form.auto_apply} onChange={(e) => setForm({ ...form, auto_apply: e.target.checked })} />}
+        label="Auto apply matched jobs"
+      />
+      <FormControlLabel
+        control={<Switch checked={form.headless} onChange={(e) => setForm({ ...form, headless: e.target.checked })} />}
+        label="Headless browser automation"
+      />
+      <FormControlLabel
+        control={<Switch checked={form.notification_email} onChange={(e) => setForm({ ...form, notification_email: e.target.checked })} />}
+        label="Email notifications"
+      />
+      <Button variant="contained" onClick={() => saveMutation.mutate()} sx={{ alignSelf: 'flex-start' }}>
+        Save settings
+      </Button>
+    </Stack>
+  );
+}
