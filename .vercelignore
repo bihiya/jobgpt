@@ -1,0 +1,16 @@
+e2e
+k8s
+monitoring
+docs
+chrome-extension
+marketing
+backend/tests
+frontend/tests
+**/.venv
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/coverage
+**/*.pyc

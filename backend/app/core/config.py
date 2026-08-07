@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _default_kafka_enabled() -> bool:
+    # Vercel serverless cannot host Kafka consumers / long-lived producers reliably.
+    return not bool(os.getenv("VERCEL"))
 
 
 class Settings(BaseSettings):
@@ -44,7 +50,7 @@ class Settings(BaseSettings):
     otel_enabled: bool = False
     otel_exporter_endpoint: str = "http://otel-collector:4317"
 
-    kafka_enabled: bool = True
+    kafka_enabled: bool = Field(default_factory=_default_kafka_enabled)
     kafka_bootstrap_servers: str = "kafka:9092"
     kafka_client_id: str = "jobpilot-api"
     kafka_group_id: str = "jobpilot-workers"
