@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -40,28 +41,41 @@ logger = get_logger(__name__)
 
 REQUEST_COUNTER = Counter("jobpilot_http_requests_total", "Total HTTP requests", ["method", "path"])
 
+# Vercel sets VERCEL=1 on every deployment. Serverless cannot run Kafka workers / Playwright.
+_ON_VERCEL = bool(os.getenv("VERCEL"))
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     for directory in (settings.upload_dir, settings.screenshot_dir, settings.report_dir):
         Path(directory).mkdir(parents=True, exist_ok=True)
-    await connect_to_mongo()
+    try:
+        await connect_to_mongo()
+    except Exception as exc:  # noqa: BLE001
+        # On Vercel, allow cold start so /health still responds while Atlas env is configured.
+        if _ON_VERCEL:
+            logger.warning("mongodb_connect_failed_vercel", error=str(exc))
+        else:
+            raise
     if settings.app_env != "test":
         try:
             await ping_redis()
             await start_realtime_bridge()
         except Exception as exc:  # noqa: BLE001
             logger.warning("redis_ping_failed", error=str(exc))
-        try:
-            start_scheduler()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("scheduler_start_skipped", error=str(exc))
-    logger.info("app_started", env=settings.app_env)
+        # APScheduler is a long-lived process model — skip on Vercel serverless.
+        if not _ON_VERCEL:
+            try:
+                start_scheduler()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("scheduler_start_skipped", error=str(exc))
+    logger.info("app_started", env=settings.app_env, vercel=_ON_VERCEL)
     try:
         yield
     finally:
         # Graceful shutdown order: stop intake → drain → close IO
-        stop_scheduler()
+        if not _ON_VERCEL:
+            stop_scheduler()
         await stop_realtime_bridge()
         await close_producer()
         await close_redis()
