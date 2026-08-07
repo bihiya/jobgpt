@@ -6,12 +6,11 @@ import {
   Typography,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { memo, useMemo, useState } from 'react';
 import { calendarApi } from '../../api';
 import PageShell from '../../components/common/PageShell';
-import PageSkeleton from '../../components/common/PageSkeleton';
 
 function CalendarPage() {
   const [cursor, setCursor] = useState(dayjs());
@@ -19,12 +18,13 @@ function CalendarPage() {
   const month = cursor.month() + 1;
   const year = cursor.year();
 
-  const { data: events, isLoading } = useQuery({
+  const { data: events, isLoading, isFetching } = useQuery({
     queryKey: ['calendar', year, month],
     queryFn: async () => (await calendarApi.month(month, year)).data as Array<any>,
+    placeholderData: keepPreviousData,
   });
 
-  const { data: due } = useQuery({
+  const { data: due, isLoading: dueLoading, isFetching: dueFetching } = useQuery({
     queryKey: ['reminders-due'],
     queryFn: async () => (await calendarApi.dueReminders()).data as Array<any>,
   });
@@ -51,10 +51,11 @@ function CalendarPage() {
   const daysInMonth = cursor.daysInMonth();
   const startWeekday = cursor.startOf('month').day();
 
-  if (isLoading) return <PageSkeleton />;
+  const loading = isLoading || dueLoading;
+  const fetching = !loading && (isFetching || dueFetching);
 
   return (
-    <PageShell>
+    <PageShell loading={loading} fetching={fetching} busy={complete.isPending}>
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
         justifyContent="space-between"
@@ -94,8 +95,13 @@ function CalendarPage() {
                 alignItems={{ sm: 'center' }}
               >
                 <Typography sx={{ flex: 1 }}>{item.title}</Typography>
-                <Button size="small" variant="contained" onClick={() => complete.mutate(item.id)}>
-                  Done
+                <Button
+                  size="small"
+                  variant="contained"
+                  disabled={complete.isPending}
+                  onClick={() => complete.mutate(item.id)}
+                >
+                  {complete.isPending ? 'Saving…' : 'Done'}
                 </Button>
               </Stack>
             ))}

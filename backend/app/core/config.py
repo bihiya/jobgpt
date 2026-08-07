@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     otel_enabled: bool = False
     otel_exporter_endpoint: str = "http://otel-collector:4317"
 
+    kafka_enabled: bool = True
     kafka_bootstrap_servers: str = "kafka:9092"
     kafka_client_id: str = "jobpilot-api"
     kafka_group_id: str = "jobpilot-workers"
@@ -108,6 +109,9 @@ class Settings(BaseSettings):
     match_threshold: float = 0.7
     max_applications_per_day: int = 50
     playwright_headless: bool = True
+    # Use installed browser when Playwright's bundled Chromium is unavailable
+    # (e.g. macOS 12). Common values: "chrome", "msedge", "chromium".
+    playwright_channel: str | None = None
     upload_dir: str = "/tmp/jobpilot/uploads"
     screenshot_dir: str = "/tmp/jobpilot/screenshots"
     report_dir: str = "/tmp/jobpilot/reports"

@@ -28,7 +28,7 @@ export default function CompaniesPage() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(empty);
   const queryClient = useQueryClient();
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ['companies'],
     queryFn: async () => (await companiesApi.list()).data,
   });
@@ -65,15 +65,24 @@ export default function CompaniesPage() {
       headerName: '',
       width: 110,
       renderCell: (params) => (
-        <Button color="error" size="small" onClick={() => deleteMutation.mutate(params.row.id)}>
-          Delete
+        <Button
+          color="error"
+          size="small"
+          disabled={deleteMutation.isPending}
+          onClick={() => deleteMutation.mutate(params.row.id)}
+        >
+          {deleteMutation.isPending ? '…' : 'Delete'}
         </Button>
       ),
     },
   ];
 
   return (
-    <PageShell>
+    <PageShell
+      loading={isLoading}
+      fetching={!isLoading && isFetching}
+      busy={createMutation.isPending || deleteMutation.isPending}
+    >
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
         justifyContent="space-between"
@@ -89,7 +98,7 @@ export default function CompaniesPage() {
         autoHeight
         rows={data?.items || []}
         columns={columns}
-        loading={isLoading}
+        loading={isFetching}
         pageSizeOptions={[10, 25]}
         initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
         sx={{ bgcolor: 'background.paper', borderRadius: 3, width: '100%' }}

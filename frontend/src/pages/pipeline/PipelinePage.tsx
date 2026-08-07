@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { memo, useMemo, useState } from 'react';
 import { jobsApi } from '../../api';
 import PageShell from '../../components/common/PageShell';
-import PageSkeleton from '../../components/common/PageSkeleton';
 import JobDetailDrawer, { type JobDetail } from '../../components/jobs/JobDetailDrawer';
 import { useRequireAuth } from '../../hooks/useRequireAuth';
 import { useToast } from '../../hooks/useToast';
@@ -34,7 +33,7 @@ function PipelinePage() {
   const { apiError } = useToast();
   const [drawerJob, setDrawerJob] = useState<JobDetail | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ['pipeline'],
     queryFn: async () => (await jobsApi.pipeline()).data,
   });
@@ -52,10 +51,13 @@ function PipelinePage() {
   const columns = useMemo(() => data?.columns || {}, [data]);
   const counts = useMemo(() => data?.counts || {}, [data]);
 
-  if (isLoading) return <PageSkeleton />;
-
   return (
-    <PageShell spacing={2}>
+    <PageShell
+      spacing={2}
+      loading={isLoading}
+      fetching={!isLoading && isFetching}
+      busy={move.isPending}
+    >
       <Box>
         <Typography variant="h4" sx={{ fontFamily: '"Fraunces", Georgia, serif' }}>
           Pipeline

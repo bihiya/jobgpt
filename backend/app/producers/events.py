@@ -1,12 +1,43 @@
-"""Typed Kafka event producers."""
+"""Typed Kafka event producers with local/dev inline fallbacks."""
 
+from __future__ import annotations
+
+import asyncio
 from typing import Any
 
+from app.core.config import settings
+from app.core.exceptions import ServiceUnavailableError
 from app.core.kafka import publish
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 
-async def publish_job_fetch(user_id: str, **extra: Any) -> None:
-    await publish("job.fetch", {"user_id": user_id, **extra}, key=user_id)
+async def _inline_fetch(payload: dict[str, Any]) -> None:
+    try:
+        from app.workers.fetch_worker import FetchWorker
+
+        await FetchWorker().handle("job.fetch", payload)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("inline_fetch_failed", error=str(exc), user_id=payload.get("user_id"))
+
+
+async def publish_job_fetch(user_id: str, **extra: Any) -> str:
+    """Queue a fetch. Returns 'kafka' or 'inline' (dev fallback when Kafka is down)."""
+    payload = {"user_id": user_id, **extra}
+    try:
+        await publish("job.fetch", payload, key=user_id)
+        return "kafka"
+    except ServiceUnavailableError as exc:
+        if settings.app_env in {"development", "test"} or not settings.kafka_enabled:
+            logger.warning(
+                "job_fetch_inline_fallback",
+                error=str(exc.message),
+                user_id=user_id,
+            )
+            asyncio.create_task(_inline_fetch(payload))
+            return "inline"
+        raise
 
 
 async def publish_job_match(user_id: str, job_id: str, **extra: Any) -> None:

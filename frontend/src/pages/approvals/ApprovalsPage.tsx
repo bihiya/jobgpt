@@ -18,7 +18,6 @@ import { memo, useCallback, useMemo, useState } from 'react';
 import { approvalsApi, applicationsApi, jobsApi, questionsApi, settingsApi } from '../../api';
 import ApplySessionTimeline from '../../components/automation/ApplySessionTimeline';
 import PageShell from '../../components/common/PageShell';
-import PageSkeleton from '../../components/common/PageSkeleton';
 import JobDetailDrawer, { type JobDetail } from '../../components/jobs/JobDetailDrawer';
 import { useRequireAuth } from '../../hooks/useRequireAuth';
 import { useToast } from '../../hooks/useToast';
@@ -40,17 +39,17 @@ function ApprovalsPage() {
   const [otpCode, setOtpCode] = useState('');
   const { apiError, success } = useToast();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ['approvals'],
     queryFn: async () => (await approvalsApi.list({ status: 'pending', page_size: 50 })).data,
   });
 
-  const { data: blockers } = useQuery({
+  const { data: blockers, isLoading: blockersLoading, isFetching: blockersFetching } = useQuery({
     queryKey: ['approval-blockers'],
     queryFn: async () => (await approvalsApi.blockers()).data,
   });
 
-  const { data: settings } = useQuery({
+  const { data: settings, isLoading: settingsLoading, isFetching: settingsFetching } = useQuery({
     queryKey: ['settings'],
     queryFn: async () => (await settingsApi.get()).data,
   });
@@ -156,16 +155,18 @@ function ApprovalsPage() {
             <Button
               size="small"
               variant="contained"
+              disabled={decide.isPending}
               onClick={() => {
                 if (!requireAuth('Sign in to approve applications')) return;
                 decide.mutate({ id: params.row.id, approve: true });
               }}
             >
-              Approve
+              {decide.isPending ? '…' : 'Approve'}
             </Button>
             <Button
               size="small"
               color="inherit"
+              disabled={decide.isPending}
               onClick={() => {
                 if (!requireAuth('Sign in to reject applications')) return;
                 decide.mutate({ id: params.row.id, approve: false });
@@ -180,12 +181,18 @@ function ApprovalsPage() {
     [decide, openJob, requireAuth],
   );
 
-  if (isLoading) return <PageSkeleton />;
+  const loading = isLoading || blockersLoading || settingsLoading;
+  const fetching =
+    !loading && (isFetching || blockersFetching || settingsFetching);
 
   const blockerList = Array.isArray(blockers) ? blockers : [];
 
   return (
-    <PageShell>
+    <PageShell
+      loading={loading}
+      fetching={fetching}
+      busy={decide.isPending || batch.isPending}
+    >
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2}>
         <div>
           <Typography variant="h4">Approvals</Typography>

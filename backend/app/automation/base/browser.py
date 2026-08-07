@@ -26,14 +26,40 @@ class BaseBrowser:
         self.cookies = cookies or []
         self.last_cookies: list[dict[str, Any]] = []
 
+    async def _launch(self, playwright: Any) -> Browser:
+        launch_args: dict[str, Any] = {"headless": self.headless}
+        if self.proxy and self.proxy.get("server"):
+            launch_args["proxy"] = self.proxy
+
+        channel = (settings.playwright_channel or "").strip() or None
+        if channel:
+            launch_args["channel"] = channel
+            browser = await playwright.chromium.launch(**launch_args)
+            logger.info("browser_launched", channel=channel, headless=self.headless)
+            return browser
+
+        try:
+            browser = await playwright.chromium.launch(**launch_args)
+            logger.info("browser_launched", channel="bundled", headless=self.headless)
+            return browser
+        except Exception as exc:  # noqa: BLE001
+            message = str(exc)
+            if "Executable doesn't exist" not in message and "does not support" not in message:
+                raise
+            # macOS 12+ and fresh installs often lack bundled Chromium; use system Chrome.
+            launch_args["channel"] = "chrome"
+            browser = await playwright.chromium.launch(**launch_args)
+            logger.warning(
+                "browser_fallback_channel",
+                channel="chrome",
+                reason=message[:200],
+            )
+            return browser
+
     @asynccontextmanager
     async def session(self) -> AsyncIterator[tuple[Browser, BrowserContext, Page]]:
         async with async_playwright() as playwright:
-            launch_args: dict[str, Any] = {"headless": self.headless}
-            if self.proxy and self.proxy.get("server"):
-                launch_args["proxy"] = self.proxy
-
-            browser = await playwright.chromium.launch(**launch_args)
+            browser = await self._launch(playwright)
             context = await browser.new_context(
                 viewport={"width": 1440, "height": 900},
                 user_agent=(

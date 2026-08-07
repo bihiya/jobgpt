@@ -28,7 +28,7 @@ export default function PortalsPage() {
   const [password, setPassword] = useState('');
   const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ['portals'],
     queryFn: async () => (await portalsApi.list()).data,
   });
@@ -72,15 +72,24 @@ export default function PortalsPage() {
       headerName: '',
       width: 140,
       renderCell: (params) => (
-        <Button size="small" variant="outlined" onClick={() => syncMutation.mutate(params.row.id)}>
-          Sync
+        <Button
+          size="small"
+          variant="outlined"
+          disabled={syncMutation.isPending}
+          onClick={() => syncMutation.mutate(params.row.id)}
+        >
+          {syncMutation.isPending ? 'Syncing…' : 'Sync'}
         </Button>
       ),
     },
   ];
 
   return (
-    <PageShell>
+    <PageShell
+      loading={isLoading}
+      fetching={!isLoading && isFetching}
+      busy={createMutation.isPending || syncMutation.isPending}
+    >
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
         justifyContent="space-between"
@@ -94,7 +103,7 @@ export default function PortalsPage() {
         autoHeight
         rows={data || []}
         columns={columns}
-        loading={isLoading}
+        loading={isFetching}
         pageSizeOptions={[10, 25]}
         initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
         sx={{ bgcolor: 'background.paper', borderRadius: 3, width: '100%' }}

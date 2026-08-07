@@ -36,17 +36,31 @@ class SettingsService:
     async def update(self, user_id: str, payload: SettingsUpdate) -> SettingsResponse:
         doc = await self.settings_repo.get_or_create(user_id)
         data = payload.model_dump(exclude_unset=True)
+        before = {key: getattr(doc, key, None) for key in data}
         data["updated_at"] = datetime.utcnow()
         doc = await self.settings_repo.update(doc, data)
-        from app.services.audit_service import audit_event
+        from app.services.audit_service import audit_event, changes_metadata
 
+        changed = [k for k in data if k != "updated_at"]
         await audit_event(
             user_id,
             "settings.updated",
-            message="Settings updated",
+            message=(
+                f"changed {', '.join(changed[:4])}"
+                + ("…" if len(changed) > 4 else "")
+                if changed
+                else "updated account settings"
+            ),
             resource_type="settings",
             resource_id=user_id,
             severity="success",
-            metadata={"fields": list(data.keys())},
+            metadata=changes_metadata(
+                before,
+                data,
+                extra={
+                    "outcome": "Passed",
+                    "next_step": "New settings apply on the next fetch, match, or apply run.",
+                },
+            ),
         )
         return self._to_response(doc)

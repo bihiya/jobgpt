@@ -16,7 +16,6 @@ import {
 import { memo, useCallback, useMemo, useState } from 'react';
 import { applicationsApi, jobsApi } from '../../api';
 import PageShell from '../../components/common/PageShell';
-import PageSkeleton from '../../components/common/PageSkeleton';
 import VirtualizedJobList from '../../components/jobs/VirtualizedJobList';
 import JobDetailDrawer, { type JobDetail } from '../../components/jobs/JobDetailDrawer';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
@@ -214,12 +213,15 @@ function JobsPage({ mode = 'all' }: { mode?: Mode }) {
     [infiniteQuery.data],
   );
 
-  if ((!virtualized && listQuery.isLoading) || (virtualized && infiniteQuery.isLoading)) {
-    return <PageSkeleton />;
-  }
+  const loading =
+    (!virtualized && listQuery.isLoading) || (virtualized && infiniteQuery.isLoading);
+  const fetching =
+    !loading &&
+    ((!virtualized && listQuery.isFetching) ||
+      (virtualized && (infiniteQuery.isFetching || infiniteQuery.isFetchingNextPage)));
 
   return (
-    <PageShell>
+    <PageShell loading={loading} fetching={fetching}>
       <Typography variant="h4">{titleMap[mode]}</Typography>
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }}>
         <TextField

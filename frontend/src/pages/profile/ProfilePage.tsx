@@ -9,11 +9,15 @@ import { useToast } from '../../hooks/useToast';
 export default function ProfilePage() {
   const queryClient = useQueryClient();
   const { apiSuccess, apiError } = useToast();
-  const { data } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ['profile'],
     queryFn: async () => (await usersApi.me()).data,
   });
-  const { data: activity } = useQuery({
+  const {
+    data: activity,
+    isLoading: activityLoading,
+    isFetching: activityFetching,
+  } = useQuery({
     queryKey: ['user-activity', 'profile'],
     queryFn: async () => (await usersApi.activity({ page_size: 20 })).data,
   });
@@ -63,7 +67,9 @@ export default function ProfilePage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['profile'] }),
   });
 
+  const [uploading, setUploading] = useState(false);
   const uploadResume = async (file: File) => {
+    setUploading(true);
     try {
       const body = new FormData();
       body.append('file', file);
@@ -73,11 +79,19 @@ export default function ProfilePage() {
       void queryClient.invalidateQueries({ queryKey: ['profile'] });
     } catch (err) {
       apiError(err, 'Resume upload failed');
+    } finally {
+      setUploading(false);
     }
   };
 
   return (
-    <PageShell sx={{ maxWidth: 720 }}>
+    <PageShell
+      sx={{ maxWidth: 720 }}
+      skeleton="form"
+      loading={isLoading || activityLoading}
+      fetching={(!isLoading && isFetching) || (!activityLoading && activityFetching)}
+      busy={saveMutation.isPending || uploading}
+    >
       <Typography variant="h4">Profile</Typography>
       <TextField label="Full name" value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} fullWidth />
       <TextField label="Skills (comma separated)" value={form.skills} onChange={(e) => setForm({ ...form, skills: e.target.value })} fullWidth />
@@ -94,8 +108,8 @@ export default function ProfilePage() {
         <Button variant="contained" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
           {saveMutation.isPending ? 'Saving…' : 'Save profile'}
         </Button>
-        <Button variant="outlined" component="label">
-          Upload resume
+        <Button variant="outlined" component="label" disabled={uploading}>
+          {uploading ? 'Uploading…' : 'Upload resume'}
           <input
             hidden
             type="file"
