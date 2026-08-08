@@ -40,3 +40,5 @@ e2e/playwright-report/
 tsconfig.tsbuildinfo
 
 !frontend/public/*.png
+.vercel
+.env*

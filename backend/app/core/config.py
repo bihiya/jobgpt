@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import os
 from functools import lru_cache
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 def _default_kafka_enabled() -> bool:
@@ -104,7 +104,8 @@ class Settings(BaseSettings):
     imap_default_host: str = "imap.gmail.com"
     imap_default_port: int = 993
 
-    cors_origins: list[str] = Field(
+    # NoDecode: allow comma-separated CORS_ORIGINS env (Vercel) without JSON parsing.
+    cors_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["http://localhost:5173", "http://localhost:3000"]
     )
 
@@ -129,8 +130,20 @@ class Settings(BaseSettings):
     @classmethod
     def parse_cors(cls, value: str | list[str]) -> list[str]:
         if isinstance(value, str):
-            return [origin.strip() for origin in value.split(",") if origin.strip()]
+            raw = value.strip()
+            if raw.startswith("["):
+                import json
+
+                parsed = json.loads(raw)
+                if not isinstance(parsed, list):
+                    raise ValueError("CORS_ORIGINS JSON must be a list of strings")
+                return [str(origin).strip() for origin in parsed if str(origin).strip()]
+            return [origin.strip() for origin in raw.split(",") if origin.strip()]
         return value
+
+
+# Required when using Annotated[..., NoDecode] with `from __future__ import annotations`.
+Settings.model_rebuild()
 
 
 @lru_cache
