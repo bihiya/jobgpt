@@ -20,21 +20,8 @@ export default defineConfig({
     minify: 'esbuild', // code minification
     cssCodeSplit: true,
     sourcemap: false,
-    rollupOptions: {
-      output: {
-        // Bundle / vendor splitting for better caching + tree-shaking boundaries
-        manualChunks(id) {
-          if (!id.includes('node_modules')) return;
-          if (id.includes('@mui')) return 'vendor-mui';
-          if (id.includes('recharts')) return 'vendor-charts';
-          if (id.includes('@tanstack') || id.includes('react-query')) return 'vendor-query';
-          if (id.includes('react-router')) return 'vendor-router';
-          if (id.includes('@reduxjs') || id.includes('react-redux')) return 'vendor-redux';
-          if (id.includes('react-dom') || id.includes('/react/')) return 'vendor-react';
-          return 'vendor';
-        },
-      },
-    },
+    // Avoid custom manualChunks: splitting React/Emotion/MUI across files caused
+    // production TDZ crashes ("Cannot access 'X' before initialization").
     chunkSizeWarningLimit: 900,
   },
   server: {
