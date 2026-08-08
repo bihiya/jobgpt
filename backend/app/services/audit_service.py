@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from enum import Enum
 from math import ceil
 from typing import Any
 
@@ -10,10 +11,70 @@ from app.core.logging import get_logger
 from app.models.automation_log import AuditLog
 from app.repository.audit_repository import AuditLogRepository
 from app.repository.job_repository import JobRepository
+from app.repository.user_repository import UserRepository
 from app.schemas.audit import AuditLogResponse
 from app.schemas.common import PaginatedResponse
+from app.services.activity_narratives import narrate_activity
 
 logger = get_logger(__name__)
+
+_DEFAULT_DIFF_EXCLUDE = frozenset({"updated_at", "created_at", "password", "password_hash", "hashed_password"})
+
+
+def _serialize_diff_value(value: Any) -> Any:
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, dict):
+        return {str(k): _serialize_diff_value(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_serialize_diff_value(v) for v in value]
+    if hasattr(value, "isoformat"):
+        try:
+            return value.isoformat()
+        except Exception:  # noqa: BLE001
+            pass
+    return str(value)
+
+
+def build_field_changes(
+    before: dict[str, Any],
+    after: dict[str, Any],
+    *,
+    exclude: set[str] | frozenset[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Return [{field, from, to}, ...] for keys that actually changed."""
+    skip = set(_DEFAULT_DIFF_EXCLUDE)
+    if exclude:
+        skip |= set(exclude)
+    changes: list[dict[str, Any]] = []
+    for key in sorted(set(before) | set(after)):
+        if key in skip:
+            continue
+        old = _serialize_diff_value(before.get(key))
+        new = _serialize_diff_value(after.get(key))
+        if old == new:
+            continue
+        changes.append({"field": key, "from": old, "to": new})
+    return changes
+
+
+def changes_metadata(
+    before: dict[str, Any],
+    after: dict[str, Any],
+    *,
+    exclude: set[str] | frozenset[str] | None = None,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    changes = build_field_changes(before, after, exclude=exclude)
+    meta: dict[str, Any] = {
+        "fields": [c["field"] for c in changes],
+        "changes": changes,
+    }
+    if extra:
+        meta.update(extra)
+    return meta
 
 
 class AuditService:
@@ -21,29 +82,76 @@ class AuditService:
         self,
         audits: AuditLogRepository | None = None,
         jobs: JobRepository | None = None,
+        users: UserRepository | None = None,
     ) -> None:
         self.audits = audits or AuditLogRepository()
         self.jobs = jobs or JobRepository()
+        self.users = users or UserRepository()
 
-    def _to_response(self, row: AuditLog) -> AuditLogResponse:
+    def _to_response(
+        self,
+        row: AuditLog,
+        *,
+        actor_name: str = "",
+    ) -> AuditLogResponse:
+        source = row.source or "user"
+        if source in {"worker", "system"}:
+            display_actor = "JobPilot"
+        else:
+            display_actor = actor_name or "You"
+        story = narrate_activity(
+            actor_name=display_actor,
+            action=row.action,
+            message=row.message or row.action,
+            source=source,
+            severity=row.severity or "info",
+            metadata=row.metadata or {},
+        )
+        meta = dict(row.metadata or {})
+        meta.setdefault("outcome", story["outcome"])
+        meta.setdefault("next_step", story["next_step"])
         return AuditLogResponse(
             id=str(row.id),
             user_id=row.user_id,
             actor_id=row.actor_id or row.user_id,
+            actor_name=story["actor_name"],
             action=row.action,
             message=row.message or row.action,
+            summary=story["summary"],
+            outcome=story["outcome"],
+            next_step=story["next_step"],
             resource=row.resource,
             resource_type=row.resource_type,
             resource_id=row.resource_id,
             job_id=row.job_id or "",
             application_id=row.application_id or "",
-            source=row.source,
+            source=source,
             severity=row.severity,
             ip=row.ip,
             user_agent=row.user_agent,
-            metadata=row.metadata or {},
+            metadata=meta,
             created_at=row.created_at.isoformat(),
         )
+
+    async def _actor_names(self, rows: list[AuditLog]) -> dict[str, str]:
+        ids = {((row.actor_id or row.user_id) or "") for row in rows}
+        ids.discard("")
+        names: dict[str, str] = {}
+        for actor_id in ids:
+            user = await self.users.get_by_id(actor_id)
+            if user:
+                names[actor_id] = user.full_name or user.email or "You"
+        return names
+
+    async def _to_responses(self, rows: list[AuditLog]) -> list[AuditLogResponse]:
+        names = await self._actor_names(rows)
+        return [
+            self._to_response(
+                row,
+                actor_name=names.get(row.actor_id or row.user_id, ""),
+            )
+            for row in rows
+        ]
 
     async def record(
         self,
@@ -127,7 +235,7 @@ class AuditService:
             resource_type=resource_type,
         )
         return PaginatedResponse(
-            items=[self._to_response(i) for i in items],
+            items=await self._to_responses(items),
             total=total,
             page=page,
             page_size=page_size,
@@ -149,7 +257,7 @@ class AuditService:
             user_id, job_id, page=page, page_size=page_size
         )
         return PaginatedResponse(
-            items=[self._to_response(i) for i in items],
+            items=await self._to_responses(items),
             total=total,
             page=page,
             page_size=page_size,

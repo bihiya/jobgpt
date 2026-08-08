@@ -16,7 +16,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { memo, useCallback, useMemo, useState } from 'react';
 import { questionsApi } from '../../api';
 import PageShell from '../../components/common/PageShell';
-import PageSkeleton from '../../components/common/PageSkeleton';
 import { useRequireAuth } from '../../hooks/useRequireAuth';
 
 function QuestionsPage() {
@@ -28,7 +27,7 @@ function QuestionsPage() {
   const [search, setSearch] = useState('');
   const [learnedOnly, setLearnedOnly] = useState(false);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ['questions'],
     queryFn: async () => (await questionsApi.list()).data,
   });
@@ -123,10 +122,12 @@ function QuestionsPage() {
     [remove, requireAuth],
   );
 
-  if (isLoading) return <PageSkeleton />;
-
   return (
-    <PageShell>
+    <PageShell
+      loading={isLoading}
+      fetching={!isLoading && isFetching}
+      busy={upsert.isPending || remove.isPending}
+    >
       <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={2}>
         <div>
           <Typography variant="h4">Question bank</Typography>

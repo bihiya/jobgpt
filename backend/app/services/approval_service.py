@@ -252,15 +252,28 @@ class ApprovalService:
         )
         from app.services.audit_service import audit_event
 
+        job_label = (job.title if job else "") or approval.summary or approval.job_id
         await audit_event(
             user_id,
             "approval.approved" if approve else "approval.rejected",
-            message="Approved application" if approve else "Rejected application",
+            message=(
+                f"Approved “{job_label}” — apply will start next"
+                if approve
+                else f"Rejected “{job_label}” — will not apply"
+            ),
             job_id=approval.job_id,
             resource_type="approval",
             resource_id=str(approval.id),
             severity="success" if approve else "warning",
-            metadata={"note": note},
+            metadata={
+                "note": note,
+                "outcome": "Passed" if approve else "Stopped",
+                "next_step": (
+                    "Watch Automation for apply progress."
+                    if approve
+                    else "No further action on this job."
+                ),
+            },
         )
         return {"id": str(approval.id), "status": approval.status}
 

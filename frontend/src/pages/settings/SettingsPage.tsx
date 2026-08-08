@@ -6,7 +6,7 @@ import PageShell from '../../components/common/PageShell';
 
 export default function SettingsPage() {
   const queryClient = useQueryClient();
-  const { data } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ['settings'],
     queryFn: async () => (await settingsApi.get()).data,
   });
@@ -35,7 +35,13 @@ export default function SettingsPage() {
   });
 
   return (
-    <PageShell sx={{ maxWidth: 560 }}>
+    <PageShell
+      sx={{ maxWidth: 560 }}
+      skeleton="form"
+      loading={isLoading}
+      fetching={!isLoading && isFetching}
+      busy={saveMutation.isPending}
+    >
       <Typography variant="h4">Settings</Typography>
       <TextField
         label="Match threshold"

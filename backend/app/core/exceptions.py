@@ -59,3 +59,12 @@ class ValidationAppError(AppException):
 class RateLimitError(AppException):
     def __init__(self, message: str = "Rate limit exceeded") -> None:
         super().__init__(message=message, code="RATE_LIMIT", status_code=429)
+
+
+class ServiceUnavailableError(AppException):
+    def __init__(
+        self,
+        message: str = "Service unavailable",
+        code: str = "SERVICE_UNAVAILABLE",
+    ) -> None:
+        super().__init__(message=message, code=code, status_code=503)

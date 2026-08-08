@@ -1,58 +1,163 @@
-import { Button, Stack, Typography } from '@mui/material';
+import {
+  Alert,
+  Button,
+  Chip,
+  Stack,
+  Typography,
+} from '@mui/material';
 import { DataGrid, GridColDef } from '@mui/x-data-grid';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';
+import { useMemo, useState } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
 import { automationApi } from '../../api';
 import PageShell from '../../components/common/PageShell';
 
+dayjs.extend(relativeTime);
+
+type LogRow = {
+  id: string;
+  created_at: string;
+  portal?: string;
+  action: string;
+  level: string;
+  message: string;
+};
+
+function levelColor(level?: string): 'default' | 'success' | 'warning' | 'error' | 'info' {
+  if (level === 'success') return 'success';
+  if (level === 'warning') return 'warning';
+  if (level === 'error') return 'error';
+  if (level === 'info') return 'info';
+  return 'default';
+}
+
 export default function AutomationPage() {
   const queryClient = useQueryClient();
-  const { data: status } = useQuery({
+  const [pollUntil, setPollUntil] = useState(0);
+
+  const { data: status, isLoading: statusLoading, isFetching: statusFetching } = useQuery({
     queryKey: ['automation-status'],
     queryFn: async () => (await automationApi.status()).data,
+    refetchInterval: Date.now() < pollUntil ? 1500 : false,
   });
-  const { data: logs, isLoading } = useQuery({
+  const { data: logs, isLoading, isFetching } = useQuery({
     queryKey: ['automation-logs'],
     queryFn: async () => (await automationApi.logs({ page_size: 50 })).data,
+    refetchInterval: Date.now() < pollUntil ? 1500 : false,
   });
+  const loading = statusLoading || isLoading;
+  const fetching = !loading && (statusFetching || isFetching);
 
   const runMutation = useMutation({
     mutationFn: (jobType: string) => automationApi.run(jobType),
     meta: { successMessage: 'Worker triggered', errorMessage: 'Could not run worker' },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['automation-status'] });
-      queryClient.invalidateQueries({ queryKey: ['automation-logs'] });
+      // Keep refreshing for a few seconds while the inline/async worker writes logs.
+      setPollUntil(Date.now() + 12_000);
+      void queryClient.invalidateQueries({ queryKey: ['automation-status'] });
+      void queryClient.invalidateQueries({ queryKey: ['automation-logs'] });
+      void queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      void queryClient.invalidateQueries({ queryKey: ['portals'] });
     },
   });
 
-  const columns: GridColDef[] = [
-    { field: 'created_at', headerName: 'Time', flex: 1, minWidth: 140 },
-    { field: 'portal', headerName: 'Portal', width: 140 },
-    { field: 'action', headerName: 'Action', width: 120 },
-    { field: 'level', headerName: 'Level', width: 100 },
-    { field: 'message', headerName: 'Message', flex: 1.5, minWidth: 180 },
-  ];
+  const rows = useMemo<LogRow[]>(() => logs?.items || [], [logs?.items]);
+  const emptyHint =
+    !rows.length &&
+    'No automation logs yet. Click “Run fetch” — progress will appear here (portal sync, jobs found, errors).';
+
+  const columns: GridColDef[] = useMemo(
+    () => [
+      {
+        field: 'created_at',
+        headerName: 'Time',
+        flex: 0.9,
+        minWidth: 150,
+        valueFormatter: (value: string) =>
+          value ? dayjs(value).format('MMM D, h:mm:ss A') : '—',
+      },
+      {
+        field: 'portal',
+        headerName: 'Portal',
+        width: 130,
+        renderCell: (params) => params.value || '—',
+      },
+      {
+        field: 'action',
+        headerName: 'Action',
+        width: 150,
+      },
+      {
+        field: 'level',
+        headerName: 'Level',
+        width: 110,
+        renderCell: (params) => (
+          <Chip size="small" label={params.value || 'info'} color={levelColor(params.value)} />
+        ),
+      },
+      {
+        field: 'message',
+        headerName: 'Message',
+        flex: 1.8,
+        minWidth: 220,
+      },
+    ],
+    [],
+  );
 
   return (
-    <PageShell>
+    <PageShell loading={loading} fetching={fetching} busy={runMutation.isPending}>
       <Typography variant="h4">Automation</Typography>
       <Typography color="text.secondary">
         Total logs: {status?.total_logs ?? 0}. Trigger workers manually when needed.
       </Typography>
+
+      <Alert severity="info" sx={{ alignItems: 'center' }}>
+        Fetch needs a connected portal. Go to{' '}
+        <Button component={RouterLink} to="/job-portals" size="small" sx={{ ml: 0.5 }}>
+          Job Portals
+        </Button>{' '}
+        first, then run fetch — each step shows up in the log table below.
+      </Alert>
+
       <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
         {['fetch', 'match', 'apply', 'report'].map((job) => (
-          <Button key={job} variant="outlined" onClick={() => runMutation.mutate(job)} disabled={runMutation.isPending}>
-            Run {job}
+          <Button
+            key={job}
+            variant={job === 'fetch' ? 'contained' : 'outlined'}
+            onClick={() => runMutation.mutate(job)}
+            disabled={runMutation.isPending}
+          >
+            {runMutation.isPending ? 'Running…' : `Run ${job}`}
           </Button>
         ))}
       </Stack>
+
+      {!!status?.recent?.length && (
+        <Stack spacing={0.75}>
+          <Typography variant="subtitle2" fontWeight={700}>
+            Latest
+          </Typography>
+          {status.recent.map((item: LogRow) => (
+            <Typography key={item.id} variant="body2" color="text.secondary">
+              {dayjs(item.created_at).fromNow()} — {item.message || item.action}
+            </Typography>
+          ))}
+        </Stack>
+      )}
+
       <DataGrid
         autoHeight
-        rows={logs?.items || []}
+        rows={rows}
         columns={columns}
-        loading={isLoading}
+        getRowId={(row) => row.id}
+        loading={isFetching || runMutation.isPending}
         pageSizeOptions={[10, 25, 50]}
         initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
-        sx={{ bgcolor: 'background.paper', borderRadius: 3, width: '100%' }}
+        localeText={{ noRowsLabel: emptyHint || 'No rows' }}
+        sx={{ bgcolor: 'background.paper', borderRadius: 3, width: '100%', minHeight: 280 }}
       />
     </PageShell>
   );

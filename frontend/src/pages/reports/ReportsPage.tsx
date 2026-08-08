@@ -10,10 +10,11 @@ export default function ReportsPage() {
   const [format, setFormat] = useState('csv');
   const queryClient = useQueryClient();
   const { apiSuccess, apiError } = useToast();
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ['reports'],
     queryFn: async () => (await reportsApi.list()).data,
   });
+  const [downloading, setDownloading] = useState(false);
 
   const createMutation = useMutation({
     mutationFn: () => reportsApi.create({ type: 'custom', format }),
@@ -22,6 +23,7 @@ export default function ReportsPage() {
   });
 
   const download = async (id: string) => {
+    setDownloading(true);
     try {
       const res = await reportsApi.download(id);
       const url = window.URL.createObjectURL(new Blob([res.data]));
@@ -33,6 +35,8 @@ export default function ReportsPage() {
       apiSuccess('Download started');
     } catch (err) {
       apiError(err, 'Download failed');
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -48,17 +52,21 @@ export default function ReportsPage() {
       renderCell: (params) => (
         <Button
           size="small"
-          disabled={params.row.status !== 'ready'}
+          disabled={params.row.status !== 'ready' || downloading}
           onClick={() => download(params.row.id)}
         >
-          Download
+          {downloading ? '…' : 'Download'}
         </Button>
       ),
     },
   ];
 
   return (
-    <PageShell>
+    <PageShell
+      loading={isLoading}
+      fetching={!isLoading && isFetching}
+      busy={createMutation.isPending || downloading}
+    >
       <Typography variant="h4">Reports</Typography>
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
         <TextField select size="small" label="Format" value={format} onChange={(e) => setFormat(e.target.value)} sx={{ width: { xs: '100%', sm: 160 } }}>
@@ -67,14 +75,14 @@ export default function ReportsPage() {
           ))}
         </TextField>
         <Button variant="contained" onClick={() => createMutation.mutate()} disabled={createMutation.isPending}>
-          Generate report
+          {createMutation.isPending ? 'Generating…' : 'Generate report'}
         </Button>
       </Stack>
       <DataGrid
         autoHeight
         rows={data?.items || []}
         columns={columns}
-        loading={isLoading}
+        loading={isFetching}
         pageSizeOptions={[10, 25]}
         initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
         sx={{ bgcolor: 'background.paper', borderRadius: 3, width: '100%' }}

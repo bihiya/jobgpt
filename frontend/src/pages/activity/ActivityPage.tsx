@@ -4,18 +4,17 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { memo, useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { activityApi } from '../../api';
 import ActivityTimeline from '../../components/activity/ActivityTimeline';
 import PageShell from '../../components/common/PageShell';
-import PageSkeleton from '../../components/common/PageSkeleton';
 
 function ActivityPage() {
   const navigate = useNavigate();
   const [resourceType, setResourceType] = useState('');
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ['user-activity', resourceType],
     queryFn: async () =>
       (
@@ -24,6 +23,7 @@ function ActivityPage() {
           resource_type: resourceType || undefined,
         })
       ).data,
+    placeholderData: keepPreviousData,
   });
 
   const openJob = useCallback(
@@ -33,10 +33,8 @@ function ActivityPage() {
     [navigate],
   );
 
-  if (isLoading) return <PageSkeleton />;
-
   return (
-    <PageShell>
+    <PageShell skeleton="list" loading={isLoading} fetching={!isLoading && isFetching}>
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
         justifyContent="space-between"
@@ -64,7 +62,8 @@ function ActivityPage() {
         </TextField>
       </Stack>
       <Typography color="text.secondary">
-        Every meaningful action on your account and jobs is recorded here.
+        Who did what, whether it passed or failed, and what to do next. Expand a row for field
+        changes and full details.
       </Typography>
       <ActivityTimeline
         items={data?.items || []}

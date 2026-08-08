@@ -8,6 +8,7 @@ from math import ceil
 from app.core.exceptions import NotFoundError
 from app.core.kafka import publish
 from app.models.enums import JobStatus
+from app.producers.events import publish_job_fetch
 from app.models.job import Job
 from app.repository.job_repository import JobRepository
 from app.schemas.common import PaginatedResponse
@@ -172,10 +173,11 @@ class JobService:
     ) -> JobResponse:
         job = await self._owned(user_id, job_id)
         data = payload.model_dump(exclude_unset=True)
+        before = {key: getattr(job, key, None) for key in data}
         data["updated_at"] = datetime.utcnow()
         job = await self.jobs.update(job, data)
         if audit_action:
-            from app.services.audit_service import audit_event
+            from app.services.audit_service import audit_event, changes_metadata
 
             await audit_event(
                 user_id,
@@ -184,7 +186,7 @@ class JobService:
                 job_id=job_id,
                 resource_type="job",
                 resource_id=job_id,
-                metadata={"fields": list(data.keys())},
+                metadata=changes_metadata(before, data),
             )
         return self._to_response(job)
 
@@ -297,7 +299,7 @@ class JobService:
         return self._to_response(job)
 
     async def trigger_fetch(self, user_id: str) -> None:
-        await publish("job.fetch", {"user_id": user_id}, key=user_id)
+        await publish_job_fetch(user_id)
 
     async def _owned(self, user_id: str, job_id: str) -> Job:
         job = await self.jobs.get_by_id(job_id)

@@ -21,7 +21,6 @@ import { memo, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { emailApi } from '../../api';
 import PageShell from '../../components/common/PageShell';
-import PageSkeleton from '../../components/common/PageSkeleton';
 import { useRequireAuth } from '../../hooks/useRequireAuth';
 
 const EVENT_COLORS: Record<string, 'success' | 'warning' | 'error' | 'info' | 'default'> = {
@@ -130,10 +129,19 @@ function EmailInboxPage() {
     [accountsQ.data],
   );
 
-  if (accountsQ.isLoading || messagesQ.isLoading) return <PageSkeleton />;
+  const loading = accountsQ.isLoading || messagesQ.isLoading;
+  const fetching =
+    !loading && (accountsQ.isFetching || messagesQ.isFetching);
+  const busy =
+    syncAll.isPending ||
+    syncOne.isPending ||
+    applyMsg.isPending ||
+    ignoreMsg.isPending ||
+    saveAccount.isPending ||
+    ingestMut.isPending;
 
   return (
-    <PageShell spacing={2.5}>
+    <PageShell spacing={2.5} loading={loading} fetching={fetching} busy={busy}>
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2}>
         <Box>
           <Typography variant="h4" sx={{ fontFamily: '"Fraunces", Georgia, serif' }}>

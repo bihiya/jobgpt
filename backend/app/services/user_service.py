@@ -37,20 +37,43 @@ class UserService:
     async def update_profile(self, user_id: str, payload: UserUpdateRequest) -> User:
         user = await self.get_profile(user_id)
         data: dict = {"updated_at": datetime.utcnow()}
+        diff_before: dict = {}
+        diff_after: dict = {}
         if payload.full_name is not None:
+            diff_before["full_name"] = user.full_name
+            diff_after["full_name"] = payload.full_name
             data["full_name"] = payload.full_name
         if payload.profile is not None:
-            data["profile"] = payload.profile.model_dump()
+            old_profile = (
+                user.profile.model_dump()
+                if hasattr(user.profile, "model_dump")
+                else dict(user.profile or {})
+            )
+            new_profile = payload.profile.model_dump()
+            data["profile"] = new_profile
+            for key, new_val in new_profile.items():
+                old_val = old_profile.get(key)
+                if old_val != new_val:
+                    diff_before[f"profile.{key}"] = old_val
+                    diff_after[f"profile.{key}"] = new_val
         updated = await self.users.update(user, data)
-        from app.services.audit_service import audit_event
+        from app.services.audit_service import audit_event, changes_metadata
 
         await audit_event(
             user_id,
             "profile.updated",
-            message="Profile updated",
+            message="updated profile details",
             resource_type="user",
             resource_id=user_id,
             severity="success",
+            metadata=changes_metadata(
+                diff_before,
+                diff_after,
+                extra={
+                    "outcome": "Passed",
+                    "next_step": "Updated profile will be used on the next application.",
+                },
+            ),
         )
         return updated
 

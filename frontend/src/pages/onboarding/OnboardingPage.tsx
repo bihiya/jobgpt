@@ -13,14 +13,13 @@ import { memo, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { onboardingApi } from '../../api';
 import PageShell from '../../components/common/PageShell';
-import PageSkeleton from '../../components/common/PageSkeleton';
 
 const LABELS = ['Profile', 'Resume', 'Portals', 'First sync', 'Done'];
 
 function OnboardingPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ['onboarding'],
     queryFn: async () => (await onboardingApi.status()).data,
   });
@@ -45,11 +44,13 @@ function OnboardingPage() {
     return Math.max(0, steps.indexOf(data?.step || 'profile'));
   }, [data]);
 
-  if (isLoading || !data) return <PageSkeleton />;
+  if (isLoading || !data) {
+    return <PageShell skeleton="form" loading />;
+  }
 
   if (data.completed) {
     return (
-      <PageShell sx={{ maxWidth: 640 }}>
+      <PageShell sx={{ maxWidth: 640 }} fetching={isFetching}>
         <Typography variant="h4">You&apos;re all set</Typography>
         <Alert severity="success">Onboarding complete. Review approvals or open the dashboard.</Alert>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
@@ -65,7 +66,11 @@ function OnboardingPage() {
   }
 
   return (
-    <PageShell sx={{ maxWidth: 720 }}>
+    <PageShell
+      sx={{ maxWidth: 720 }}
+      fetching={!isLoading && isFetching}
+      busy={advance.isPending || firstSync.isPending}
+    >
       <Box>
         <Typography variant="h4" sx={{ mb: 1 }}>
           Welcome to JobPilot AI

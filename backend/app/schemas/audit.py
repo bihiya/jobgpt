@@ -11,8 +11,12 @@ class AuditLogResponse(BaseModel):
     id: str
     user_id: str
     actor_id: str
+    actor_name: str = ""
     action: str
     message: str
+    summary: str = ""
+    outcome: str = ""
+    next_step: str = ""
     resource: str = ""
     resource_type: str = ""
     resource_id: str = ""

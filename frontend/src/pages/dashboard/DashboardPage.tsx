@@ -6,7 +6,6 @@ import {
   DialogContent,
   DialogTitle,
   Grid,
-  Skeleton,
   Stack,
   TextField,
   Typography,
@@ -199,19 +198,22 @@ export default function DashboardPage() {
     [navigate, reauthMut, requireAuth],
   );
 
-  const loading = storyQ.isLoading && approvalsQ.isLoading;
-
-  if (loading) {
-    return (
-      <PageShell>
-        <Skeleton height={160} variant="rounded" />
-        <Skeleton height={220} variant="rounded" />
-      </PageShell>
-    );
-  }
+  const loading =
+    storyQ.isLoading ||
+    approvalsQ.isLoading ||
+    blockersQ.isLoading ||
+    portalsQ.isLoading ||
+    appsQ.isLoading;
+  const fetching =
+    !loading &&
+    (storyQ.isFetching ||
+      approvalsQ.isFetching ||
+      blockersQ.isFetching ||
+      portalsQ.isFetching ||
+      appsQ.isFetching);
 
   return (
-    <PageShell spacing={3}>
+    <PageShell spacing={3} loading={loading} fetching={fetching}>
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2}>
         <Box>
           <Typography

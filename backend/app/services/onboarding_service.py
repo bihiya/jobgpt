@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.core.kafka import publish
+from app.producers.events import publish_job_fetch
 from app.repository.resume_repository import ResumeRepository
 from app.repository.portal_repository import PortalRepository
 from app.repository.settings_repository import SettingsRepository
@@ -54,5 +54,5 @@ class OnboardingService:
         return await self.status(user_id)
 
     async def trigger_first_sync(self, user_id: str) -> dict:
-        await publish("job.fetch", {"user_id": user_id, "source": "onboarding"}, key=user_id)
+        await publish_job_fetch(user_id, source="onboarding")
         return await self.advance(user_id, "done")

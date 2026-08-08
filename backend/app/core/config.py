@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+
+def _default_kafka_enabled() -> bool:
+    # Vercel serverless cannot host Kafka consumers / long-lived producers reliably.
+    return not bool(os.getenv("VERCEL"))
 
 
 class Settings(BaseSettings):
@@ -44,6 +50,7 @@ class Settings(BaseSettings):
     otel_enabled: bool = False
     otel_exporter_endpoint: str = "http://otel-collector:4317"
 
+    kafka_enabled: bool = Field(default_factory=_default_kafka_enabled)
     kafka_bootstrap_servers: str = "kafka:9092"
     kafka_client_id: str = "jobpilot-api"
     kafka_group_id: str = "jobpilot-workers"
@@ -97,7 +104,8 @@ class Settings(BaseSettings):
     imap_default_host: str = "imap.gmail.com"
     imap_default_port: int = 993
 
-    cors_origins: list[str] = Field(
+    # NoDecode: allow comma-separated CORS_ORIGINS env (Vercel) without JSON parsing.
+    cors_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["http://localhost:5173", "http://localhost:3000"]
     )
 
@@ -108,6 +116,9 @@ class Settings(BaseSettings):
     match_threshold: float = 0.7
     max_applications_per_day: int = 50
     playwright_headless: bool = True
+    # Use installed browser when Playwright's bundled Chromium is unavailable
+    # (e.g. macOS 12). Common values: "chrome", "msedge", "chromium".
+    playwright_channel: str | None = None
     upload_dir: str = "/tmp/jobpilot/uploads"
     screenshot_dir: str = "/tmp/jobpilot/screenshots"
     report_dir: str = "/tmp/jobpilot/reports"
@@ -119,8 +130,20 @@ class Settings(BaseSettings):
     @classmethod
     def parse_cors(cls, value: str | list[str]) -> list[str]:
         if isinstance(value, str):
-            return [origin.strip() for origin in value.split(",") if origin.strip()]
+            raw = value.strip()
+            if raw.startswith("["):
+                import json
+
+                parsed = json.loads(raw)
+                if not isinstance(parsed, list):
+                    raise ValueError("CORS_ORIGINS JSON must be a list of strings")
+                return [str(origin).strip() for origin in parsed if str(origin).strip()]
+            return [origin.strip() for origin in raw.split(",") if origin.strip()]
         return value
+
+
+# Required when using Annotated[..., NoDecode] with `from __future__ import annotations`.
+Settings.model_rebuild()
 
 
 @lru_cache

@@ -5,9 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 
 from app.core.exceptions import ConflictError, NotFoundError
-from app.core.kafka import publish
 from app.models.enums import PortalStatus
 from app.models.portal import Portal
+from app.producers.events import publish_job_fetch
 from app.repository.portal_repository import PortalRepository
 from app.schemas.portal import PortalCreate, PortalResponse, PortalUpdate
 
@@ -101,20 +101,22 @@ class PortalService:
         portal.last_sync_at = datetime.utcnow()
         portal.status = PortalStatus.CONNECTED
         await portal.save()
-        await publish(
-            "job.fetch",
-            {"user_id": user_id, "portal": portal.name.value, "portal_id": str(portal.id)},
-            key=user_id,
+        mode = await publish_job_fetch(
+            user_id,
+            portal=portal.name.value,
+            portal_id=str(portal.id),
+            source="portal.sync",
         )
         from app.services.audit_service import audit_event
 
         await audit_event(
             user_id,
             "portal.sync_requested",
-            message=f"Sync requested for {portal.name.value}",
+            message=f"Sync requested for {portal.name.value} ({mode})",
             resource_type="portal",
             resource_id=str(portal.id),
-            metadata={"portal": portal.name.value},
+            severity="success",
+            metadata={"portal": portal.name.value, "mode": mode},
         )
         return self._to_response(portal)
 
