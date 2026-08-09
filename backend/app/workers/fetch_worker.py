@@ -81,6 +81,9 @@ class FetchWorker(BaseWorker):
             if portal_filter and portal.name.value != portal_filter:
                 continue
             if portal.status == PortalStatus.DISCONNECTED:
+                if getattr(portal, "sync_started_at", None):
+                    portal.sync_started_at = None
+                    await portal.save()
                 await write_automation_log(
                     user_id,
                     action="fetch.skipped",
@@ -92,6 +95,9 @@ class FetchWorker(BaseWorker):
                 continue
             if not self.health.is_usable(portal):
                 logger.info("portal_skipped_unhealthy", portal=portal.name.value, score=portal.health.score)
+                if getattr(portal, "sync_started_at", None):
+                    portal.sync_started_at = None
+                    await portal.save()
                 await write_automation_log(
                     user_id,
                     action="fetch.skipped",
@@ -100,6 +106,18 @@ class FetchWorker(BaseWorker):
                     message=f"{portal.name.value} skipped — unhealthy (score {portal.health.score})",
                     metadata={"score": portal.health.score, "error": portal.health.last_error},
                     correlation_id=correlation_id,
+                )
+                await emit_realtime(
+                    user_id,
+                    "portal.health",
+                    {
+                        "portal": portal.name.value,
+                        "portal_id": str(portal.id),
+                        "error": portal.health.last_error or "Portal paused / unhealthy",
+                    },
+                    title=f"{portal.name.value} sync skipped",
+                    body=portal.health.paused_reason or portal.health.last_error or "Re-auth required",
+                    severity="warning",
                 )
                 continue
 
@@ -197,6 +215,7 @@ class FetchWorker(BaseWorker):
                         metadata={"portal": portal.name.value},
                     )
                 portal.last_sync_at = datetime.utcnow()
+                portal.sync_started_at = None
                 portal.status = PortalStatus.CONNECTED
                 await self.health.record_success(portal)
                 await write_automation_log(
@@ -213,6 +232,7 @@ class FetchWorker(BaseWorker):
                     "portal.synced",
                     {
                         "portal": portal.name.value,
+                        "portal_id": str(portal.id),
                         "inserted": inserted,
                         "fetched": len(extracted),
                     },
@@ -228,6 +248,7 @@ class FetchWorker(BaseWorker):
                     inserted=inserted,
                 )
             except Exception as exc:  # noqa: BLE001
+                portal.sync_started_at = None
                 await self.health.record_failure(portal, str(exc))
                 await write_automation_log(
                     user_id,
@@ -241,7 +262,11 @@ class FetchWorker(BaseWorker):
                 await emit_realtime(
                     user_id,
                     "portal.health",
-                    {"portal": portal.name.value, "error": str(exc)},
+                    {
+                        "portal": portal.name.value,
+                        "portal_id": str(portal.id),
+                        "error": str(exc),
+                    },
                     title="Portal sync failed",
                     body=str(exc),
                     severity="error",

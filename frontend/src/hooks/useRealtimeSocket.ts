@@ -31,6 +31,7 @@ const POLL_QUERY_KEYS: string[][] = [
   ['automation-status'],
   ['analytics'],
   ['pipeline'],
+  ['portals'],
   ['weekly-story'],
 ];
 

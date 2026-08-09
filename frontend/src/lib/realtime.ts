@@ -95,9 +95,19 @@ export function queryKeysForEvent(event: string): string[][] {
     case 'report.ready':
     case 'report.failed':
       return [['reports']];
+    case 'portal.sync_started':
     case 'portal.synced':
     case 'portal.health':
-      return [['portals'], ['jobs'], ['jobs-infinite'], ['analytics'], ['approval-blockers'], ['weekly-story']];
+      return [
+        ['portals'],
+        ['jobs'],
+        ['jobs-infinite'],
+        ['analytics'],
+        ['approval-blockers'],
+        ['weekly-story'],
+        ['automation-logs'],
+        ['automation-status'],
+      ];
     case 'reminder.due':
     case 'reminder.scheduled':
     case 'reminder.completed':
@@ -135,6 +145,7 @@ export function shouldToastEvent(event: string): boolean {
     'application.cancelled',
     'report.ready',
     'report.failed',
+    'portal.sync_started',
     'portal.synced',
     'portal.health',
     'reminder.due',

@@ -9,6 +9,7 @@ export type PortalHealthItem = {
   has_session?: boolean;
   session_updated_at?: string | null;
   last_sync_at?: string | null;
+  sync_started_at?: string | null;
   health?: {
     score?: number;
     auto_paused?: boolean;
@@ -45,7 +46,8 @@ function PortalHealthStrip({
       {portals.map((p) => {
         const score = p.health?.score ?? 100;
         const paused = Boolean(p.health?.auto_paused);
-        const color = tone(score, paused);
+        const syncing = Boolean(p.sync_started_at);
+        const color = syncing ? 'info' : tone(score, paused);
         const last = p.session_updated_at || p.last_sync_at;
         return (
           <Box
@@ -62,16 +64,18 @@ function PortalHealthStrip({
           >
             <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
               <Typography sx={{ fontWeight: 700, textTransform: 'capitalize' }}>{p.name}</Typography>
-              <Chip size="small" color={color} label={`${Math.round(score)}`} />
+              <Chip size="small" color={color} label={syncing ? '…' : `${Math.round(score)}`} />
             </Stack>
             <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
-              {paused
-                ? 'Paused'
-                : p.has_session
-                  ? `Session${last ? ` · ${new Date(last).toLocaleDateString()}` : ''}`
-                  : 'Needs login'}
+              {syncing
+                ? 'Syncing live…'
+                : paused
+                  ? 'Paused'
+                  : p.has_session
+                    ? `Logged in${last ? ` · ${new Date(last).toLocaleDateString()}` : ''}`
+                    : 'Needs login'}
             </Typography>
-            {(paused || color !== 'success' || !p.has_session) && (
+            {!syncing && (paused || color !== 'success' || !p.has_session) && (
               <Button
                 size="small"
                 sx={{ mt: 0.75, px: 0 }}
