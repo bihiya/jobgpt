@@ -20,6 +20,9 @@ coverage/
 .env
 .env.local
 *.pem
+.env*
+!.env.production
+!frontend/.env.production
 
 # Azure Developer CLI local env state (keep the deployment plan)
 .azure/*
