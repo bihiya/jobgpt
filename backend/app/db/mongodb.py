@@ -14,15 +14,30 @@ logger = get_logger(__name__)
 _client: AsyncIOMotorClient | None = None
 
 
+def _mongo_retry_writes(url: str) -> bool:
+    """Return whether retryable writes should be enabled for this Mongo URL.
+
+    Azure Cosmos DB's Mongo API rejects retryable writes; forcing retryWrites=True
+    breaks inserts (e.g. user registration) even when the URI has retrywrites=false.
+    """
+    lowered = url.lower()
+    if "cosmos.azure.com" in lowered or "cosmosdb" in lowered:
+        return False
+    if "retrywrites=false" in lowered:
+        return False
+    return True
+
+
 async def connect_to_mongo() -> AsyncIOMotorDatabase:
     global _client
+    retry_writes = _mongo_retry_writes(settings.mongodb_url)
     client = AsyncIOMotorClient(
         settings.mongodb_url,
         maxPoolSize=settings.mongodb_max_pool_size,
         minPoolSize=settings.mongodb_min_pool_size,
         serverSelectionTimeoutMS=5000,
         connectTimeoutMS=5000,
-        retryWrites=True,
+        retryWrites=retry_writes,
         # HTTP keep-alive equivalent for MongoDB sockets
         maxIdleTimeMS=60_000,
     )
