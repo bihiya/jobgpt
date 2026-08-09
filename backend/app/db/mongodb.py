@@ -16,7 +16,7 @@ _client: AsyncIOMotorClient | None = None
 
 async def connect_to_mongo() -> AsyncIOMotorDatabase:
     global _client
-    _client = AsyncIOMotorClient(
+    client = AsyncIOMotorClient(
         settings.mongodb_url,
         maxPoolSize=settings.mongodb_max_pool_size,
         minPoolSize=settings.mongodb_min_pool_size,
@@ -26,8 +26,14 @@ async def connect_to_mongo() -> AsyncIOMotorDatabase:
         # HTTP keep-alive equivalent for MongoDB sockets
         maxIdleTimeMS=60_000,
     )
-    db = _client[settings.mongodb_db]
-    await init_beanie(database=db, document_models=DOCUMENT_MODELS)
+    try:
+        db = client[settings.mongodb_db]
+        await init_beanie(database=db, document_models=DOCUMENT_MODELS)
+    except Exception:
+        client.close()
+        _client = None
+        raise
+    _client = client
     logger.info(
         "mongodb_connected",
         db=settings.mongodb_db,
