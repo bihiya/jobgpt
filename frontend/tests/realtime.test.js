@@ -43,6 +43,15 @@ describe('realtime helpers', () => {
     expect(keys).toContain('calendar');
   });
 
+  it('maps portal sync lifecycle to portals + automation keys', () => {
+    for (const event of ['portal.sync_started', 'portal.synced', 'portal.health']) {
+      const keys = queryKeysForEvent(event).map((k) => k[0]);
+      expect(keys).toContain('portals');
+      expect(keys).toContain('automation-logs');
+    }
+    expect(shouldToastEvent('portal.sync_started')).toBe(true);
+  });
+
   it('toasts worker-driven events but not mutation echoes', () => {
     expect(shouldToastEvent('approval.needed')).toBe(true);
     expect(shouldToastEvent('job.success')).toBe(true);

@@ -25,6 +25,11 @@ class PortalService:
             name=portal.name,
             status=portal.status,
             last_sync_at=portal.last_sync_at.isoformat() if portal.last_sync_at else None,
+            sync_started_at=(
+                portal.sync_started_at.isoformat()
+                if getattr(portal, "sync_started_at", None)
+                else None
+            ),
             created_at=portal.created_at.isoformat(),
             has_credentials=bool(portal.credentials.username),
             has_session=bool(getattr(portal, "session_blob", "") or portal.cookies),
@@ -98,8 +103,9 @@ class PortalService:
 
     async def sync(self, user_id: str, portal_id: str) -> PortalResponse:
         portal = await self._owned(user_id, portal_id)
-        portal.last_sync_at = datetime.utcnow()
-        portal.status = PortalStatus.CONNECTED
+        # Mark in-progress only — last_sync_at is written by FetchWorker on success.
+        portal.sync_started_at = datetime.utcnow()
+        portal.updated_at = datetime.utcnow()
         await portal.save()
         mode = await publish_job_fetch(
             user_id,
@@ -107,6 +113,7 @@ class PortalService:
             portal_id=str(portal.id),
             source="portal.sync",
         )
+        from app.events.realtime import emit_realtime
         from app.services.audit_service import audit_event
 
         await audit_event(
@@ -117,6 +124,18 @@ class PortalService:
             resource_id=str(portal.id),
             severity="success",
             metadata={"portal": portal.name.value, "mode": mode},
+        )
+        await emit_realtime(
+            user_id,
+            "portal.sync_started",
+            {
+                "portal": portal.name.value,
+                "portal_id": str(portal.id),
+                "mode": mode,
+            },
+            title=f"{portal.name.value} sync started",
+            body="Fetching jobs in the background…",
+            severity="info",
         )
         return self._to_response(portal)
 

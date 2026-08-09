@@ -47,6 +47,8 @@ class Portal(Document):
     status: PortalStatus = PortalStatus.DISCONNECTED
     health: PortalHealth = Field(default_factory=PortalHealth)
     last_sync_at: datetime | None = None
+    # Set when a sync is queued; cleared when the fetch worker finishes (success or fail).
+    sync_started_at: datetime | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
