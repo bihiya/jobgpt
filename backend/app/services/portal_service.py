@@ -107,12 +107,19 @@ class PortalService:
         portal.sync_started_at = datetime.utcnow()
         portal.updated_at = datetime.utcnow()
         await portal.save()
-        mode = await publish_job_fetch(
-            user_id,
-            portal=portal.name.value,
-            portal_id=str(portal.id),
-            source="portal.sync",
-        )
+        try:
+            mode = await publish_job_fetch(
+                user_id,
+                portal=portal.name.value,
+                portal_id=str(portal.id),
+                source="portal.sync",
+            )
+        except Exception:
+            # Clear in-progress marker when the queue/fallback cannot start.
+            portal.sync_started_at = None
+            portal.updated_at = datetime.utcnow()
+            await portal.save()
+            raise
         from app.events.realtime import emit_realtime
         from app.services.audit_service import audit_event
 

@@ -431,6 +431,9 @@ export const demoAutomationStatus = {
   user_id: 'demo-user',
   total_logs: 12,
   workers: { fetch: 'idle', match: 'idle', apply: 'idle', notification: 'idle', report: 'idle' },
+  playwright_available: true,
+  playwright_message: null,
+  kafka_enabled: true,
   recent: [],
 };
 

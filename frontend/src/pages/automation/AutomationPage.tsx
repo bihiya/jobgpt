@@ -64,9 +64,14 @@ export default function AutomationPage() {
   });
 
   const rows = useMemo<LogRow[]>(() => logs?.items || [], [logs?.items]);
+  const playwrightAvailable = status?.playwright_available !== false;
+  const playwrightMessage =
+    typeof status?.playwright_message === 'string' ? status.playwright_message : null;
   const emptyHint =
     !rows.length &&
-    'No automation logs yet. Click “Run fetch” — progress will appear here (portal sync, jobs found, errors).';
+    (playwrightAvailable
+      ? 'No automation logs yet. Click “Run fetch” — progress will appear here (portal sync, jobs found, errors).'
+      : 'Browser automation is unavailable in this environment. Match/report can still run; fetch/apply need the Docker stack.');
 
   const columns: GridColDef[] = useMemo(
     () => [
@@ -114,25 +119,33 @@ export default function AutomationPage() {
         Total logs: {status?.total_logs ?? 0}. Trigger workers manually when needed.
       </Typography>
 
-      <Alert severity="info" sx={{ alignItems: 'center' }}>
-        Fetch needs a connected portal. Go to{' '}
-        <Button component={RouterLink} to="/job-portals" size="small" sx={{ ml: 0.5 }}>
-          Job Portals
-        </Button>{' '}
-        first, then run fetch — each step shows up in the log table below.
-      </Alert>
+      {!playwrightAvailable && playwrightMessage ? (
+        <Alert severity="warning">{playwrightMessage}</Alert>
+      ) : (
+        <Alert severity="info" sx={{ alignItems: 'center' }}>
+          Fetch needs a connected portal. Go to{' '}
+          <Button component={RouterLink} to="/job-portals" size="small" sx={{ ml: 0.5 }}>
+            Job Portals
+          </Button>{' '}
+          first, then run fetch — each step shows up in the log table below.
+        </Alert>
+      )}
 
       <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-        {['fetch', 'match', 'apply', 'report'].map((job) => (
-          <Button
-            key={job}
-            variant={job === 'fetch' ? 'contained' : 'outlined'}
-            onClick={() => runMutation.mutate(job)}
-            disabled={runMutation.isPending}
-          >
-            {runMutation.isPending ? 'Running…' : `Run ${job}`}
-          </Button>
-        ))}
+        {['fetch', 'match', 'apply', 'report'].map((job) => {
+          const needsBrowser = job === 'fetch' || job === 'apply';
+          const disabled = runMutation.isPending || (needsBrowser && !playwrightAvailable);
+          return (
+            <Button
+              key={job}
+              variant={job === 'fetch' ? 'contained' : 'outlined'}
+              onClick={() => runMutation.mutate(job)}
+              disabled={disabled}
+            >
+              {runMutation.isPending ? 'Running…' : `Run ${job}`}
+            </Button>
+          );
+        })}
       </Stack>
 
       {!!status?.recent?.length && (
