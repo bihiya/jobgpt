@@ -54,6 +54,15 @@ class Settings(BaseSettings):
     kafka_bootstrap_servers: str = "kafka:9092"
     kafka_client_id: str = "jobpilot-api"
     kafka_group_id: str = "jobpilot-workers"
+
+    # Azure Container Apps Jobs (elastic pay-per-use workers)
+    azure_jobs_enabled: bool = False
+    azure_subscription_id: str = ""
+    azure_resource_group: str = ""
+    azure_job_fetch: str = ""
+    azure_job_match: str = ""
+    azure_job_apply: str = ""
+
     kafka_topics: list[str] = Field(
         default_factory=lambda: [
             "job.fetch",

@@ -43,9 +43,21 @@ async def publish_job_fetch(user_id: str, **extra: Any) -> str:
         await publish("job.fetch", payload, key=user_id)
         return "kafka"
     except ServiceUnavailableError as exc:
-        can_inline = settings.app_env in {"development", "test"} or not settings.kafka_enabled
-        if not can_inline:
+        can_fallback = settings.app_env in {"development", "test"} or not settings.kafka_enabled
+        if not can_fallback:
             raise
+
+        from app.services.azure_jobs import azure_jobs_configured, start_container_app_job
+
+        if azure_jobs_configured():
+            portal = payload.get("portal")
+            await start_container_app_job(
+                "fetch",
+                user_id=user_id,
+                portal=str(portal) if portal else None,
+            )
+            logger.info("job_fetch_azure_job", user_id=user_id, portal=portal)
+            return "azure-job"
 
         from app.automation.playwright_runtime import (
             playwright_available,

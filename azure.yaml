@@ -1,0 +1,16 @@
+# Azure Developer CLI — JobPilot on Container Apps (pay-per-use)
+# Deploy: see docs/AZURE.md
+name: jobpilot
+metadata:
+  template: jobpilot-aca@0.1.0
+services:
+  api:
+    project: ./backend
+    language: python
+    host: containerapp
+    docker:
+      path: ./Dockerfile
+      context: .
+infra:
+  provider: bicep
+  path: ./infra
