@@ -208,44 +208,67 @@ class AutomationService:
         try:
             await publish(topic, {"user_id": user_id, "source": "manual"}, key=user_id)
         except ServiceUnavailableError as exc:
-            # Local/dev (or Kafka disabled): don't hang the UI — schedule the worker inline.
-            # Fetch/apply need Playwright; slim API installs (e.g. Vercel) omit it.
-            can_inline = settings.app_env in {"development", "test"} or not settings.kafka_enabled
-            if not can_inline:
+            # Prefer Azure Container Apps Jobs (pay-per-use), then local inline.
+            can_fallback = settings.app_env in {"development", "test"} or not settings.kafka_enabled
+            if not can_fallback:
                 raise
 
-            from app.automation.playwright_runtime import (
-                job_requires_playwright,
-                playwright_available,
-                playwright_unavailable_message,
-            )
+            from app.services.azure_jobs import azure_jobs_configured, start_container_app_job
 
-            if job_requires_playwright(job_type) and not playwright_available():
-                message = playwright_unavailable_message()
+            if azure_jobs_configured() and job_type in {"fetch", "match", "apply"}:
+                mode = "azure-job"
+                warning = str(exc.message)
+                try:
+                    started = await start_container_app_job(job_type, user_id=user_id)
+                except ServiceUnavailableError:
+                    await write_automation_log(
+                        user_id,
+                        action=f"{job_type}.failed",
+                        level="error",
+                        message="Failed to start Azure Container Apps Job",
+                        metadata={"job_type": job_type},
+                    )
+                    raise
                 await write_automation_log(
                     user_id,
-                    action=f"{job_type}.failed",
-                    level="error",
-                    message=message,
-                    metadata={"job_type": job_type, "error": "PLAYWRIGHT_UNAVAILABLE"},
+                    action="automation.azure_job",
+                    level="info",
+                    message=f"Kafka unavailable — started Azure job for {job_type}",
+                    metadata={"job_type": job_type, **started},
                 )
-                raise ServiceUnavailableError(message, code="PLAYWRIGHT_UNAVAILABLE") from exc
+            else:
+                from app.automation.playwright_runtime import (
+                    job_requires_playwright,
+                    playwright_available,
+                    playwright_unavailable_message,
+                )
 
-            mode = "inline"
-            warning = str(exc.message)
-            logger.warning(
-                "automation_kafka_fallback_inline",
-                job_type=job_type,
-                error=exc.message,
-            )
-            await write_automation_log(
-                user_id,
-                action="automation.inline",
-                level="info",
-                message=f"Kafka unavailable — running {job_type} inline",
-                metadata={"job_type": job_type},
-            )
-            asyncio.create_task(_run_worker_inline(job_type, user_id, topic))
+                if job_requires_playwright(job_type) and not playwright_available():
+                    message = playwright_unavailable_message()
+                    await write_automation_log(
+                        user_id,
+                        action=f"{job_type}.failed",
+                        level="error",
+                        message=message,
+                        metadata={"job_type": job_type, "error": "PLAYWRIGHT_UNAVAILABLE"},
+                    )
+                    raise ServiceUnavailableError(message, code="PLAYWRIGHT_UNAVAILABLE") from exc
+
+                mode = "inline"
+                warning = str(exc.message)
+                logger.warning(
+                    "automation_kafka_fallback_inline",
+                    job_type=job_type,
+                    error=exc.message,
+                )
+                await write_automation_log(
+                    user_id,
+                    action="automation.inline",
+                    level="info",
+                    message=f"Kafka unavailable — running {job_type} inline",
+                    metadata={"job_type": job_type},
+                )
+                asyncio.create_task(_run_worker_inline(job_type, user_id, topic))
 
         await emit_realtime(
             user_id,

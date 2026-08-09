@@ -21,6 +21,13 @@ coverage/
 .env.local
 *.pem
 
+# Azure Developer CLI local env state (keep the deployment plan)
+.azure/*
+!.azure/deployment-plan.md
+.azure/*/config.json
+.azure/*/.env
+infra/target/
+
 # Runtime data
 /tmp/jobpilot/
 backend/.uploads/

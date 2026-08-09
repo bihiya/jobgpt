@@ -11,6 +11,10 @@
 - Ingress / TLS termination
 - Prometheus + Grafana
 
+## Azure Container Apps (pay-per-use)
+
+Elastic API + Playwright Jobs (no always-on VM/Kafka). See **[docs/AZURE.md](AZURE.md)** for full steps (`azd up`).
+
 ## Docker Compose (single host)
 
 ```bash
