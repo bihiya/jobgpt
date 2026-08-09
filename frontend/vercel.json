@@ -6,11 +6,11 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://jobai-three.vercel.app/api/:path*"
+      "destination": "https://ca-jobpilot-api.bravebeach-7fcbe2c3.centralindia.azurecontainerapps.io/api/:path*"
     },
     {
       "source": "/health",
-      "destination": "https://jobai-three.vercel.app/health"
+      "destination": "https://ca-jobpilot-api.bravebeach-7fcbe2c3.centralindia.azurecontainerapps.io/health"
     },
     {
       "source": "/((?!api/|assets/).*)",

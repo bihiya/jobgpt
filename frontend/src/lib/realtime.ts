@@ -26,9 +26,9 @@ export function getRealtimeHttpEndpoint(): string {
     return `${apiOrigin}${path}/ws`;
   }
 
-  // Production frontend on Vercel: speak directly to the API deployment.
+  // Production frontend on Vercel: speak directly to the Azure API (WS not proxied by Vercel).
   if (typeof window !== 'undefined' && window.location.hostname.endsWith('.vercel.app')) {
-    return 'https://jobai-three.vercel.app/api/v1/ws';
+    return 'https://ca-jobpilot-api.bravebeach-7fcbe2c3.centralindia.azurecontainerapps.io/api/v1/ws';
   }
 
   // Local Vite proxy (and Docker nginx) can upgrade same-origin /api WebSockets.
