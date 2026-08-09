@@ -1,7 +1,22 @@
-import { describe, expect, it } from 'vitest';
-import { queryKeysForEvent, shouldToastEvent } from '../src/lib/realtime';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { getRealtimeHttpEndpoint, queryKeysForEvent, shouldToastEvent } from '../src/lib/realtime';
 
 describe('realtime helpers', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('uses VITE_WS_URL when set', () => {
+    vi.stubEnv('VITE_WS_URL', 'wss://jobai.example/api/v1/ws');
+    expect(getRealtimeHttpEndpoint()).toBe('https://jobai.example/api/v1/ws');
+  });
+
+  it('uses VITE_API_ORIGIN for relative API base', () => {
+    vi.stubEnv('VITE_API_URL', '/api/v1');
+    vi.stubEnv('VITE_API_ORIGIN', 'https://jobai.example');
+    expect(getRealtimeHttpEndpoint()).toBe('https://jobai.example/api/v1/ws');
+  });
+
   it('maps job events to jobs + analytics keys', () => {
     const keys = queryKeysForEvent('job.matched').map((k) => k[0]);
     expect(keys).toContain('jobs');

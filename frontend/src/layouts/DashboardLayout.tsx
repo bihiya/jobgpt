@@ -210,6 +210,10 @@ function DashboardLayout() {
     if (liveStatus === 'connected') {
       return { label: 'Live', color: 'success' as const };
     }
+    if (liveStatus === 'polling') {
+      // HTTP API is healthy; WebSocket unavailable (common on Vercel SPA rewrites).
+      return { label: 'Synced', color: 'success' as const };
+    }
     if (liveStatus === 'connecting' || liveStatus === 'reconnecting') {
       return { label: 'Connecting', color: 'warning' as const };
     }

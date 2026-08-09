@@ -9,11 +9,35 @@ import {
 import { useAppSelector } from '../store/hooks';
 import { useToast } from './useToast';
 
-export type RealtimeStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
+export type RealtimeStatus =
+  | 'idle'
+  | 'connecting'
+  | 'connected'
+  | 'reconnecting'
+  | 'polling'
+  | 'disconnected';
+
+const MAX_WS_RETRIES = 5;
+const POLL_MS = 15_000;
+
+/** Queries to refresh when WebSocket is unavailable (Vercel rewrite / flaky network). */
+const POLL_QUERY_KEYS: string[][] = [
+  ['jobs'],
+  ['jobs-infinite'],
+  ['approvals'],
+  ['approval-blockers'],
+  ['applications'],
+  ['automation-logs'],
+  ['automation-status'],
+  ['analytics'],
+  ['pipeline'],
+  ['weekly-story'],
+];
 
 /**
  * Authenticated WebSocket subscription for live job/approval/automation updates.
  * Invalidates React Query caches and shows toasts for notable events.
+ * Falls back to light HTTP polling if the socket cannot stay connected.
  */
 export function useRealtimeSocket(enabled = true) {
   const accessToken = useAppSelector((s) => s.auth.accessToken);
@@ -26,6 +50,7 @@ export function useRealtimeSocket(enabled = true) {
   const retryRef = useRef(0);
   const timerRef = useRef<number | null>(null);
   const pingRef = useRef<number | null>(null);
+  const pollRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!enabled || !isAuthenticated || !accessToken) {
@@ -44,6 +69,22 @@ export function useRealtimeSocket(enabled = true) {
         window.clearInterval(pingRef.current);
         pingRef.current = null;
       }
+      if (pollRef.current) {
+        window.clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+
+    const startPolling = () => {
+      if (closed || pollRef.current) return;
+      setStatus('polling');
+      const tick = () => {
+        for (const key of POLL_QUERY_KEYS) {
+          void queryClient.invalidateQueries({ queryKey: key });
+        }
+      };
+      tick();
+      pollRef.current = window.setInterval(tick, POLL_MS);
     };
 
     const connect = () => {
@@ -97,6 +138,10 @@ export function useRealtimeSocket(enabled = true) {
         clearTimers();
         wsRef.current = null;
         if (closed) return;
+        if (retryRef.current >= MAX_WS_RETRIES) {
+          startPolling();
+          return;
+        }
         setStatus('reconnecting');
         const delay = Math.min(1000 * 2 ** retryRef.current, 15_000);
         retryRef.current += 1;
