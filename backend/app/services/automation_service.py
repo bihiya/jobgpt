@@ -127,8 +127,14 @@ class AutomationService:
         self.logs = logs or AutomationLogRepository()
 
     async def status(self, user_id: str) -> dict:
+        from app.automation.playwright_runtime import (
+            playwright_available,
+            playwright_unavailable_message,
+        )
+
         total_logs = await self.logs.count({"user_id": user_id})
         recent, _ = await self.logs.list_for_user(user_id, page=1, page_size=5)
+        browser_ok = playwright_available()
         return {
             "user_id": user_id,
             "workers": {
@@ -138,6 +144,9 @@ class AutomationService:
                 "notification": "idle",
                 "report": "idle",
             },
+            "playwright_available": browser_ok,
+            "playwright_message": None if browser_ok else playwright_unavailable_message(),
+            "kafka_enabled": settings.kafka_enabled,
             "total_logs": total_logs,
             "recent": [
                 {
@@ -199,25 +208,44 @@ class AutomationService:
         try:
             await publish(topic, {"user_id": user_id, "source": "manual"}, key=user_id)
         except ServiceUnavailableError as exc:
-            # Local/dev: don't hang the UI — schedule the worker inline.
-            if settings.app_env in {"development", "test"} or not settings.kafka_enabled:
-                mode = "inline"
-                warning = str(exc.message)
-                logger.warning(
-                    "automation_kafka_fallback_inline",
-                    job_type=job_type,
-                    error=exc.message,
-                )
+            # Local/dev (or Kafka disabled): don't hang the UI — schedule the worker inline.
+            # Fetch/apply need Playwright; slim API installs (e.g. Vercel) omit it.
+            can_inline = settings.app_env in {"development", "test"} or not settings.kafka_enabled
+            if not can_inline:
+                raise
+
+            from app.automation.playwright_runtime import (
+                job_requires_playwright,
+                playwright_available,
+                playwright_unavailable_message,
+            )
+
+            if job_requires_playwright(job_type) and not playwright_available():
+                message = playwright_unavailable_message()
                 await write_automation_log(
                     user_id,
-                    action="automation.inline",
-                    level="info",
-                    message=f"Kafka unavailable — running {job_type} inline",
-                    metadata={"job_type": job_type},
+                    action=f"{job_type}.failed",
+                    level="error",
+                    message=message,
+                    metadata={"job_type": job_type, "error": "PLAYWRIGHT_UNAVAILABLE"},
                 )
-                asyncio.create_task(_run_worker_inline(job_type, user_id, topic))
-            else:
-                raise
+                raise ServiceUnavailableError(message, code="PLAYWRIGHT_UNAVAILABLE") from exc
+
+            mode = "inline"
+            warning = str(exc.message)
+            logger.warning(
+                "automation_kafka_fallback_inline",
+                job_type=job_type,
+                error=exc.message,
+            )
+            await write_automation_log(
+                user_id,
+                action="automation.inline",
+                level="info",
+                message=f"Kafka unavailable — running {job_type} inline",
+                metadata={"job_type": job_type},
+            )
+            asyncio.create_task(_run_worker_inline(job_type, user_id, topic))
 
         await emit_realtime(
             user_id,
