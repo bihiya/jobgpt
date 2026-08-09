@@ -1,14 +1,45 @@
 /** Resolve WebSocket URL for the JobPilot realtime channel. */
-export function getRealtimeUrl(accessToken: string): string {
-  const apiBase = import.meta.env.VITE_API_URL || '/api/v1';
-  let httpUrl: string;
-  if (apiBase.startsWith('http://') || apiBase.startsWith('https://')) {
-    httpUrl = `${apiBase.replace(/\/$/, '')}/ws`;
-  } else {
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173';
-    httpUrl = `${origin}${apiBase.replace(/\/$/, '')}/ws`;
+
+/**
+ * Build the HTTP form of the realtime endpoint (converted to ws/wss by the caller).
+ *
+ * Vercel SPA rewrites proxy HTTP `/api/*` fine, but they do not upgrade WebSockets
+ * (browser gets HTTP 404 on `wss://<frontend>/api/v1/ws`). Prefer an absolute API
+ * origin for WS when the HTTP API base is relative.
+ */
+export function getRealtimeHttpEndpoint(): string {
+  const explicit = import.meta.env.VITE_WS_URL?.trim();
+  if (explicit) {
+    // Accept wss://… or https://…
+    return explicit.replace(/^ws/i, 'http').replace(/\/$/, '');
   }
-  const wsUrl = httpUrl.replace(/^http/, 'ws');
+
+  const apiBase = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '');
+  const apiOrigin = import.meta.env.VITE_API_ORIGIN?.replace(/\/$/, '');
+
+  if (apiBase.startsWith('http://') || apiBase.startsWith('https://')) {
+    return `${apiBase}/ws`;
+  }
+
+  if (apiOrigin) {
+    const path = apiBase.startsWith('/') ? apiBase : `/${apiBase}`;
+    return `${apiOrigin}${path}/ws`;
+  }
+
+  // Production frontend on Vercel: speak directly to the API deployment.
+  if (typeof window !== 'undefined' && window.location.hostname.endsWith('.vercel.app')) {
+    return 'https://jobai-three.vercel.app/api/v1/ws';
+  }
+
+  // Local Vite proxy (and Docker nginx) can upgrade same-origin /api WebSockets.
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173';
+  const path = apiBase.startsWith('/') ? apiBase : `/${apiBase}`;
+  return `${origin}${path}/ws`;
+}
+
+export function getRealtimeUrl(accessToken: string): string {
+  const httpUrl = getRealtimeHttpEndpoint();
+  const wsUrl = httpUrl.replace(/^http/i, 'ws');
   const url = new URL(wsUrl);
   url.searchParams.set('token', accessToken);
   return url.toString();
