@@ -8,11 +8,12 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from tenacity import AsyncRetrying, stop_after_attempt, wait_exponential
+from tenacity import AsyncRetrying, retry_if_not_exception_type, stop_after_attempt, wait_exponential
 
 from app.automation.base.browser import BaseBrowser
 from app.automation.base.page import BasePage
 from app.automation.captcha import CaptchaHookResult
+from app.automation.errors import PortalAuthError
 from app.automation.session_recorder import ApplySessionRecorder
 from app.automation.verify import capture_fail_proof
 from app.core.config import settings
@@ -113,17 +114,42 @@ class BasePortal(ABC):
             return result
         return CaptchaHookResult()
 
+    def _credentials_required(self) -> bool:
+        """True when the adapter was given username/password and must authenticate."""
+        return bool(self.credentials.get("username") or self.credentials.get("password"))
+
     async def fetch_jobs(self, query: str, location: str = "") -> list[ExtractedJob]:
         async for attempt in AsyncRetrying(
             stop=stop_after_attempt(3),
             wait=wait_exponential(multiplier=1, min=1, max=8),
+            retry=retry_if_not_exception_type(PortalAuthError),
             reraise=True,
         ):
             with attempt:
                 async with self.browser.session() as (_, _, raw_page):
                     page = BasePage(raw_page)
                     await self.login(page)
-                    await self.handle_captcha(page)
+                    captcha = await self.handle_captcha(page)
+                    if captcha.needs_otp:
+                        raise PortalAuthError(
+                            captcha.detail or "Portal requires OTP / 2FA before fetch can continue",
+                            code="OTP_REQUIRED",
+                        )
+                    if "captcha_unsolved" in (captcha.detail or ""):
+                        raise PortalAuthError(
+                            "CAPTCHA unsolved — cannot continue authenticated fetch",
+                            code="CAPTCHA",
+                        )
+                    if self._credentials_required():
+                        from app.automation.auth import ensure_logged_in
+
+                        live_cookies = await page.page.context.cookies()
+                        await ensure_logged_in(
+                            page,
+                            portal=self.name,
+                            cookies=live_cookies,
+                            selector_version=self.selector_version,
+                        )
                     await self.search(page, query, location)
                     jobs = await self.extract_jobs(page)
                     logger.info("jobs_extracted", portal=self.name, count=len(jobs))

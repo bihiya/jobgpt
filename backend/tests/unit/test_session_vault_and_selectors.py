@@ -25,6 +25,8 @@ def test_selector_packs_versioned():
     li = get_selector_pack("linkedin")
     assert li.version == 1
     assert li.all("easy_apply")
+    assert li.all("login_error")
+    assert "a[href*='/feed']" not in li.all("logged_in")
     assert get_selector_pack("greenhouse").all("success")
     assert get_selector_pack("unknown").version == 0
 

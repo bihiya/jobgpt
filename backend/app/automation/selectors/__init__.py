@@ -34,10 +34,35 @@ LINKEDIN_V1 = SelectorPack(
         "login_user": ["#username", "input[name='session_key']"],
         "login_pass": ["#password", "input[name='session_password']"],
         "login_submit": ["button[type='submit']", "button.btn__primary--large"],
+        # Strong signals only — a[href*='/feed'] appears on marketing/login pages.
         "logged_in": [
             "img.global-nav__me-photo",
             ".global-nav__me",
-            "a[href*='/feed']",
+            "button.global-nav__primary-link-me-menu-trigger",
+            "[data-global-nav-link='me']",
+        ],
+        "login_error": [
+            "#error-for-password",
+            "#error-for-username",
+            "form .form__label--error",
+            "text=Wrong email or password",
+            "text=Hmm, that's not the right password",
+            "text=Couldn't find a LinkedIn account",
+        ],
+        "checkpoint": [
+            "input#input__email_verification_pin",
+            "text=Let's do a quick security check",
+            "text=security verification",
+            "text=Verify your identity",
+            "#captcha-challenge",
+            ".challenge-dialog",
+        ],
+        "captcha": [
+            "#captcha-challenge",
+            "iframe[src*='captcha']",
+            "iframe[src*='recaptcha']",
+            ".g-recaptcha",
+            "[data-sitekey]",
         ],
         "easy_apply": [
             "button.jobs-apply-button",
@@ -78,7 +103,33 @@ INDEED_V1 = SelectorPack(
         "login_user": ["input[type='email']", "#ifl-InputFormField-3"],
         "login_pass": ["input[type='password']", "input[name='password']"],
         "login_submit": ["button[type='submit']", "button:has-text('Sign in')"],
-        "logged_in": ["a[href*='/account']", "[data-gnav-element-name='AccountMenu']"],
+        # Avoid loose a[href*='/account'] — present on guest/marketing pages.
+        "logged_in": [
+            "[data-gnav-element-name='AccountMenu']",
+            "#gnav-header-account-menu",
+            "a[href*='/secure/account']",
+            "button[aria-label*='Account']",
+        ],
+        "login_error": [
+            "text=Invalid email or password",
+            "text=incorrect password",
+            "text=We don't recognize this email",
+            "[data-testid='login-error']",
+            ".ssl-error",
+        ],
+        "checkpoint": [
+            "text=Verify your identity",
+            "text=security check",
+            "text=Confirm it's you",
+            "#challenge",
+        ],
+        "captcha": [
+            "iframe[src*='captcha']",
+            "iframe[src*='recaptcha']",
+            ".g-recaptcha",
+            "[data-sitekey]",
+            "#captcha",
+        ],
         "apply": [
             "button:has-text('Apply now')",
             "a:has-text('Apply now')",

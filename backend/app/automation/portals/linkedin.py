@@ -1,10 +1,15 @@
 """LinkedIn portal adapter with session persistence + verified apply."""
 
+from app.automation.auth import LOGIN_FAILED, ensure_logged_in
 from app.automation.base.page import BasePage
 from app.automation.base.portal import ApplyResult, BasePortal, ExtractedJob
+from app.automation.errors import PortalAuthError
 from app.automation.form_fields import resolve_and_fill
 from app.automation.selectors import any_visible, click_first, fill_first, get_selector_pack
 from app.automation.verify import verify_apply_success
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class LinkedInPortal(BasePortal):
@@ -17,22 +22,55 @@ class LinkedInPortal(BasePortal):
         pack = self._pack()
         await page.goto("https://www.linkedin.com/feed/")
         if await any_visible(page, pack.all("logged_in")):
-            self.recorder.add("login", "Session cookies accepted — already logged in")
-            return
+            try:
+                await ensure_logged_in(
+                    page,
+                    portal=self.name,
+                    selector_version=self.selector_version,
+                )
+                self.recorder.add("login", "Session cookies accepted — already logged in")
+                return
+            except PortalAuthError:
+                # Stale / anonymous cookies looked logged-in; fall through to credential login.
+                self.recorder.add(
+                    "login",
+                    "Session looked active but auth cookie missing — signing in",
+                    status="warn",
+                )
 
         await page.goto("https://www.linkedin.com/login")
         if not self.credentials.get("username"):
             self.recorder.add("login", "No credentials — continuing with cookies only", status="warn")
+            # Cookie-only: accept only a real auth session, else allow guest (authwall may yield []).
+            if await any_visible(page, pack.all("logged_in")):
+                await ensure_logged_in(
+                    page,
+                    portal=self.name,
+                    selector_version=self.selector_version,
+                )
             return
 
-        await fill_first(page, pack.all("login_user"), self.credentials["username"])
-        await fill_first(page, pack.all("login_pass"), self.credentials.get("password", ""))
-        await click_first(page, pack.all("login_submit"))
+        user_sel = await fill_first(page, pack.all("login_user"), self.credentials["username"])
+        pass_sel = await fill_first(page, pack.all("login_pass"), self.credentials.get("password", ""))
+        if not user_sel or not pass_sel:
+            raise PortalAuthError(
+                "Could not fill LinkedIn login form — selectors missed username/password fields",
+                code=LOGIN_FAILED,
+            )
+        submitted = await click_first(page, pack.all("login_submit"))
+        if not submitted:
+            raise PortalAuthError("Could not submit LinkedIn login form", code=LOGIN_FAILED)
         try:
             await page.page.wait_for_load_state("networkidle", timeout=15000)
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("linkedin_login_networkidle_timeout", error=str(exc)[:200])
         self.recorder.add("login", "Submitted LinkedIn login form")
+        await ensure_logged_in(
+            page,
+            portal=self.name,
+            selector_version=self.selector_version,
+        )
+        self.recorder.add("login", "LinkedIn login verified")
 
     async def search(self, page: BasePage, query: str, location: str = "") -> None:
         url = f"https://www.linkedin.com/jobs/search/?keywords={query}"

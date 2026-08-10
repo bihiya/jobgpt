@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import uuid4
 
+from app.automation.errors import PortalAuthError
 from app.automation.portals.registry import get_portal_adapter
 from app.core.kafka import publish
 from app.core.logging import get_logger
@@ -16,6 +17,7 @@ from app.services.audit_service import audit_event
 from app.services.automation_log_service import write_automation_log
 from app.services.dedupe_service import DedupeService
 from app.services.portal_health_service import PortalHealthService
+from app.services.session_vault import SessionVault, has_auth_cookies
 from app.workers.base import BaseWorker
 
 logger = get_logger(__name__)
@@ -32,14 +34,102 @@ class FetchWorker(BaseWorker):
         self.dedupe = DedupeService()
         self.health = PortalHealthService()
 
+    async def _clear_sync_started(
+        self,
+        *,
+        user_id: str | None = None,
+        portal_id: str | None = None,
+        portal_name: str | None = None,
+    ) -> None:
+        """Clear stuck sync_started_at markers for early exits / crashes."""
+        try:
+            if portal_id:
+                portal = await self.portals.get_by_id(portal_id)
+                if portal and getattr(portal, "sync_started_at", None):
+                    portal.sync_started_at = None
+                    portal.updated_at = datetime.utcnow()
+                    await portal.save()
+                return
+            if not user_id:
+                return
+            portals = await self.portals.list_for_user(user_id)
+            for portal in portals:
+                if portal_name and portal.name.value != portal_name:
+                    continue
+                if getattr(portal, "sync_started_at", None):
+                    portal.sync_started_at = None
+                    portal.updated_at = datetime.utcnow()
+                    await portal.save()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("clear_sync_started_failed", error=str(exc))
+
+    async def _log_recorder_steps(
+        self,
+        user_id: str,
+        portal_name: str,
+        adapter: Any,
+        correlation_id: str,
+    ) -> None:
+        steps = []
+        try:
+            steps = adapter.recorder.to_list() if getattr(adapter, "recorder", None) else []
+        except Exception:  # noqa: BLE001
+            steps = []
+        for step in steps:
+            if step.get("key") != "login" and step.get("status") not in {"warn", "error", "failed"}:
+                continue
+            level = "warning" if step.get("status") in {"warn", "warning"} else (
+                "error" if step.get("status") in {"error", "failed"} else "info"
+            )
+            await write_automation_log(
+                user_id,
+                action="fetch.login",
+                level=level,
+                portal=portal_name,
+                message=str(
+                    step.get("label")
+                    or step.get("detail")
+                    or step.get("message")
+                    or step.get("key")
+                    or "login step"
+                ),
+                metadata={"step": step},
+                correlation_id=correlation_id,
+            )
+
     async def handle(self, topic: str, payload: dict[str, Any]) -> None:
         user_id = payload.get("user_id")
+        portal_filter = payload.get("portal")
+        portal_id = payload.get("portal_id")
         if not user_id:
             users = await self.users.find_many(limit=100)
             for user in users:
                 await publish("job.fetch", {"user_id": str(user.id), "source": "fanout"}, key=str(user.id))
             return
 
+        try:
+            await self._handle_user(
+                user_id=str(user_id),
+                portal_filter=portal_filter,
+                portal_id=str(portal_id) if portal_id else None,
+                payload=payload,
+            )
+        finally:
+            # Safety net: never leave sync_started_at stuck on early returns / crashes.
+            await self._clear_sync_started(
+                user_id=str(user_id),
+                portal_id=str(portal_id) if portal_id else None,
+                portal_name=str(portal_filter) if portal_filter else None,
+            )
+
+    async def _handle_user(
+        self,
+        *,
+        user_id: str,
+        portal_filter: str | None,
+        portal_id: str | None,
+        payload: dict[str, Any],
+    ) -> None:
         user = await self.users.get_by_id(user_id)
         if not user:
             await write_automation_log(
@@ -52,7 +142,6 @@ class FetchWorker(BaseWorker):
 
         correlation_id = payload.get("correlation_id") or uuid4().hex
         portals = await self.portals.list_for_user(user_id)
-        portal_filter = payload.get("portal")
         query = " ".join(user.profile.keywords[:5]) or "software engineer"
         location = user.profile.location or "Remote"
 
@@ -77,7 +166,10 @@ class FetchWorker(BaseWorker):
 
         ran = 0
         total_inserted = 0
+        auth_failures = 0
         for portal in portals:
+            if portal_id and str(portal.id) != portal_id:
+                continue
             if portal_filter and portal.name.value != portal_filter:
                 continue
             if portal.status == PortalStatus.DISCONNECTED:
@@ -121,8 +213,6 @@ class FetchWorker(BaseWorker):
                 )
                 continue
 
-            from app.services.session_vault import SessionVault
-
             vault = SessionVault()
             adapter = get_portal_adapter(
                 portal.name,
@@ -133,6 +223,7 @@ class FetchWorker(BaseWorker):
                 selector_version=getattr(portal, "selector_version", 1) or 1,
             )
             ran += 1
+            credentials_expected = bool(portal.credentials.username)
             await write_automation_log(
                 user_id,
                 action="fetch.portal",
@@ -143,11 +234,34 @@ class FetchWorker(BaseWorker):
             )
             try:
                 extracted = await adapter.fetch_jobs(query, location)
-                # Persist refreshed session after successful fetch login
-                if adapter.browser.last_cookies:
-                    vault.save_cookies(portal, adapter.browser.last_cookies)
+                await self._log_recorder_steps(user_id, portal.name.value, adapter, correlation_id)
+
+                # Persist cookies only when they prove an authenticated session
+                # (or when the portal has no auth-cookie requirement).
+                last_cookies = list(adapter.browser.last_cookies or [])
+                if last_cookies and (
+                    not credentials_expected or has_auth_cookies(portal.name.value, last_cookies)
+                ):
+                    vault.save_cookies(portal, last_cookies)
                     portal.updated_at = datetime.utcnow()
                     await portal.save()
+                elif credentials_expected and last_cookies and not has_auth_cookies(
+                    portal.name.value, last_cookies
+                ):
+                    # Anonymous tracking cookies must not flip has_session.
+                    logger.info(
+                        "skip_anonymous_cookie_save",
+                        portal=portal.name.value,
+                        cookie_count=len(last_cookies),
+                    )
+
+                # Credentials were provided but scrape stayed guest → treat as auth failure.
+                if credentials_expected and not has_auth_cookies(portal.name.value, last_cookies):
+                    raise PortalAuthError(
+                        "Fetch finished without an authenticated session — login likely failed",
+                        code="NOT_LOGGED_IN",
+                    )
+
                 inserted = 0
                 for item in extracted:
                     fingerprint = self.dedupe.content_hash(
@@ -218,10 +332,11 @@ class FetchWorker(BaseWorker):
                 portal.sync_started_at = None
                 portal.status = PortalStatus.CONNECTED
                 await self.health.record_success(portal)
+                complete_level = "success" if inserted else ("warning" if credentials_expected else "info")
                 await write_automation_log(
                     user_id,
                     action="fetch.complete",
-                    level="success" if inserted else "info",
+                    level=complete_level,
                     portal=portal.name.value,
                     message=f"{portal.name.value}: found {len(extracted)}, added {inserted} new job(s)",
                     metadata={"fetched": len(extracted), "inserted": inserted},
@@ -248,15 +363,23 @@ class FetchWorker(BaseWorker):
                     inserted=inserted,
                 )
             except Exception as exc:  # noqa: BLE001
+                await self._log_recorder_steps(user_id, portal.name.value, adapter, correlation_id)
                 portal.sync_started_at = None
                 await self.health.record_failure(portal, str(exc))
+                if isinstance(exc, PortalAuthError):
+                    auth_failures += 1
+                    portal.status = PortalStatus.ERROR
+                    await portal.save()
                 await write_automation_log(
                     user_id,
                     action="fetch.failed",
                     level="error",
                     portal=portal.name.value,
                     message=f"{portal.name.value} sync failed: {exc}",
-                    metadata={"error": str(exc)},
+                    metadata={
+                        "error": str(exc),
+                        "code": getattr(exc, "code", None),
+                    },
                     correlation_id=correlation_id,
                 )
                 await emit_realtime(
@@ -266,6 +389,7 @@ class FetchWorker(BaseWorker):
                         "portal": portal.name.value,
                         "portal_id": str(portal.id),
                         "error": str(exc),
+                        "code": getattr(exc, "code", None),
                     },
                     title="Portal sync failed",
                     body=str(exc),
@@ -273,16 +397,21 @@ class FetchWorker(BaseWorker):
                 )
                 logger.exception("fetch_failed", portal=portal.name.value, error=str(exc))
 
+        done_level = "success" if total_inserted else ("error" if auth_failures else "info")
         await write_automation_log(
             user_id,
             action="fetch.done",
-            level="success" if total_inserted else "info",
+            level=done_level,
             message=(
                 f"Fetch finished — ran {ran} portal(s), added {total_inserted} new job(s)"
                 if ran
                 else "Fetch finished — no usable portals to run"
             ),
-            metadata={"portals_ran": ran, "inserted": total_inserted},
+            metadata={
+                "portals_ran": ran,
+                "inserted": total_inserted,
+                "auth_failures": auth_failures,
+            },
             correlation_id=correlation_id,
         )
 

@@ -16,6 +16,13 @@ class PortalService:
     def __init__(self, portals: PortalRepository | None = None) -> None:
         self.portals = portals or PortalRepository()
 
+    @staticmethod
+    def _has_auth_session(portal: Portal) -> bool:
+        """True only when vault holds portal auth cookies (not anonymous tracking)."""
+        from app.services.session_vault import portal_has_auth_session
+
+        return portal_has_auth_session(portal)
+
     def _to_response(self, portal: Portal) -> PortalResponse:
         from app.schemas.portal import PortalHealthSchema
 
@@ -32,7 +39,7 @@ class PortalService:
             ),
             created_at=portal.created_at.isoformat(),
             has_credentials=bool(portal.credentials.username),
-            has_session=bool(getattr(portal, "session_blob", "") or portal.cookies),
+            has_session=self._has_auth_session(portal),
             has_totp=bool(getattr(portal, "totp_secret_encrypted", "")),
             session_updated_at=(
                 portal.session_updated_at.isoformat()
@@ -62,12 +69,18 @@ class PortalService:
                 "proxy": payload.proxy.model_dump(),
                 "cookies": {},
                 "selector_version": payload.selector_version or 1,
+                # Stay CONNECTED so sync/fetch can run; UI uses has_session for "Logged in".
                 "status": PortalStatus.CONNECTED,
             }
         )
         cookies = normalize_cookies(payload.cookies)
         if cookies:
-            vault.save_cookies(portal, cookies)
+            # Only persist cookies that prove auth for portals that require it.
+            from app.services.session_vault import has_auth_cookies
+
+            name = getattr(payload.name, "value", payload.name)
+            if has_auth_cookies(str(name), cookies) or not portal.credentials.username:
+                vault.save_cookies(portal, cookies)
         if payload.totp_secret:
             vault.save_totp_secret(portal, payload.totp_secret)
         await portal.save()
