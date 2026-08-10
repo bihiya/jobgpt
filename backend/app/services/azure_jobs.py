@@ -77,31 +77,50 @@ async def start_container_app_job(
     if portal:
         env.append({"name": "JOB_PORTAL", "value": portal})
 
-    url = (
+    base = (
         f"https://management.azure.com/subscriptions/{settings.azure_subscription_id}"
         f"/resourceGroups/{settings.azure_resource_group}"
-        f"/providers/Microsoft.App/jobs/{job_name}/start"
-        f"?api-version={_ARM_API}"
+        f"/providers/Microsoft.App/jobs/{job_name}"
     )
-    body = {
-        "containers": [
-            {
-                "name": "worker",
-                "env": env,
-            }
-        ]
-    }
+    start_url = f"{base}/start?api-version={_ARM_API}"
+    get_url = f"{base}?api-version={_ARM_API}"
 
     token = await _access_token()
     async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(
-            url,
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json",
-            },
-            json=body,
-        )
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+        # Start overrides must include the template container name + image;
+        # a bare "worker" name without Image returns ContainerAppImageRequired.
+        container_name = job_name
+        image = ""
+        job_get = await client.get(get_url, headers={"Authorization": f"Bearer {token}"})
+        if job_get.status_code < 400:
+            containers = (
+                (job_get.json().get("properties") or {})
+                .get("template", {})
+                .get("containers")
+                or []
+            )
+            if containers:
+                container_name = containers[0].get("name") or job_name
+                image = containers[0].get("image") or ""
+        if not image:
+            raise ServiceUnavailableError(
+                f"Azure job '{job_name}' has no container image configured",
+                code="AZURE_JOB_IMAGE_MISSING",
+            )
+        body = {
+            "containers": [
+                {
+                    "name": container_name,
+                    "image": image,
+                    "env": env,
+                }
+            ]
+        }
+        response = await client.post(start_url, headers=headers, json=body)
 
     if response.status_code >= 400:
         logger.warning(

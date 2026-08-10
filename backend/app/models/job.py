@@ -50,6 +50,10 @@ class Job(Document):
         indexes = [
             [("user_id", 1), ("status", 1)],
             [("user_id", 1), ("match_score", -1)],
+            # Cosmos Mongo requires an index on every ORDER BY path.
+            [("user_id", 1), ("fetched_at", -1)],
+            [("user_id", 1), ("created_at", -1)],
+            [("user_id", 1), ("title", 1)],
             [("external_id", 1), ("portal", 1)],
             [("user_id", 1), ("content_hash", 1)],
             [("user_id", 1), ("apply_url", 1)],

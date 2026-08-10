@@ -23,6 +23,10 @@ class AutomationLog(Document):
 
     class Settings:
         name = "automation_logs"
+        indexes = [
+            # Cosmos Mongo requires an index on every ORDER BY path.
+            [("user_id", 1), ("created_at", -1)],
+        ]
 
 
 class AuditLog(Document):

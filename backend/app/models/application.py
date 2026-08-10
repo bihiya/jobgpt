@@ -39,4 +39,7 @@ class Application(Document):
             [("user_id", 1), ("status", 1)],
             [("user_id", 1), ("follow_up_at", 1)],
             [("user_id", 1), ("applied_at", 1)],
+            # Cosmos Mongo requires an index on every ORDER BY path.
+            [("user_id", 1), ("created_at", -1)],
+            [("user_id", 1), ("updated_at", -1)],
         ]
