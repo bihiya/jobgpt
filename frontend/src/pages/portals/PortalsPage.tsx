@@ -63,19 +63,20 @@ function loginState(portal: PortalRow): {
   color: 'success' | 'warning' | 'error' | 'default';
   detail: string;
 } {
+  const lastError = (portal.health?.last_error || '').trim();
   const paused = Boolean(portal.health?.auto_paused);
   if (paused) {
     return {
       label: 'Paused',
       color: 'error',
-      detail: portal.health?.paused_reason || portal.health?.last_error || 'Re-auth required',
+      detail: portal.health?.paused_reason || lastError || 'Re-auth required',
     };
   }
-  if (portal.status === 'error') {
+  if (portal.status === 'error' || lastError) {
     return {
-      label: 'Error',
+      label: 'Login failed',
       color: 'error',
-      detail: portal.health?.last_error || 'Last sync failed',
+      detail: lastError || 'Last sync failed — check email/password or security checks',
     };
   }
   if (portal.has_session) {
@@ -92,7 +93,7 @@ function loginState(portal: PortalRow): {
     return {
       label: 'Not verified',
       color: 'warning',
-      detail: 'Credentials saved — login is checked on the next sync',
+      detail: 'Credentials saved — sync to verify login (errors show here)',
     };
   }
   return {

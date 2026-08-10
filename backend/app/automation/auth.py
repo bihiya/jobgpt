@@ -51,23 +51,40 @@ async def detect_auth_failure(
     """Inspect page for wrong-password / checkpoint / captcha / OTP interstitials."""
     pack = get_selector_pack(portal, selector_version)
     url = page.page.url or ""
+    try:
+        body = ((await page.page.inner_text("body")) or "").lower()
+    except Exception:  # noqa: BLE001
+        body = ""
 
-    if await any_visible(page, pack.all("login_error")):
+    wrong_password_markers = (
+        "wrong email or password",
+        "that's not the right password",
+        "that’s not the right password",
+        "hmm, that's not the right password",
+        "couldn't find a linkedin account",
+        "invalid email or password",
+        "incorrect password",
+    )
+    if await any_visible(page, pack.all("login_error")) or any(
+        marker in body for marker in wrong_password_markers
+    ):
+        portal_label = (portal or "portal").capitalize()
         return PortalAuthError(
-            "Wrong email or password — check credentials and try again",
+            f"{portal_label} rejected login — wrong email or password",
             code=WRONG_PASSWORD,
         )
     if await any_visible(page, pack.all("checkpoint")) or _url_looks_like_checkpoint(url):
         return PortalAuthError(
-            "Portal security checkpoint / challenge required — complete it in a browser, then re-auth",
+            f"{(portal or 'Portal').capitalize()} security checkpoint / challenge required — "
+            "complete it in a browser, then re-auth",
             code=CHECKPOINT,
         )
-    if await any_visible(page, pack.all("captcha")):
+    if await any_visible(page, pack.all("captcha")) or "verify you are human" in body:
         return PortalAuthError(
             "CAPTCHA challenge blocking login — solve it or re-auth with a fresh session",
             code=CAPTCHA,
         )
-    if await any_visible(page, pack.all("otp")):
+    if await any_visible(page, pack.all("otp")) or "enter the code" in body:
         return PortalAuthError(
             "OTP / 2FA required — add a TOTP secret or enter a one-time code, then re-auth",
             code=OTP_REQUIRED,

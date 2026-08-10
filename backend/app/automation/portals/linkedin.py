@@ -50,20 +50,61 @@ class LinkedInPortal(BasePortal):
                 )
             return
 
+        # LinkedIn renders duplicate hidden+visible inputs with generated ids.
+        try:
+            await page.page.locator("input[type='email']").locator("visible=true").first.wait_for(
+                timeout=20000
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("linkedin_login_form_wait_timeout", error=str(exc)[:200])
+
         user_sel = await fill_first(page, pack.all("login_user"), self.credentials["username"])
         pass_sel = await fill_first(page, pack.all("login_pass"), self.credentials.get("password", ""))
         if not user_sel or not pass_sel:
+            url = ""
+            try:
+                url = page.page.url or ""
+            except Exception:  # noqa: BLE001
+                pass
+            if "authwall" in url.lower():
+                raise PortalAuthError(
+                    "LinkedIn authwall blocked login (bot/IP check). "
+                    "Sign in once in a normal browser, then Re-auth with working credentials/cookies.",
+                    code=LOGIN_FAILED,
+                )
             raise PortalAuthError(
-                "Could not fill LinkedIn login form — selectors missed username/password fields",
+                f"Could not fill LinkedIn login form at {url or '/login'} — selectors missed fields",
                 code=LOGIN_FAILED,
             )
-        submitted = await click_first(page, pack.all("login_submit"))
+        # Enter on the visible password field is more reliable than the Sign-in button.
+        submitted: str | None = None
+        try:
+            await page.page.locator("input[type='password']").locator("visible=true").first.press(
+                "Enter"
+            )
+            submitted = "enter"
+        except Exception:  # noqa: BLE001
+            submitted = await click_first(page, pack.all("login_submit"))
         if not submitted:
             raise PortalAuthError("Could not submit LinkedIn login form", code=LOGIN_FAILED)
         try:
-            await page.page.wait_for_load_state("networkidle", timeout=15000)
+            await page.page.wait_for_function(
+                """() => {
+                  const body = (document.body && document.body.innerText || '').toLowerCase();
+                  if (body.includes('wrong email or password') || body.includes('security check')) {
+                    return true;
+                  }
+                  const path = location.pathname || '';
+                  return path && !path.includes('/login');
+                }""",
+                timeout=15000,
+            )
         except Exception as exc:  # noqa: BLE001
-            logger.warning("linkedin_login_networkidle_timeout", error=str(exc)[:200])
+            logger.warning("linkedin_login_result_wait_timeout", error=str(exc)[:200])
+            try:
+                await page.page.wait_for_timeout(2000)
+            except Exception:  # noqa: BLE001
+                pass
         self.recorder.add("login", "Submitted LinkedIn login form")
         await ensure_logged_in(
             page,

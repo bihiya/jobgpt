@@ -31,9 +31,26 @@ LINKEDIN_V1 = SelectorPack(
     portal="linkedin",
     version=1,
     selectors={
-        "login_user": ["#username", "input[name='session_key']"],
-        "login_pass": ["#password", "input[name='session_password']"],
-        "login_submit": ["button[type='submit']", "button.btn__primary--large"],
+        # LinkedIn 2025+ uses generated ids; prefer type/autocomplete + visible fields.
+        "login_user": [
+            "input[type='email']",
+            "input[autocomplete='username']",
+            "input[autocomplete='username webauthn']",
+            "input[name='session_key']",
+            "#username",
+        ],
+        "login_pass": [
+            "input[type='password']",
+            "input[autocomplete='current-password']",
+            "input[name='session_password']",
+            "#password",
+        ],
+        "login_submit": [
+            "button:has-text('Sign in')",
+            "button[type='submit']",
+            "button.btn__primary--large",
+            "button[data-litms-control-urn='login-submit']",
+        ],
         # Strong signals only — a[href*='/feed'] appears on marketing/login pages.
         "logged_in": [
             "img.global-nav__me-photo",
@@ -221,17 +238,40 @@ def get_selector_pack(portal: str, version: int | None = None) -> SelectorPack:
 
 async def click_first(page: "BasePage", selectors: list[str], timeout: int = 5000) -> str | None:
     for sel in selectors:
+        try:
+            locator = page.page.locator(sel)
+            count = await locator.count()
+            for idx in range(count):
+                item = locator.nth(idx)
+                try:
+                    if not await item.is_visible():
+                        continue
+                    await item.click(timeout=timeout)
+                    return sel
+                except Exception:  # noqa: BLE001
+                    continue
+        except Exception:  # noqa: BLE001
+            pass
         if await page.safe_click(sel, timeout=timeout):
             return sel
     return None
 
 
 async def fill_first(page: "BasePage", selectors: list[str], value: str) -> str | None:
+    """Fill the first *visible* matching input (LinkedIn duplicates hidden fields)."""
     for sel in selectors:
         try:
-            if await page.page.query_selector(sel):
-                await page.fill(sel, value)
-                return sel
+            locator = page.page.locator(sel)
+            count = await locator.count()
+            for idx in range(count):
+                item = locator.nth(idx)
+                try:
+                    if not await item.is_visible():
+                        continue
+                    await item.fill(value, timeout=8000)
+                    return sel
+                except Exception:  # noqa: BLE001
+                    continue
         except Exception:  # noqa: BLE001
             continue
     return None
@@ -239,6 +279,18 @@ async def fill_first(page: "BasePage", selectors: list[str], value: str) -> str 
 
 async def query_first(page: "BasePage", selectors: list[str]) -> Any:
     for sel in selectors:
+        try:
+            locator = page.page.locator(sel)
+            count = await locator.count()
+            for idx in range(count):
+                item = locator.nth(idx)
+                try:
+                    if await item.is_visible():
+                        return await item.element_handle()
+                except Exception:  # noqa: BLE001
+                    continue
+        except Exception:  # noqa: BLE001
+            pass
         el = await page.page.query_selector(sel)
         if el:
             return el
