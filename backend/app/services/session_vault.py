@@ -92,6 +92,36 @@ DEFAULT_DOMAINS = {
     "lever": ".lever.co",
 }
 
+# Cookies that prove an authenticated session (not anonymous tracking cookies).
+AUTH_COOKIE_NAMES: dict[str, frozenset[str]] = {
+    "linkedin": frozenset({"li_at"}),
+    # Indeed sets several account-scoped cookies after a real sign-in.
+    "indeed": frozenset({"PP", "SHARED_SESSION", "SOCK", "SHOE", "indeed_rcc"}),
+}
+
+
+def cookie_name_set(cookies: list[dict[str, Any]] | None) -> set[str]:
+    names: set[str] = set()
+    for item in cookies or []:
+        if isinstance(item, dict) and item.get("name"):
+            names.add(str(item["name"]))
+    return names
+
+
+def has_auth_cookies(portal_name: str, cookies: list[dict[str, Any]] | None) -> bool:
+    """True only when portal-specific auth cookies are present."""
+    required = AUTH_COOKIE_NAMES.get((portal_name or "").lower())
+    if not required:
+        return bool(cookies)
+    return bool(cookie_name_set(cookies) & required)
+
+
+def portal_has_auth_session(portal: Portal) -> bool:
+    """Whether the vault holds a validated auth session (not anonymous cookies)."""
+    name = getattr(portal.name, "value", portal.name)
+    cookies = SessionVault().load_cookies(portal)
+    return has_auth_cookies(str(name), cookies)
+
 
 class SessionVault:
     """Load/save portal cookies + TOTP secrets with optional encryption."""

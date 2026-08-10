@@ -21,6 +21,8 @@ async def _inline_fetch(payload: dict[str, Any]) -> None:
     except Exception as exc:  # noqa: BLE001
         logger.warning("inline_fetch_failed", error=str(exc), user_id=payload.get("user_id"))
         user_id = payload.get("user_id")
+        portal_id = payload.get("portal_id")
+        portal_name = payload.get("portal")
         if user_id:
             try:
                 from app.services.automation_log_service import write_automation_log
@@ -29,11 +31,33 @@ async def _inline_fetch(payload: dict[str, Any]) -> None:
                     str(user_id),
                     action="fetch.failed",
                     level="error",
+                    portal=str(portal_name) if portal_name else "",
                     message=f"fetch worker failed: {exc}",
                     metadata={"error": str(exc), "source": payload.get("source", "inline")},
                 )
             except Exception:  # noqa: BLE001
                 pass
+        # Clear sync marker + record health failure for the targeted portal.
+        try:
+            from app.repository.portal_repository import PortalRepository
+            from app.services.portal_health_service import PortalHealthService
+
+            portals = PortalRepository()
+            health = PortalHealthService()
+            portal = None
+            if portal_id:
+                portal = await portals.get_by_id(str(portal_id))
+            elif user_id and portal_name:
+                for item in await portals.list_for_user(str(user_id)):
+                    if item.name.value == portal_name:
+                        portal = item
+                        break
+            if portal:
+                if getattr(portal, "sync_started_at", None):
+                    portal.sync_started_at = None
+                await health.record_failure(portal, str(exc))
+        except Exception as cleanup_exc:  # noqa: BLE001
+            logger.warning("inline_fetch_cleanup_failed", error=str(cleanup_exc))
 
 
 async def publish_job_fetch(user_id: str, **extra: Any) -> str:

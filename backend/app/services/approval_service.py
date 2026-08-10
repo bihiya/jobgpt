@@ -156,7 +156,9 @@ class ApprovalService:
         for portal in portals:
             health = getattr(portal, "health", None)
             auto_paused = bool(getattr(health, "auto_paused", False)) if health else False
-            has_session = bool(getattr(portal, "session_blob", "") or portal.cookies)
+            from app.services.session_vault import portal_has_auth_session
+
+            has_session = portal_has_auth_session(portal)
             last_error = (getattr(health, "last_error", "") if health else "") or ""
             login_expired = (
                 auto_paused
