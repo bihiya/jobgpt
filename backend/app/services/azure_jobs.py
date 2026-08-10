@@ -46,6 +46,63 @@ async def _access_token() -> str:
         await credential.close()
 
 
+def _merge_env(
+    template_env: list[dict[str, Any]] | None,
+    overrides: list[dict[str, str]],
+) -> list[dict[str, Any]]:
+    """Merge per-run env into the job template env without dropping secretRefs."""
+    merged: dict[str, dict[str, Any]] = {}
+    for item in template_env or []:
+        name = item.get("name")
+        if not name:
+            continue
+        entry: dict[str, Any] = {"name": name}
+        if item.get("secretRef"):
+            entry["secretRef"] = item["secretRef"]
+        elif "value" in item:
+            entry["value"] = item.get("value") or ""
+        merged[name] = entry
+    for item in overrides:
+        merged[item["name"]] = {"name": item["name"], "value": item["value"]}
+    return list(merged.values())
+
+
+def _execution_container(
+    template_container: dict[str, Any],
+    *,
+    job_name: str,
+    env_overrides: list[dict[str, str]],
+) -> dict[str, Any]:
+    """Build a start payload container that keeps command/args/secrets/resources."""
+    image = template_container.get("image") or ""
+    if not image:
+        raise ServiceUnavailableError(
+            f"Azure job '{job_name}' has no container image configured",
+            code="AZURE_JOB_IMAGE_MISSING",
+        )
+
+    container: dict[str, Any] = {
+        "name": template_container.get("name") or job_name,
+        "image": image,
+        "env": _merge_env(template_container.get("env"), env_overrides),
+    }
+    if template_container.get("command"):
+        container["command"] = template_container["command"]
+    if template_container.get("args"):
+        container["args"] = template_container["args"]
+    resources = template_container.get("resources")
+    if isinstance(resources, dict) and resources:
+        # ARM start rejects some read-only resource fields; keep cpu/memory only.
+        trimmed = {
+            key: resources[key]
+            for key in ("cpu", "memory")
+            if key in resources and resources[key] is not None
+        }
+        if trimmed:
+            container["resources"] = trimmed
+    return container
+
+
 async def start_container_app_job(
     job_type: str,
     *,
@@ -68,14 +125,14 @@ async def start_container_app_job(
             code="AZURE_JOB_UNKNOWN",
         )
 
-    env = [
+    env_overrides = [
         {"name": "JOB_TYPE", "value": job_type},
         {"name": "JOB_USER_ID", "value": user_id},
     ]
     if job_id:
-        env.append({"name": "JOB_ID", "value": job_id})
+        env_overrides.append({"name": "JOB_ID", "value": job_id})
     if portal:
-        env.append({"name": "JOB_PORTAL", "value": portal})
+        env_overrides.append({"name": "JOB_PORTAL", "value": portal})
 
     base = (
         f"https://management.azure.com/subscriptions/{settings.azure_subscription_id}"
@@ -91,33 +148,38 @@ async def start_container_app_job(
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
         }
-        # Start overrides must include the template container name + image;
-        # a bare "worker" name without Image returns ContainerAppImageRequired.
-        container_name = job_name
-        image = ""
+        # Start overrides replace the execution container. Copy the template
+        # (image, command, args, secretRefs) and only overlay JOB_* env vars.
         job_get = await client.get(get_url, headers={"Authorization": f"Bearer {token}"})
-        if job_get.status_code < 400:
-            containers = (
-                (job_get.json().get("properties") or {})
-                .get("template", {})
-                .get("containers")
-                or []
+        if job_get.status_code >= 400:
+            logger.warning(
+                "azure_job_get_failed",
+                job_name=job_name,
+                status=job_get.status_code,
+                body=job_get.text[:500],
             )
-            if containers:
-                container_name = containers[0].get("name") or job_name
-                image = containers[0].get("image") or ""
-        if not image:
             raise ServiceUnavailableError(
-                f"Azure job '{job_name}' has no container image configured",
-                code="AZURE_JOB_IMAGE_MISSING",
+                f"Failed to read Azure job '{job_name}': HTTP {job_get.status_code}",
+                code="AZURE_JOB_GET_FAILED",
+            )
+        containers = (
+            (job_get.json().get("properties") or {})
+            .get("template", {})
+            .get("containers")
+            or []
+        )
+        if not containers:
+            raise ServiceUnavailableError(
+                f"Azure job '{job_name}' has no container template",
+                code="AZURE_JOB_TEMPLATE_MISSING",
             )
         body = {
             "containers": [
-                {
-                    "name": container_name,
-                    "image": image,
-                    "env": env,
-                }
+                _execution_container(
+                    containers[0],
+                    job_name=job_name,
+                    env_overrides=env_overrides,
+                )
             ]
         }
         response = await client.post(start_url, headers=headers, json=body)

@@ -5,7 +5,11 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.core.exceptions import ServiceUnavailableError
-from app.services.azure_jobs import azure_jobs_configured, start_container_app_job
+from app.services.azure_jobs import (
+    _merge_env,
+    azure_jobs_configured,
+    start_container_app_job,
+)
 
 
 def test_azure_jobs_configured_false_by_default():
@@ -26,25 +30,48 @@ def test_azure_jobs_configured_true_when_set():
         assert azure_jobs_configured() is True
 
 
-def _mock_client(*, post_status=200, post_body=None):
+def test_merge_env_preserves_secret_refs_and_overrides():
+    template = [
+        {"name": "MONGODB_URL", "secretRef": "mongodb-url", "value": ""},
+        {"name": "JOB_TYPE", "value": "fetch"},
+        {"name": "APP_ENV", "value": "production"},
+    ]
+    merged = _merge_env(
+        template,
+        [
+            {"name": "JOB_TYPE", "value": "fetch"},
+            {"name": "JOB_USER_ID", "value": "u1"},
+        ],
+    )
+    by_name = {item["name"]: item for item in merged}
+    assert by_name["MONGODB_URL"]["secretRef"] == "mongodb-url"
+    assert by_name["JOB_TYPE"]["value"] == "fetch"
+    assert by_name["JOB_USER_ID"]["value"] == "u1"
+    assert by_name["APP_ENV"]["value"] == "production"
+
+
+def _mock_client(*, post_status=200, template_container=None):
+    container = template_container or {
+        "name": "job-fetch",
+        "image": "example.azurecr.io/jobpilot-api:latest",
+        "command": ["python"],
+        "args": ["-m", "app.workers.run_job"],
+        "env": [
+            {"name": "JOB_TYPE", "value": "fetch"},
+            {"name": "MONGODB_URL", "secretRef": "mongodb-url", "value": ""},
+        ],
+        "resources": {"cpu": 1.0, "memory": "2Gi"},
+    }
     get_response = AsyncMock()
     get_response.status_code = 200
+    get_response.text = ""
     get_response.json = lambda: {
-        "properties": {
-            "template": {
-                "containers": [
-                    {
-                        "name": "job-fetch",
-                        "image": "example.azurecr.io/jobpilot-api:latest",
-                    }
-                ]
-            }
-        }
+        "properties": {"template": {"containers": [container]}}
     }
 
     post_response = AsyncMock()
     post_response.status_code = post_status
-    post_response.content = b'{"name":"exec-1"}' if post_body is None else post_body
+    post_response.content = b'{"name":"exec-1"}'
     post_response.text = "forbidden" if post_status >= 400 else ""
     post_response.json = lambda: {"name": "exec-1"}
 
@@ -82,14 +109,18 @@ async def test_start_container_app_job_posts_arm():
         container = kwargs["json"]["containers"][0]
         assert container["name"] == "job-fetch"
         assert container["image"] == "example.azurecr.io/jobpilot-api:latest"
-        env = container["env"]
-        assert {"name": "JOB_USER_ID", "value": "u1"} in env
-        assert {"name": "JOB_PORTAL", "value": "linkedin"} in env
+        assert container["command"] == ["python"]
+        assert container["args"] == ["-m", "app.workers.run_job"]
+        assert container["resources"] == {"cpu": 1.0, "memory": "2Gi"}
+        env = {item["name"]: item for item in container["env"]}
+        assert env["MONGODB_URL"]["secretRef"] == "mongodb-url"
+        assert env["JOB_USER_ID"]["value"] == "u1"
+        assert env["JOB_PORTAL"]["value"] == "linkedin"
 
 
 @pytest.mark.asyncio
 async def test_start_container_app_job_raises_on_http_error():
-    mock_client = _mock_client(post_status=403, post_body=b"forbidden")
+    mock_client = _mock_client(post_status=403)
 
     with (
         patch("app.services.azure_jobs.settings") as settings,
@@ -110,14 +141,9 @@ async def test_start_container_app_job_raises_on_http_error():
 
 @pytest.mark.asyncio
 async def test_start_container_app_job_raises_when_image_missing():
-    get_response = AsyncMock()
-    get_response.status_code = 200
-    get_response.json = lambda: {"properties": {"template": {"containers": [{"name": "job-fetch"}]}}}
-
-    mock_client = AsyncMock()
-    mock_client.__aenter__.return_value = mock_client
-    mock_client.__aexit__.return_value = None
-    mock_client.get.return_value = get_response
+    mock_client = _mock_client(
+        template_container={"name": "job-fetch", "env": [], "command": ["python"]}
+    )
 
     with (
         patch("app.services.azure_jobs.settings") as settings,
