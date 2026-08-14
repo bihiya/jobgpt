@@ -43,6 +43,7 @@ async def write_automation_log(
                 "level": level,
                 "message": message,
                 "portal": portal,
+                "correlation_id": correlation_id,
             },
             title="Automation update",
             body=message,

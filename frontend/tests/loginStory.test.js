@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { groupPortalRuns, lastPortalRun } from '../src/utils/loginStory';
+import { groupPortalRuns, lastPortalRun, withLiveRun } from '../src/utils/loginStory';
 
 describe('lastPortalRun', () => {
   it('returns chronological steps for the latest LinkedIn sync', () => {
@@ -44,5 +44,27 @@ describe('groupPortalRuns', () => {
     expect(runs[0].steps.map((s) => s.id)).toEqual(['b1', 'b2']);
     expect(runs[1].outcome).toBe('success');
     expect(runs[1].stepCount).toBe(2);
+  });
+});
+
+describe('withLiveRun', () => {
+  it('pins a pending sync id on top before worker logs arrive', () => {
+    const live = withLiveRun([], { id: 'abc123def', portal: 'linkedin' });
+    expect(live[0].id).toBe('abc123def');
+    expect(live[0].steps[0].message).toMatch(/queued/i);
+    expect(live[0].steps[0].correlation_id).toBe('abc123def');
+  });
+
+  it('adopts server logs onto the live sync id via aliases', () => {
+    const logs = [
+      { id: '1', created_at: 't1', portal: 'linkedin', action: 'fetch.login', message: 'Login page opened', correlation_id: 'server-cid' },
+    ];
+    const runs = withLiveRun(groupPortalRuns(logs, 'linkedin'), {
+      id: 'server-cid',
+      portal: 'linkedin',
+      aliasIds: ['local-cid'],
+    });
+    expect(runs[0].id).toBe('server-cid');
+    expect(runs[0].steps.map((s) => s.message)).toEqual(['Login page opened']);
   });
 });

@@ -1,4 +1,4 @@
-import { DeleteOutline, EditOutlined } from '@mui/icons-material';
+import { DeleteOutline, EditOutlined, MoreHoriz } from '@mui/icons-material';
 import {
   Alert,
   Box,
@@ -8,28 +8,35 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  LinearProgress,
+  IconButton,
+  Menu,
   MenuItem,
   Stack,
   TextField,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { automationApi, portalsApi } from '../../api';
 import PageShell from '../../components/common/PageShell';
-import { useUserTimeZone } from '../../hooks/useUserTimeZone';
-import { formatWhen, fromNowLocal, parseApiDate } from '../../utils/datetime';
-import { groupPortalRuns, type AutomationLogItem } from '../../utils/loginStory';
 import SyncRunList from '../../components/portals/SyncRunList';
+import { useRequireAuth } from '../../hooks/useRequireAuth';
+import { useUserTimeZone } from '../../hooks/useUserTimeZone';
+import { playDemoSync } from '../../lib/demoSync';
+import { fromNowLocal } from '../../utils/datetime';
+import {
+  groupPortalRuns,
+  isSyncRunFinished,
+  newSyncId,
+  withLiveRun,
+  type AutomationLogItem,
+} from '../../utils/loginStory';
 
 const PORTALS = [
   'linkedin', 'naukri', 'indeed', 'foundit', 'wellfound', 'greenhouse',
   'lever', 'ashby', 'workday', 'smartrecruiters', 'oracle', 'sap_successfactors', 'taleo',
 ];
 
-/** Treat sync as stale if the worker never cleared sync_started_at. */
 const SYNC_STALE_MS = 15 * 60 * 1000;
 
 type PortalRow = {
@@ -43,13 +50,10 @@ type PortalRow = {
   has_credentials?: boolean;
   has_password?: boolean;
   has_session?: boolean;
-  has_totp?: boolean;
-  session_updated_at?: string | null;
   health?: {
     score?: number;
     auto_paused?: boolean;
     last_error?: string;
-    consecutive_failures?: number;
     paused_reason?: string;
   };
 };
@@ -59,62 +63,26 @@ type CredsDialog =
   | { mode: 'edit'; portal: PortalRow }
   | { mode: 'reauth'; portal: PortalRow };
 
-function isSyncInFlight(portal: PortalRow, optimisticId?: string | null): boolean {
-  if (optimisticId && portal.id === optimisticId) return true;
-  const started = parseApiDate(portal.sync_started_at);
-  if (!started) return false;
-  return Date.now() - started.valueOf() < SYNC_STALE_MS;
+type LiveSync = {
+  portalId: string;
+  portalName: string;
+  syncId: string;
+  aliasIds: string[];
+};
+
+function isSyncInFlight(portal: PortalRow, live?: LiveSync | null): boolean {
+  if (live && portal.id === live.portalId) return true;
+  if (!portal.sync_started_at) return false;
+  const started = Date.parse(portal.sync_started_at);
+  return Number.isFinite(started) && Date.now() - started < SYNC_STALE_MS;
 }
 
-function roughlySame(a?: string | null, b?: string | null): boolean {
-  const pa = parseApiDate(a);
-  const pb = parseApiDate(b);
-  if (!pa || !pb) return false;
-  return Math.abs(pa.valueOf() - pb.valueOf()) < 5000;
-}
-
-function loginState(portal: PortalRow): {
-  label: string;
-  color: 'success' | 'warning' | 'error' | 'default';
-  detail: string;
-} {
-  const paused = Boolean(portal.health?.auto_paused);
-  if (paused) {
-    return {
-      label: 'Paused',
-      color: 'error',
-      detail: portal.health?.paused_reason || portal.health?.last_error || 'Re-auth required',
-    };
-  }
-  if (portal.status === 'error') {
-    return {
-      label: 'Login failed',
-      color: 'error',
-      detail: portal.health?.last_error || 'Last sync failed',
-    };
-  }
-  if (portal.has_session) {
-    const when = portal.session_updated_at
-      ? fromNowLocal(portal.session_updated_at)
-      : null;
-    return {
-      label: 'Logged in',
-      color: 'success',
-      detail: when ? `Session updated ${when}` : 'Browser session saved',
-    };
-  }
-  if (portal.has_credentials) {
-    return {
-      label: 'Not verified',
-      color: 'warning',
-      detail: 'Credentials saved — login is checked on the next sync',
-    };
-  }
-  return {
-    label: 'Needs login',
-    color: 'warning',
-    detail: 'Add username/password (or re-auth) before syncing',
-  };
+function loginState(portal: PortalRow): { label: string; color: 'success' | 'warning' | 'error' | 'default' } {
+  if (portal.health?.auto_paused) return { label: 'Paused', color: 'error' };
+  if (portal.status === 'error') return { label: 'Login failed', color: 'error' };
+  if (portal.has_session) return { label: 'Logged in', color: 'success' };
+  if (portal.has_credentials) return { label: 'Saved', color: 'warning' };
+  return { label: 'Needs login', color: 'warning' };
 }
 
 export default function PortalsPage() {
@@ -122,43 +90,47 @@ export default function PortalsPage() {
   const [name, setName] = useState('linkedin');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ portal: PortalRow; anchor: HTMLElement } | null>(null);
+  const [live, setLive] = useState<LiveSync | null>(null);
+  const [liveLogs, setLiveLogs] = useState<AutomationLogItem[]>([]);
   const [pollUntil, setPollUntil] = useState(0);
+  const demoCancel = useRef<(() => void) | null>(null);
   const queryClient = useQueryClient();
   const timeZone = useUserTimeZone();
+  const { isAuthenticated } = useRequireAuth();
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['portals'],
     queryFn: async () => (await portalsApi.list()).data as PortalRow[],
-    refetchInterval: Date.now() < pollUntil ? 2000 : false,
+    refetchInterval: Date.now() < pollUntil ? 1500 : false,
   });
   const { data: logsData } = useQuery({
     queryKey: ['automation-logs'],
     queryFn: async () => (await automationApi.logs({ page_size: 200 })).data,
-    refetchInterval: Date.now() < pollUntil ? 2000 : false,
+    refetchInterval: Date.now() < pollUntil ? 1200 : false,
   });
 
   const rows = useMemo(() => (Array.isArray(data) ? data : []), [data]);
-  const logItems = useMemo<AutomationLogItem[]>(
-    () => (Array.isArray(logsData?.items) ? logsData.items : []),
-    [logsData],
-  );
-  const anySyncing = useMemo(
-    () => rows.some((p) => isSyncInFlight(p, syncingId)),
-    [rows, syncingId],
-  );
+  const logItems = useMemo<AutomationLogItem[]>(() => {
+    const fromApi: AutomationLogItem[] = Array.isArray(logsData?.items) ? logsData.items : [];
+    if (!liveLogs.length) return fromApi;
+    const seen = new Set(fromApi.map((item) => item.id));
+    return [...liveLogs.filter((item) => !seen.has(item.id)), ...fromApi];
+  }, [logsData, liveLogs]);
+
+  useEffect(() => () => demoCancel.current?.(), []);
 
   useEffect(() => {
-    if (anySyncing && Date.now() >= pollUntil) {
-      setPollUntil(Date.now() + 30_000);
-    }
-  }, [anySyncing, pollUntil]);
-
-  useEffect(() => {
-    if (!syncingId) return;
-    const row = rows.find((p) => p.id === syncingId);
-    if (row?.sync_started_at) setSyncingId(null);
-  }, [rows, syncingId]);
+    if (!live) return;
+    const current = withLiveRun(groupPortalRuns(logItems, live.portalName), live).find(
+      (run) => run.id === live.syncId,
+    );
+    if (!current || !isSyncRunFinished(current)) return;
+    setPollUntil((until) => {
+      const next = Date.now() + 4_000;
+      return until > next ? next : until;
+    });
+  }, [live, logItems]);
 
   const closeDialog = () => {
     setDialog(null);
@@ -175,15 +147,49 @@ export default function PortalsPage() {
   };
 
   const openEdit = (portal: PortalRow) => {
+    setMenu(null);
     setUsername(portal.username || '');
     setPassword('');
     setDialog({ mode: 'edit', portal });
   };
 
   const openReauth = (portal: PortalRow) => {
+    setMenu(null);
     setUsername(portal.username || '');
     setPassword('');
     setDialog({ mode: 'reauth', portal });
+  };
+
+  const pinLive = (portal: PortalRow, syncId: string, aliasIds: string[] = []) => {
+    demoCancel.current?.();
+    setLive({ portalId: portal.id, portalName: portal.name, syncId, aliasIds });
+    setLiveLogs([
+      {
+        id: `${syncId}-queued`,
+        created_at: new Date().toISOString(),
+        portal: portal.name,
+        action: 'fetch.portal',
+        level: 'info',
+        message: `Sync queued for ${portal.name}…`,
+        correlation_id: syncId,
+      },
+    ]);
+    setPollUntil(Date.now() + 90_000);
+  };
+
+  const adoptSyncId = (syncId: string) => {
+    const fromId = live?.syncId;
+    setLive((prev) => {
+      if (!prev || prev.syncId === syncId) return prev;
+      return { ...prev, syncId, aliasIds: [...new Set([...prev.aliasIds, prev.syncId])] };
+    });
+    if (fromId && fromId !== syncId) {
+      setLiveLogs((logs) =>
+        logs.map((item) =>
+          item.correlation_id === fromId ? { ...item, correlation_id: syncId } : item,
+        ),
+      );
+    }
   };
 
   const createMutation = useMutation({
@@ -192,7 +198,7 @@ export default function PortalsPage() {
         name,
         credentials: { username, password },
       }),
-    meta: { successMessage: 'Portal connected — credentials saved', errorMessage: 'Could not connect portal' },
+    meta: { successMessage: 'Portal connected', errorMessage: 'Could not connect portal' },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['portals'] });
       closeDialog();
@@ -211,16 +217,19 @@ export default function PortalsPage() {
 
   const syncMutation = useMutation({
     mutationFn: (id: string) => portalsApi.sync(id),
-    meta: { successMessage: 'Sync queued — watching live…', errorMessage: 'Sync failed' },
-    onMutate: (id) => {
-      setSyncingId(id);
-      setPollUntil(Date.now() + 45_000);
-    },
-    onSuccess: () => {
+    meta: { successMessage: 'Sync started', errorMessage: 'Sync failed' },
+    onSuccess: (res, portalId) => {
+      const cid = String(res.data?.correlation_id || '').trim();
+      if (cid) adoptSyncId(cid);
+      const row = rows.find((p) => p.id === portalId);
+      if (row && !live) pinLive(row, cid || newSyncId());
       void queryClient.invalidateQueries({ queryKey: ['portals'] });
       void queryClient.invalidateQueries({ queryKey: ['automation-logs'] });
     },
-    onError: () => setSyncingId(null),
+    onError: () => {
+      setLive(null);
+      setLiveLogs([]);
+    },
   });
 
   const reauthMutation = useMutation({
@@ -228,18 +237,23 @@ export default function PortalsPage() {
       portalsApi.reauth(id, {
         credentials: { username: user, password: pass },
       }),
-    meta: { successMessage: 'Credentials saved — sync started', errorMessage: 'Re-auth failed' },
+    meta: { successMessage: 'Saved — sync started', errorMessage: 'Re-auth failed' },
     onMutate: ({ id }) => {
-      setSyncingId(id);
-      setPollUntil(Date.now() + 45_000);
+      const portal = rows.find((p) => p.id === id);
+      if (portal) pinLive(portal, newSyncId());
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
+      const cid = String(res.data?.correlation_id || '').trim();
+      if (cid) adoptSyncId(cid);
       closeDialog();
       void queryClient.invalidateQueries({ queryKey: ['portals'] });
       void queryClient.invalidateQueries({ queryKey: ['approval-blockers'] });
       void queryClient.invalidateQueries({ queryKey: ['automation-logs'] });
     },
-    onError: () => setSyncingId(null),
+    onError: () => {
+      setLive(null);
+      setLiveLogs([]);
+    },
   });
 
   const clearMutation = useMutation({
@@ -257,6 +271,20 @@ export default function PortalsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['portals'] }),
   });
 
+  const startSync = (portal: PortalRow) => {
+    const syncId = newSyncId();
+    pinLive(portal, syncId);
+    if (!isAuthenticated) {
+      demoCancel.current = playDemoSync(portal.name, syncId, (step, index, done) => {
+        if (index === 0) return;
+        setLiveLogs((prev) => [step, ...prev.filter((item) => item.id !== step.id)]);
+        if (done) setPollUntil(Date.now() + 4_000);
+      });
+      return;
+    }
+    syncMutation.mutate(portal.id);
+  };
+
   const dialogBusy =
     createMutation.isPending || saveMutation.isPending || reauthMutation.isPending;
   const editingPortal = dialog && dialog.mode !== 'connect' ? dialog.portal : null;
@@ -270,7 +298,7 @@ export default function PortalsPage() {
     <PageShell
       loading={isLoading}
       fetching={!isLoading && isFetching}
-      busy={dialogBusy || syncMutation.isPending || clearMutation.isPending}
+      busy={dialogBusy || clearMutation.isPending}
     >
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
@@ -278,38 +306,16 @@ export default function PortalsPage() {
         alignItems={{ xs: 'stretch', sm: 'center' }}
         spacing={1.5}
       >
-        <Stack spacing={0.5}>
+        <Stack spacing={0.25}>
           <Typography variant="h4">Job portals</Typography>
           <Typography color="text.secondary" variant="body2">
-            Each portal stores its own email/password. Sync uses those credentials to log in.
+            Press Sync — this page opens that run and streams every step into it.
           </Typography>
         </Stack>
-        <Stack direction="row" spacing={1}>
-          <Button component={RouterLink} to="/automation" variant="outlined">
-            Watch logs
-          </Button>
-          <Button variant="contained" onClick={openConnect}>
-            Connect portal
-          </Button>
-        </Stack>
+        <Button variant="contained" onClick={openConnect}>
+          Connect portal
+        </Button>
       </Stack>
-
-      <Alert severity="info" sx={{ borderRadius: 2 }}>
-        <strong>Credentials:</strong> email is shown here; the password is stored and used on Sync
-        but never sent back to the browser. Edit to change, Clear to delete. Times use your device
-        timezone ({timeZone}).
-      </Alert>
-
-      {anySyncing && (
-        <Alert severity="success" sx={{ borderRadius: 2 }}>
-          Live sync in progress — this page refreshes every few seconds. Step-by-step progress is
-          also on{' '}
-          <Button component={RouterLink} to="/automation" size="small" sx={{ verticalAlign: 'baseline' }}>
-            Automation
-          </Button>
-          .
-        </Alert>
-      )}
 
       {!rows.length && !isFetching && (
         <Typography color="text.secondary">
@@ -319,12 +325,12 @@ export default function PortalsPage() {
 
       {rows.map((portal) => {
         const state = loginState(portal);
-        const syncing = isSyncInFlight(portal, syncingId);
-        const lastTry = portal.last_attempt_at;
-        const lastOk = portal.last_sync_at;
-        const same = roughlySame(lastTry, lastOk);
-        const score = Math.round(portal.health?.score ?? 100);
-        const runs = groupPortalRuns(logItems, portal.name);
+        const runs = withLiveRun(
+          groupPortalRuns(logItems, portal.name),
+          live?.portalId === portal.id ? live : null,
+        );
+        const liveRun = live?.portalId === portal.id ? runs.find((run) => run.id === live.syncId) : undefined;
+        const syncing = Boolean(liveRun && !isSyncRunFinished(liveRun)) || isSyncInFlight(portal, null);
         return (
           <Box
             key={portal.id}
@@ -333,139 +339,101 @@ export default function PortalsPage() {
               borderRadius: 3,
               p: { xs: 1.5, sm: 2 },
               border: '1px solid',
-              borderColor: 'divider',
+              borderColor: syncing ? 'secondary.main' : 'divider',
+              transition: 'border-color 0.25s ease, box-shadow 0.25s ease',
             }}
           >
             <Stack
-              direction={{ xs: 'column', md: 'row' }}
-              spacing={2}
+              direction="row"
+              spacing={1.5}
+              alignItems="center"
               justifyContent="space-between"
-              alignItems={{ xs: 'stretch', md: 'flex-start' }}
+              flexWrap="wrap"
+              useFlexGap
             >
-              <Stack spacing={1} sx={{ minWidth: 0, flex: 1 }}>
+              <Stack spacing={0.25} sx={{ minWidth: 0, flex: 1 }}>
                 <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
                   <Typography variant="h6" sx={{ textTransform: 'capitalize', fontWeight: 700 }}>
                     {portal.name}
                   </Typography>
                   <Chip size="small" color={state.color} label={state.label} />
-                  {syncing && <Chip size="small" color="info" label="Syncing live…" />}
+                  {syncing && <Chip size="small" color="info" label="Syncing" />}
                 </Stack>
                 <Typography variant="caption" color="text.secondary">
-                  {state.detail}
+                  {portal.username || 'No email saved'}
+                  {portal.last_sync_at ? ` · last sync ${fromNowLocal(portal.last_sync_at)}` : ' · never synced'}
                 </Typography>
-
-                <Box
-                  sx={{
-                    mt: 0.5,
-                    p: 1.25,
-                    borderRadius: 2,
-                    bgcolor: 'action.hover',
-                  }}
-                >
-                  <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 0.75 }}>
-                    Credentials
-                  </Typography>
-                  <Stack spacing={0.25}>
-                    <Typography variant="body2">
-                      Email / username · {portal.username || 'Not saved'}
-                    </Typography>
-                    <Typography variant="body2">
-                      Password · {portal.has_password ? '••••••••  (stored, used on Sync)' : 'Not saved'}
-                    </Typography>
-                  </Stack>
-                  <Stack direction="row" spacing={1} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      startIcon={<EditOutlined />}
-                      onClick={() => openEdit(portal)}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      size="small"
-                      color="error"
-                      startIcon={<DeleteOutline />}
-                      disabled={!portal.has_credentials && !portal.has_password}
-                      onClick={() => {
-                        if (
-                          window.confirm(
-                            `Delete saved ${portal.name} email/password? Sync will not be able to log in until you add them again.`,
-                          )
-                        ) {
-                          clearMutation.mutate(portal.id);
-                        }
-                      }}
-                    >
-                      Clear
-                    </Button>
-                  </Stack>
-                </Box>
               </Stack>
-
-              <Stack spacing={1} sx={{ minWidth: { md: 220 } }}>
-                {syncing ? (
-                  <LinearProgress sx={{ height: 3, borderRadius: 1 }} />
-                ) : same || (!lastTry && lastOk) ? (
-                  <Typography variant="body2">
-                    Last sync · {lastOk ? formatWhen(lastOk, timeZone) : 'Never'}
-                  </Typography>
-                ) : (
-                  <>
-                    <Typography variant="body2">
-                      Last try · {lastTry ? formatWhen(lastTry, timeZone) : 'Never'}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Last success · {lastOk ? fromNowLocal(lastOk) : 'Never'}
-                    </Typography>
-                  </>
-                )}
-                <Typography variant="caption" color="text.secondary">
-                  Health {score}
-                  {portal.health?.last_error && !syncing ? ` · ${portal.health.last_error}` : ''}
-                </Typography>
-                <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
-                  <Button
-                    size="small"
-                    variant="contained"
-                    disabled={syncing || syncMutation.isPending}
-                    onClick={() => syncMutation.mutate(portal.id)}
-                  >
-                    {syncing ? 'Syncing…' : 'Sync'}
-                  </Button>
-                  <Button size="small" variant="outlined" onClick={() => openReauth(portal)}>
-                    Save & sync
-                  </Button>
-                  <Button
-                    size="small"
-                    color="inherit"
-                    disabled={removeMutation.isPending}
-                    onClick={() => {
-                      if (window.confirm(`Disconnect ${portal.name}? This removes the portal and its credentials.`)) {
-                        removeMutation.mutate(portal.id);
-                      }
-                    }}
-                  >
-                    Remove
-                  </Button>
-                </Stack>
+              <Stack direction="row" spacing={0.75} alignItems="center">
+                <Button
+                  size="small"
+                  variant="contained"
+                  disabled={syncing || syncMutation.isPending}
+                  onClick={() => startSync(portal)}
+                >
+                  {syncing ? 'Syncing…' : 'Sync'}
+                </Button>
+                <IconButton
+                  size="small"
+                  aria-label={`${portal.name} actions`}
+                  onClick={(event) => setMenu({ portal, anchor: event.currentTarget })}
+                >
+                  <MoreHoriz />
+                </IconButton>
               </Stack>
             </Stack>
 
-            {!!runs.length && (
-              <Stack spacing={0.75} sx={{ mt: 2, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
-                <Typography variant="subtitle2" fontWeight={700}>
-                  Sync history
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Each sync is audited. Expand a run to see every recorded step.
-                </Typography>
-                <SyncRunList runs={runs} timeZone={timeZone} />
-              </Stack>
-            )}
+            <Stack spacing={0.75} sx={{ mt: 1.5 }}>
+              <SyncRunList
+                runs={runs}
+                timeZone={timeZone}
+                liveId={live?.portalId === portal.id ? live.syncId : null}
+                maxRuns={4}
+                emptyText="Press Sync to start a run. Steps will appear under that sync id."
+              />
+            </Stack>
           </Box>
         );
       })}
+
+      <Menu
+        open={Boolean(menu)}
+        anchorEl={menu?.anchor}
+        onClose={() => setMenu(null)}
+      >
+        {menu && (
+          <div>
+            <MenuItem onClick={() => openEdit(menu.portal)}>
+              <EditOutlined fontSize="small" sx={{ mr: 1 }} /> Edit credentials
+            </MenuItem>
+            <MenuItem onClick={() => openReauth(menu.portal)}>Save & sync</MenuItem>
+            <MenuItem
+              disabled={!menu.portal.has_credentials && !menu.portal.has_password}
+              onClick={() => {
+                const portal = menu.portal;
+                setMenu(null);
+                if (window.confirm(`Delete saved ${portal.name} email/password?`)) {
+                  clearMutation.mutate(portal.id);
+                }
+              }}
+            >
+              Clear credentials
+            </MenuItem>
+            <MenuItem
+              disabled={removeMutation.isPending}
+              onClick={() => {
+                const portal = menu.portal;
+                setMenu(null);
+                if (window.confirm(`Disconnect ${portal.name}?`)) {
+                  removeMutation.mutate(portal.id);
+                }
+              }}
+            >
+              <DeleteOutline fontSize="small" sx={{ mr: 1 }} /> Disconnect
+            </MenuItem>
+          </div>
+        )}
+      </Menu>
 
       <Dialog open={Boolean(dialog)} onClose={closeDialog} fullWidth maxWidth="sm">
         <DialogTitle>
@@ -478,26 +446,20 @@ export default function PortalsPage() {
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             {dialog?.mode === 'connect' ? (
-              <>
-                <Alert severity="warning" sx={{ borderRadius: 2 }}>
-                  Email and password are stored on this portal and used the next time you press Sync.
-                </Alert>
-                <TextField
-                  select
-                  label="Portal"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  fullWidth
-                >
-                  {PORTALS.map((p) => (
-                    <MenuItem key={p} value={p}>{p}</MenuItem>
-                  ))}
-                </TextField>
-              </>
+              <TextField
+                select
+                label="Portal"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                fullWidth
+              >
+                {PORTALS.map((p) => (
+                  <MenuItem key={p} value={p}>{p}</MenuItem>
+                ))}
+              </TextField>
             ) : (
               <Alert severity="info" sx={{ borderRadius: 2 }}>
-                Leave password blank to keep the stored one. Email is shown; the saved password is
-                never returned to the browser.
+                Leave password blank to keep the stored one.
               </Alert>
             )}
             <TextField
@@ -515,76 +477,50 @@ export default function PortalsPage() {
               fullWidth
               autoComplete="current-password"
               placeholder={editingPortal?.has_password ? '••••••••' : ''}
-              helperText={
-                editingPortal?.has_password && !password
-                  ? 'Stored password will be kept'
-                  : 'Stored and used on the next Sync — never shown again'
-              }
             />
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2, justifyContent: 'space-between' }}>
-          {editingPortal ? (
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={closeDialog}>Cancel</Button>
+          {dialog?.mode === 'connect' && (
             <Button
-              color="error"
-              disabled={clearMutation.isPending || (!editingPortal.has_credentials && !editingPortal.has_password)}
-              onClick={() => {
-                if (
-                  window.confirm(
-                    `Delete saved ${editingPortal.name} email/password?`,
-                  )
-                ) {
-                  clearMutation.mutate(editingPortal.id);
-                }
-              }}
+              variant="contained"
+              onClick={() => createMutation.mutate()}
+              disabled={dialogBusy || !canSubmit}
             >
-              Delete credentials
+              {createMutation.isPending ? 'Saving…' : 'Save'}
             </Button>
-          ) : (
-            <span />
           )}
-          <Stack direction="row" spacing={1}>
-            <Button onClick={closeDialog}>Cancel</Button>
-            {dialog?.mode === 'connect' && (
-              <Button
-                variant="contained"
-                onClick={() => createMutation.mutate()}
-                disabled={dialogBusy || !canSubmit}
-              >
-                {createMutation.isPending ? 'Saving…' : 'Save credentials'}
-              </Button>
-            )}
-            {dialog?.mode === 'edit' && editingPortal && (
-              <Button
-                variant="contained"
-                disabled={dialogBusy || !username.trim()}
-                onClick={() =>
-                  saveMutation.mutate({
-                    id: editingPortal.id,
-                    user: username,
-                    pass: password,
-                  })
-                }
-              >
-                {saveMutation.isPending ? 'Saving…' : 'Save'}
-              </Button>
-            )}
-            {dialog?.mode === 'reauth' && editingPortal && (
-              <Button
-                variant="contained"
-                disabled={dialogBusy || !username.trim() || (saveNeedsPassword && !password)}
-                onClick={() =>
-                  reauthMutation.mutate({
-                    id: editingPortal.id,
-                    user: username,
-                    pass: password,
-                  })
-                }
-              >
-                {reauthMutation.isPending ? 'Starting…' : 'Save & sync'}
-              </Button>
-            )}
-          </Stack>
+          {dialog?.mode === 'edit' && editingPortal && (
+            <Button
+              variant="contained"
+              disabled={dialogBusy || !username.trim()}
+              onClick={() =>
+                saveMutation.mutate({
+                  id: editingPortal.id,
+                  user: username,
+                  pass: password,
+                })
+              }
+            >
+              {saveMutation.isPending ? 'Saving…' : 'Save'}
+            </Button>
+          )}
+          {dialog?.mode === 'reauth' && editingPortal && (
+            <Button
+              variant="contained"
+              disabled={dialogBusy || !username.trim() || (saveNeedsPassword && !password)}
+              onClick={() =>
+                reauthMutation.mutate({
+                  id: editingPortal.id,
+                  user: username,
+                  pass: password,
+                })
+              }
+            >
+              {reauthMutation.isPending ? 'Starting…' : 'Save & sync'}
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
     </PageShell>

@@ -72,3 +72,5 @@ def test_response_shows_username_not_password():
     assert resp.has_password is True
     assert "password" not in dumped
     assert "super-secret" not in str(dumped)
+    assert resp.correlation_id == ""
+    assert resp.model_copy(update={"correlation_id": "sync-1"}).correlation_id == "sync-1"

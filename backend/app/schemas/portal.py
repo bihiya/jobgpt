@@ -63,5 +63,7 @@ class PortalResponse(BaseModel):
     session_updated_at: str | None = None
     selector_version: int = 1
     health: PortalHealthSchema = Field(default_factory=PortalHealthSchema)
+    # Set on POST /sync so the UI can pin live updates to this run.
+    correlation_id: str = ""
 
     model_config = {"from_attributes": True}

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from uuid import uuid4
 
 from app.core.exceptions import ConflictError, NotFoundError
 from app.core.times import iso_utc
@@ -154,16 +155,29 @@ class PortalService:
 
     async def sync(self, user_id: str, portal_id: str) -> PortalResponse:
         portal = await self._owned(user_id, portal_id)
+        correlation_id = uuid4().hex
         # Mark in-progress only — last_sync_at is written by FetchWorker on success.
         portal.sync_started_at = datetime.utcnow()
         portal.updated_at = datetime.utcnow()
         await portal.save()
+        from app.services.automation_log_service import write_automation_log
+
+        await write_automation_log(
+            user_id,
+            action="fetch.portal",
+            level="info",
+            portal=portal.name.value,
+            message=f"Sync queued for {portal.name.value}…",
+            correlation_id=correlation_id,
+            metadata={"portal_id": str(portal.id), "source": "portal.sync"},
+        )
         try:
             mode = await publish_job_fetch(
                 user_id,
                 portal=portal.name.value,
                 portal_id=str(portal.id),
                 source="portal.sync",
+                correlation_id=correlation_id,
             )
         except Exception:
             # Clear in-progress marker when the queue/fallback cannot start.
@@ -181,7 +195,11 @@ class PortalService:
             resource_type="portal",
             resource_id=str(portal.id),
             severity="success",
-            metadata={"portal": portal.name.value, "mode": mode},
+            metadata={
+                "portal": portal.name.value,
+                "mode": mode,
+                "correlation_id": correlation_id,
+            },
         )
         await emit_realtime(
             user_id,
@@ -190,12 +208,13 @@ class PortalService:
                 "portal": portal.name.value,
                 "portal_id": str(portal.id),
                 "mode": mode,
+                "correlation_id": correlation_id,
             },
             title=f"{portal.name.value} sync started",
             body="Fetching jobs in the background…",
             severity="info",
         )
-        return self._to_response(portal)
+        return self._to_response(portal).model_copy(update={"correlation_id": correlation_id})
 
     async def reauth(self, user_id: str, portal_id: str, payload: PortalUpdate) -> PortalResponse:
         """One-click re-auth: refresh credentials/cookies/TOTP, clear auto-pause, sync."""
