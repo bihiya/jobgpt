@@ -85,6 +85,64 @@ def normalize_cookies(raw: Any) -> list[dict[str, Any]]:
     return []
 
 
+def parse_cookie_paste(raw: Any, *, portal: str = "linkedin") -> list[dict[str, Any]]:
+    """Parse DevTools / Cookie-Editor / `li_at=…` paste into Playwright cookies."""
+    domain = DEFAULT_DOMAINS.get((portal or "").lower(), ".linkedin.com")
+    if raw is None or raw == "" or raw == {} or raw == []:
+        return []
+    if isinstance(raw, (list, dict)):
+        cookies = normalize_cookies(raw)
+        for item in cookies:
+            if not item.get("domain") or item.get("domain") == ".example.com":
+                item["domain"] = domain
+        return cookies
+    text = str(raw).strip()
+    if not text:
+        return []
+    if text[0] in "{[":
+        try:
+            return parse_cookie_paste(json.loads(text), portal=portal)
+        except json.JSONDecodeError:
+            pass
+    header = text
+    if header.lower().startswith("cookie:"):
+        header = header.split(":", 1)[1].strip()
+    if "=" in header:
+        cookies: list[dict[str, Any]] = []
+        for part in header.split(";"):
+            piece = part.strip()
+            if "=" not in piece:
+                continue
+            name, value = piece.split("=", 1)
+            name, value = name.strip(), value.strip().strip('"')
+            if not name or not value:
+                continue
+            cookies.append(
+                {
+                    "name": name,
+                    "value": value,
+                    "domain": domain,
+                    "path": "/",
+                    "secure": True,
+                    "httpOnly": name in {"li_at", "li_a", "JSESSIONID"},
+                }
+            )
+        if cookies:
+            return cookies
+    if " " not in text and ";" not in text and len(text) >= 20:
+        return [
+            {
+                "name": "li_at",
+                "value": text,
+                "domain": ".linkedin.com",
+                "path": "/",
+                "secure": True,
+                "httpOnly": True,
+            }
+        ]
+    return []
+
+
 DEFAULT_DOMAINS = {
     "linkedin": ".linkedin.com",
     "indeed": ".indeed.com",

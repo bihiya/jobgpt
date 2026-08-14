@@ -1,6 +1,12 @@
 from app.automation.selectors import get_selector_pack
 from app.automation.session_recorder import ApplySessionRecorder
-from app.services.session_vault import decrypt_blob, encrypt_blob, normalize_cookies
+from app.services.session_vault import (
+    decrypt_blob,
+    encrypt_blob,
+    has_auth_cookies,
+    normalize_cookies,
+    parse_cookie_paste,
+)
 
 
 def test_normalize_cookies_list_and_map():
@@ -12,6 +18,20 @@ def test_normalize_cookies_list_and_map():
     assert any(c["name"] == "li_at" for c in mapped)
     nested = normalize_cookies({"cookies": listed})
     assert len(nested) == 1
+
+
+def test_parse_cookie_paste_accepts_header_json_and_bare_token():
+    header = parse_cookie_paste("li_at=tok123; JSESSIONID=abc", portal="linkedin")
+    assert has_auth_cookies("linkedin", header)
+    assert {c["name"] for c in header} == {"li_at", "JSESSIONID"}
+    listed = parse_cookie_paste(
+        '[{"name":"li_at","value":"abc","domain":".linkedin.com"}]',
+        portal="linkedin",
+    )
+    assert listed[0]["value"] == "abc"
+    bare = parse_cookie_paste("AQED" + "x" * 24, portal="linkedin")
+    assert bare[0]["name"] == "li_at"
+    assert parse_cookie_paste("") == []
 
 
 def test_vault_roundtrip():

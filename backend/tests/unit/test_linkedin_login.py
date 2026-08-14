@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.automation.auth import LOGIN_FAILED
+from app.automation.auth import LOGIN_FAILED, NOT_LOGGED_IN
 from app.automation.errors import PortalAuthError
 from app.automation.portals.linkedin import LinkedInPortal
 from app.automation.selectors import click_first, fill_first, get_selector_pack, wait_any_selector
@@ -384,3 +384,15 @@ async def test_linkedin_login_clicks_sign_in_with_email_then_fills() -> None:
     assert any("Sign in with email" in click for click in inner.clicks)
     assert inner.filled["#username"] == "me@example.com"
     assert inner.filled["#password"] == "secret"
+
+
+@pytest.mark.asyncio
+async def test_linkedin_skips_password_when_stale_li_at_present() -> None:
+    inner = _InnerPage(FEED_URL, visible={"#username", "#password", "button[type='submit']"})
+    inner.cookies = [{"name": "li_at", "value": "stale"}]
+    page = _Page(inner)
+    with pytest.raises(PortalAuthError) as exc:
+        await _portal().login(page)
+    assert exc.value.code == NOT_LOGGED_IN
+    assert "li_at" in str(exc.value).lower()
+    assert inner.filled == {}
