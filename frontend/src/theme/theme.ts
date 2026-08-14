@@ -36,6 +36,14 @@ const motionKeyframes = {
     '0%, 100%': { boxShadow: `0 0 0 0 ${alpha(teal, 0.35)}` },
     '50%': { boxShadow: `0 0 0 10px ${alpha(teal, 0)}` },
   },
+  '@keyframes jp-step-in': {
+    from: { opacity: 0, transform: 'translateY(10px)' },
+    to: { opacity: 1, transform: 'translateY(0)' },
+  },
+  '@keyframes jp-live-sweep': {
+    '0%': { transform: 'translateX(-120%)' },
+    '100%': { transform: 'translateX(220%)' },
+  },
   '@keyframes toastPop': {
     from: { opacity: 0, transform: 'translateY(12px) scale(0.96)' },
     to: { opacity: 1, transform: 'translateY(0) scale(1)' },

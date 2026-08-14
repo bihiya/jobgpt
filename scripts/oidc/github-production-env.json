@@ -1,0 +1,7 @@
+{
+  "name": "github-production-env-ids",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:bihiya@55905431/jobgpt@1324611519:environment:Production",
+  "description": "GitHub Actions Production environment (owner/repo numeric IDs)",
+  "audiences": ["api://AzureADTokenExchange"]
+}

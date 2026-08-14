@@ -60,7 +60,7 @@ export function queryKeysForEvent(event: string): string[][] {
   switch (event) {
     case 'job.created':
     case 'job.matched':
-      return [['jobs'], ['jobs-infinite'], ['analytics']];
+      return [['jobs'], ['jobs-infinite'], ['analytics'], ['pipeline']];
     case 'approval.needed':
     case 'approval.decided':
     case 'approval.batch':
@@ -105,6 +105,7 @@ export function queryKeysForEvent(event: string): string[][] {
         ['analytics'],
         ['approval-blockers'],
         ['weekly-story'],
+        ['pipeline'],
         ['automation-logs'],
         ['automation-status'],
       ];

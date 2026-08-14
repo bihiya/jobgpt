@@ -32,7 +32,9 @@ describe('guest demo data', () => {
     const story = resolveDemoData('/api/v1/reports/weekly-story', 'get');
     expect(story.applied).toBeGreaterThan(0);
     const pipeline = resolveDemoData('/api/v1/jobs/pipeline', 'get');
-    expect(pipeline.columns.matched.length).toBeGreaterThan(0);
+    expect(pipeline.columns.fetched.length).toBeGreaterThan(0);
+    expect(pipeline.columns.queued.length).toBeGreaterThan(0);
+    expect(pipeline.columns.applied.length).toBeGreaterThan(0);
   });
 
   it('returns email inbox demo data', () => {

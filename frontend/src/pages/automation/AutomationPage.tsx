@@ -7,22 +7,17 @@ import {
 } from '@mui/material';
 import { DataGrid, GridColDef } from '@mui/x-data-grid';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import dayjs from 'dayjs';
-import relativeTime from 'dayjs/plugin/relativeTime';
 import { useMemo, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { automationApi } from '../../api';
 import PageShell from '../../components/common/PageShell';
+import SyncRunList from '../../components/portals/SyncRunList';
+import { useUserTimeZone } from '../../hooks/useUserTimeZone';
+import { formatWhen, formatWhenLong } from '../../utils/datetime';
+import { groupPortalRuns, type AutomationLogItem } from '../../utils/loginStory';
 
-dayjs.extend(relativeTime);
-
-type LogRow = {
-  id: string;
-  created_at: string;
-  portal?: string;
-  action: string;
+type LogRow = AutomationLogItem & {
   level: string;
-  message: string;
 };
 
 function levelColor(level?: string): 'default' | 'success' | 'warning' | 'error' | 'info' {
@@ -36,6 +31,7 @@ function levelColor(level?: string): 'default' | 'success' | 'warning' | 'error'
 export default function AutomationPage() {
   const queryClient = useQueryClient();
   const [pollUntil, setPollUntil] = useState(0);
+  const timeZone = useUserTimeZone();
 
   const { data: status, isLoading: statusLoading, isFetching: statusFetching } = useQuery({
     queryKey: ['automation-status'],
@@ -44,7 +40,7 @@ export default function AutomationPage() {
   });
   const { data: logs, isLoading, isFetching } = useQuery({
     queryKey: ['automation-logs'],
-    queryFn: async () => (await automationApi.logs({ page_size: 50 })).data,
+    queryFn: async () => (await automationApi.logs({ page_size: 200 })).data,
     refetchInterval: Date.now() < pollUntil ? 1500 : false,
   });
   const loading = statusLoading || isLoading;
@@ -64,6 +60,7 @@ export default function AutomationPage() {
   });
 
   const rows = useMemo<LogRow[]>(() => logs?.items || [], [logs?.items]);
+  const syncRuns = useMemo(() => groupPortalRuns(rows), [rows]);
   const playwrightAvailable = status?.playwright_available !== false;
   const playwrightMessage =
     typeof status?.playwright_message === 'string' ? status.playwright_message : null;
@@ -80,8 +77,7 @@ export default function AutomationPage() {
         headerName: 'Time',
         flex: 0.9,
         minWidth: 150,
-        valueFormatter: (value: string) =>
-          value ? dayjs(value).format('MMM D, h:mm:ss A') : '—',
+        valueFormatter: (value: string) => formatWhenLong(value, timeZone),
       },
       {
         field: 'portal',
@@ -109,7 +105,7 @@ export default function AutomationPage() {
         minWidth: 220,
       },
     ],
-    [],
+    [timeZone],
   );
 
   return (
@@ -127,7 +123,7 @@ export default function AutomationPage() {
           <Button component={RouterLink} to="/job-portals" size="small" sx={{ ml: 0.5 }}>
             Job Portals
           </Button>{' '}
-          first, then run fetch — each step shows up in the log table below.
+          first, then run fetch — each sync is audited and listed below as a collapse/expand step trail.
         </Alert>
       )}
 
@@ -148,14 +144,23 @@ export default function AutomationPage() {
         })}
       </Stack>
 
-      {!!status?.recent?.length && (
+      {!!syncRuns.length && (
+        <Stack spacing={0.75}>
+          <Typography variant="subtitle2" fontWeight={700}>
+            Sync history
+          </Typography>
+          <SyncRunList runs={syncRuns} timeZone={timeZone} showPortal />
+        </Stack>
+      )}
+
+      {!!status?.recent?.length && !syncRuns.length && (
         <Stack spacing={0.75}>
           <Typography variant="subtitle2" fontWeight={700}>
             Latest
           </Typography>
           {status.recent.map((item: LogRow) => (
             <Typography key={item.id} variant="body2" color="text.secondary">
-              {dayjs(item.created_at).fromNow()} — {item.message || item.action}
+              {formatWhen(item.created_at, timeZone)} — {item.message || item.action}
             </Typography>
           ))}
         </Stack>

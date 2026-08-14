@@ -7,6 +7,8 @@ from datetime import datetime
 from typing import Any
 from uuid import uuid4
 
+from app.core.times import iso_utc
+
 
 @dataclass
 class SessionStep:
@@ -14,7 +16,7 @@ class SessionStep:
     label: str
     status: str = "ok"  # ok|warn|error|pending|skipped
     detail: str = ""
-    at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    at: str = field(default_factory=lambda: iso_utc(datetime.utcnow()) or "")
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -94,3 +96,21 @@ class ApplySessionRecorder:
 
     def to_list(self) -> list[dict[str, Any]]:
         return [s.to_dict() for s in self.steps]
+
+
+def compact_sync_steps(steps: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """Trim recorder steps for audit metadata (no huge blobs)."""
+    out: list[dict[str, Any]] = []
+    for step in (steps or [])[:50]:
+        if not isinstance(step, dict):
+            continue
+        out.append(
+            {
+                "key": str(step.get("key") or "step")[:40],
+                "label": str(step.get("label") or step.get("message") or "")[:240],
+                "status": str(step.get("status") or "ok")[:20],
+                "detail": str(step.get("detail") or "")[:400],
+                "at": str(step.get("at") or "")[:40],
+            }
+        )
+    return out

@@ -21,6 +21,18 @@ def test_vault_roundtrip():
     assert data[0]["name"] == "x"
 
 
+def test_clear_session_wipes_cookies():
+    from types import SimpleNamespace
+
+    from app.services.session_vault import SessionVault
+
+    portal = SimpleNamespace(cookies={"cookies": [{"name": "li_at", "value": "x"}]}, session_blob="abc", session_updated_at="now")
+    SessionVault().clear_session(portal)
+    assert portal.cookies == {}
+    assert portal.session_blob == ""
+    assert portal.session_updated_at is None
+
+
 def test_selector_packs_versioned():
     li = get_selector_pack("linkedin")
     assert li.version == 1
@@ -47,3 +59,30 @@ def test_session_recorder_timeline():
         "verified",
     ]
     assert steps[2]["metadata"]["count"] == 3
+
+
+def test_compact_sync_steps_trims_fields():
+    from app.automation.session_recorder import compact_sync_steps
+
+    compact = compact_sync_steps(
+        [
+            {
+                "key": "login",
+                "label": "Login page opened",
+                "status": "ok",
+                "detail": "https://www.linkedin.com/login",
+                "at": "2026-08-14T08:00:00Z",
+                "html": "<huge>",
+            }
+        ]
+    )
+    assert compact == [
+        {
+            "key": "login",
+            "label": "Login page opened",
+            "status": "ok",
+            "detail": "https://www.linkedin.com/login",
+            "at": "2026-08-14T08:00:00Z",
+        }
+    ]
+    assert "html" not in compact[0]

@@ -31,6 +31,7 @@ var logName = '${abbr.log}-jobpilot-${resourceSuffix}'
 var appiName = '${abbr.appi}-jobpilot-${resourceSuffix}'
 var caeName = '${abbr.cae}-jobpilot-${resourceSuffix}'
 var apiName = '${abbr.ca}-jobpilot-api-${resourceSuffix}'
+var webName = '${abbr.ca}-jobpilot-web-${resourceSuffix}'
 var fetchJobName = '${abbr.job}-jobpilot-fetch-${resourceSuffix}'
 var matchJobName = '${abbr.job}-jobpilot-match-${resourceSuffix}'
 var applyJobName = '${abbr.job}-jobpilot-apply-${resourceSuffix}'
@@ -86,6 +87,27 @@ module cae 'modules/container-apps-env.bicep' = {
   }
 }
 
+var sharedSecrets = [
+  { name: 'mongodb-url', value: mongodbUrl }
+  { name: 'redis-url', value: redisUrl }
+  { name: 'secret-key', value: secretKey }
+]
+
+module web 'modules/container-app-web.bicep' = {
+  name: 'web'
+  params: {
+    name: webName
+    location: location
+    environmentId: cae.outputs.id
+    containerImage: containerImage
+    tags: tags
+  }
+}
+
+var corsOriginsEffective = empty(corsOrigins)
+  ? 'https://${web.outputs.fqdn}'
+  : '${corsOrigins},https://${web.outputs.fqdn}'
+
 var sharedEnv = [
   { name: 'APP_ENV', value: 'production' }
   { name: 'DEBUG', value: 'false' }
@@ -96,7 +118,7 @@ var sharedEnv = [
   { name: 'AZURE_JOB_FETCH', value: fetchJobName }
   { name: 'AZURE_JOB_MATCH', value: matchJobName }
   { name: 'AZURE_JOB_APPLY', value: applyJobName }
-  { name: 'CORS_ORIGINS', value: corsOrigins }
+  { name: 'CORS_ORIGINS', value: corsOriginsEffective }
   { name: 'PLAYWRIGHT_HEADLESS', value: 'true' }
   { name: 'WEB_CONCURRENCY', value: '1' }
   { name: 'GUNICORN_TIMEOUT', value: '120' }
@@ -105,12 +127,6 @@ var sharedEnv = [
   { name: 'MONGODB_URL', secretRef: 'mongodb-url' }
   { name: 'REDIS_URL', secretRef: 'redis-url' }
   { name: 'SECRET_KEY', secretRef: 'secret-key' }
-]
-
-var sharedSecrets = [
-  { name: 'mongodb-url', value: mongodbUrl }
-  { name: 'redis-url', value: redisUrl }
-  { name: 'secret-key', value: secretKey }
 ]
 
 module api 'modules/container-app-api.bicep' = {
@@ -185,6 +201,14 @@ module acrPullApi 'modules/acr-pull-role.bicep' = {
   }
 }
 
+module acrPullWeb 'modules/acr-pull-role.bicep' = {
+  name: 'acrPullWeb'
+  params: {
+    acrName: acr.outputs.name
+    principalId: web.outputs.principalId
+  }
+}
+
 module acrPullFetch 'modules/acr-pull-role.bicep' = {
   name: 'acrPullFetch'
   params: {
@@ -245,6 +269,8 @@ output acrName string = acr.outputs.name
 output acrLoginServer string = acr.outputs.loginServer
 output apiName string = api.outputs.name
 output apiUri string = api.outputs.uri
+output webName string = web.outputs.name
+output webUri string = web.outputs.uri
 output fetchJobName string = fetchJob.outputs.name
 output matchJobName string = matchJob.outputs.name
 output applyJobName string = applyJob.outputs.name

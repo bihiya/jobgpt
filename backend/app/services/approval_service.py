@@ -7,6 +7,7 @@ from math import ceil
 
 from app.core.exceptions import NotFoundError, RateLimitError
 from app.core.kafka import publish
+from app.core.times import iso_utc
 from app.events.realtime import emit_realtime
 from app.models.application import Application
 from app.models.approval import Approval
@@ -185,10 +186,8 @@ class ApprovalService:
                     "portal": portal.name.value if hasattr(portal.name, "value") else str(portal.name),
                     "title": f"{portal.name} connection",
                     "company": "",
-                    "updated_at": (
-                        portal.session_updated_at.isoformat()
-                        if getattr(portal, "session_updated_at", None)
-                        else portal.updated_at.isoformat()
+                    "updated_at": iso_utc(
+                        getattr(portal, "session_updated_at", None) or portal.updated_at
                     ),
                 }
             )

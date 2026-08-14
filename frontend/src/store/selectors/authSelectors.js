@@ -11,6 +11,8 @@ export const selectCurrentUser = createSelector([selectAuthState], (auth) => aut
 
 export const selectAccessToken = createSelector([selectAuthState], (auth) => auth.accessToken);
 
+export const selectAuthStatus = createSelector([selectAuthState], (auth) => auth.status);
+
 export const selectUserDisplayName = createSelector([selectCurrentUser], (user) => {
   if (!user) return 'Guest';
   return user.full_name || user.email || 'User';

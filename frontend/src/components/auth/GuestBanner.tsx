@@ -2,15 +2,16 @@ import { Alert, Button, Stack } from '@mui/material';
 import { memo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
-import { selectIsAuthenticated } from '../../store/selectors/authSelectors';
+import { selectAuthStatus, selectIsAuthenticated } from '../../store/selectors/authSelectors';
 import { openLoginGate } from '../../store/slices/uiSlice';
 
 function GuestBannerComponent() {
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
+  const authStatus = useAppSelector(selectAuthStatus);
   const dispatch = useAppDispatch();
   const location = useLocation();
 
-  if (isAuthenticated) return null;
+  if (isAuthenticated || authStatus === 'restoring') return null;
 
   return (
     <Alert

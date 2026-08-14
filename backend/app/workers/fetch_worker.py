@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from app.automation.errors import PortalAuthError
 from app.automation.portals.registry import get_portal_adapter
+from app.automation.session_recorder import compact_sync_steps
 from app.core.kafka import publish
 from app.core.logging import get_logger
 from app.events.realtime import emit_realtime
@@ -76,26 +77,60 @@ class FetchWorker(BaseWorker):
         except Exception:  # noqa: BLE001
             steps = []
         for step in steps:
-            if step.get("key") != "login" and step.get("status") not in {"warn", "error", "failed"}:
-                continue
             level = "warning" if step.get("status") in {"warn", "warning"} else (
                 "error" if step.get("status") in {"error", "failed"} else "info"
             )
+            if step.get("status") in {"skipped", "pending"}:
+                level = "warning" if step.get("status") == "pending" else "info"
+            label = str(step.get("label") or step.get("message") or step.get("key") or "step")
+            detail = str(step.get("detail") or "").strip()
+            message = f"{label} — {detail}" if detail and detail not in label else label
+            key = str(step.get("key") or "step")
             await write_automation_log(
                 user_id,
-                action="fetch.login",
+                action=f"fetch.{key}" if key != "login" else "fetch.login",
                 level=level,
                 portal=portal_name,
-                message=str(
-                    step.get("label")
-                    or step.get("detail")
-                    or step.get("message")
-                    or step.get("key")
-                    or "login step"
-                ),
+                message=message,
                 metadata={"step": step},
                 correlation_id=correlation_id,
+                emit=False,
             )
+
+    async def _audit_portal_sync(
+        self,
+        *,
+        user_id: str,
+        portal: Any,
+        correlation_id: str,
+        action: str,
+        message: str,
+        severity: str,
+        adapter: Any | None = None,
+        extra: dict[str, Any] | None = None,
+    ) -> None:
+        steps = []
+        try:
+            steps = adapter.recorder.to_list() if adapter and getattr(adapter, "recorder", None) else []
+        except Exception:  # noqa: BLE001
+            steps = []
+        metadata = {
+            "portal": getattr(portal.name, "value", portal.name),
+            "correlation_id": correlation_id,
+            "steps": compact_sync_steps(steps),
+            "step_count": len(steps),
+            **(extra or {}),
+        }
+        await audit_event(
+            user_id,
+            action,
+            message=message,
+            resource_type="portal",
+            resource_id=str(portal.id),
+            source="worker",
+            severity=severity,
+            metadata=metadata,
+        )
 
     async def handle(self, topic: str, payload: dict[str, Any]) -> None:
         user_id = payload.get("user_id")
@@ -184,6 +219,14 @@ class FetchWorker(BaseWorker):
                     message=f"{portal.name.value} skipped — disconnected",
                     correlation_id=correlation_id,
                 )
+                await self._audit_portal_sync(
+                    user_id=user_id,
+                    portal=portal,
+                    correlation_id=correlation_id,
+                    action="portal.sync_skipped",
+                    message=f"{portal.name.value} skipped — disconnected",
+                    severity="warning",
+                )
                 continue
             if not self.health.is_usable(portal):
                 logger.info("portal_skipped_unhealthy", portal=portal.name.value, score=portal.health.score)
@@ -211,6 +254,15 @@ class FetchWorker(BaseWorker):
                     body=portal.health.paused_reason or portal.health.last_error or "Re-auth required",
                     severity="warning",
                 )
+                await self._audit_portal_sync(
+                    user_id=user_id,
+                    portal=portal,
+                    correlation_id=correlation_id,
+                    action="portal.sync_skipped",
+                    message=f"{portal.name.value} skipped — unhealthy (score {portal.health.score})",
+                    severity="warning",
+                    extra={"score": portal.health.score, "error": portal.health.last_error},
+                )
                 continue
 
             vault = SessionVault()
@@ -224,6 +276,10 @@ class FetchWorker(BaseWorker):
             )
             ran += 1
             credentials_expected = bool(portal.credentials.username)
+            try:
+                adapter.recorder.correlation_id = correlation_id
+            except Exception:  # noqa: BLE001
+                pass
             await write_automation_log(
                 user_id,
                 action="fetch.portal",
@@ -342,6 +398,16 @@ class FetchWorker(BaseWorker):
                     metadata={"fetched": len(extracted), "inserted": inserted},
                     correlation_id=correlation_id,
                 )
+                await self._audit_portal_sync(
+                    user_id=user_id,
+                    portal=portal,
+                    correlation_id=correlation_id,
+                    action="portal.synced",
+                    message=f"{portal.name.value}: found {len(extracted)}, added {inserted} new job(s)",
+                    severity="success" if inserted else complete_level,
+                    adapter=adapter,
+                    extra={"fetched": len(extracted), "inserted": inserted},
+                )
                 await emit_realtime(
                     user_id,
                     "portal.synced",
@@ -381,6 +447,16 @@ class FetchWorker(BaseWorker):
                         "code": getattr(exc, "code", None),
                     },
                     correlation_id=correlation_id,
+                )
+                await self._audit_portal_sync(
+                    user_id=user_id,
+                    portal=portal,
+                    correlation_id=correlation_id,
+                    action="portal.sync_failed",
+                    message=f"{portal.name.value} sync failed: {exc}",
+                    severity="error",
+                    adapter=adapter,
+                    extra={"error": str(exc), "code": getattr(exc, "code", None)},
                 )
                 await emit_realtime(
                     user_id,

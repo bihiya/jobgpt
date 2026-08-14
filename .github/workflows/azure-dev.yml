@@ -1,0 +1,46 @@
+# Redeploy JobPilot frontend + API Container Apps on every push to main.
+# Discovers/uses the existing rg-jobpilot-prod apps after OIDC login.
+
+name: Azure Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: azure-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Login and redeploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: Production
+    env:
+      AZURE_CLIENT_ID: b0ad929b-1053-4a68-95cf-6982b70460b9
+      AZURE_TENANT_ID: c38827c0-7fcb-4df0-b698-2520e6b84476
+      AZURE_SUBSCRIPTION_ID: 9f2ad3eb-c794-4171-a3d8-d9ed52a0ce67
+      AZURE_RESOURCE_GROUP: rg-jobpilot-prod
+      AZURE_ACR_NAME: crjobpilot5zmfpn
+      AZURE_API_APP_NAME: ca-jobpilot-api
+      AZURE_FRONTEND_APP_NAME: ca-jobpilot-web
+      IMAGE_TAG: ${{ github.sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Redeploy frontend and backend
+        run: ./scripts/azure-redeploy.sh

@@ -122,7 +122,7 @@ export const demoWeeklyStory = {
 
 export const demoPipeline = {
   columns: {
-    matched: [
+    fetched: [
       {
         id: 'demo-job-1',
         title: 'Senior Frontend Engineer',
@@ -130,16 +130,27 @@ export const demoPipeline = {
         portal: 'linkedin',
         status: 'matched',
         match_score: 0.92,
+        location: 'Remote',
+      },
+      {
+        id: 'demo-job-4',
+        title: 'Staff Product Engineer',
+        company: 'Lumen Forge',
+        portal: 'indeed',
+        status: 'new',
+        match_score: 0.84,
+        location: 'Remote',
       },
     ],
-    approved: [
+    queued: [
       {
         id: 'demo-job-2',
         title: 'Full-Stack Engineer',
         company: 'Harbor AI',
         portal: 'greenhouse',
-        status: 'approved',
+        status: 'applying',
         match_score: 0.81,
+        location: 'Austin, TX',
       },
     ],
     applied: [
@@ -150,13 +161,23 @@ export const demoPipeline = {
         portal: 'lever',
         status: 'applied',
         match_score: 0.76,
+        location: 'New York, NY',
       },
     ],
-    interview: [],
-    offer: [],
-    rejected: [],
+    interview: [
+      {
+        id: 'demo-job-5',
+        title: 'Frontend Engineer',
+        company: 'Atlas Cloud',
+        portal: 'ashby',
+        status: 'interview',
+        match_score: 0.88,
+        location: 'Remote',
+      },
+    ],
+    shortlisted: [],
   },
-  counts: { matched: 1, approved: 1, applied: 1, interview: 0, offer: 0, rejected: 0 },
+  counts: { fetched: 2, queued: 1, applied: 1, interview: 1, shortlisted: 0 },
 };
 
 export const demoApplications = {
@@ -296,8 +317,11 @@ export const demoPortals = [
     name: 'linkedin',
     status: 'connected',
     last_sync_at: now,
+    last_attempt_at: now,
     sync_started_at: null,
     has_credentials: true,
+    has_password: true,
+    username: 'you@linkedin.example',
     has_session: true,
     session_updated_at: now,
     health: { score: 92, auto_paused: false, last_error: '', consecutive_failures: 0 },
@@ -307,8 +331,11 @@ export const demoPortals = [
     name: 'indeed',
     status: 'connected',
     last_sync_at: now,
+    last_attempt_at: now,
     sync_started_at: null,
     has_credentials: true,
+    has_password: true,
+    username: 'you@indeed.example',
     has_session: false,
     session_updated_at: null,
     health: { score: 48, auto_paused: true, last_error: 'login expired', consecutive_failures: 3 },
@@ -440,15 +467,34 @@ export const demoAutomationStatus = {
 export const demoAutomationLogs = {
   items: [
     {
+      id: 'demo-log-3',
+      created_at: now,
+      portal: 'linkedin',
+      action: 'fetch.complete',
+      level: 'success',
+      message: 'linkedin: found 18, added 18 new job(s)',
+      correlation_id: 'demo-sync-1',
+    },
+    {
+      id: 'demo-log-2',
+      created_at: now,
+      portal: 'linkedin',
+      action: 'fetch.extract',
+      level: 'info',
+      message: 'Found 18 job listing(s)',
+      correlation_id: 'demo-sync-1',
+    },
+    {
       id: 'demo-log-1',
       created_at: now,
       portal: 'linkedin',
-      action: 'fetch',
+      action: 'fetch.portal',
       level: 'info',
-      message: 'Synced 18 new roles',
+      message: 'Fetching jobs from linkedin…',
+      correlation_id: 'demo-sync-1',
     },
   ],
-  total: 1,
+  total: 3,
   page: 1,
   page_size: 50,
   pages: 1,

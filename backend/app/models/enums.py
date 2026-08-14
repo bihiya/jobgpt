@@ -56,6 +56,7 @@ class JobStatus(StrEnum):
     APPLYING = "applying"
     APPLIED = "applied"
     INTERVIEW = "interview"
+    SHORTLISTED = "shortlisted"
     OFFER = "offer"
     FAILED = "failed"
     IGNORED = "ignored"

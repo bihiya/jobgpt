@@ -3,6 +3,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { Provider } from 'react-redux';
 import { BrowserRouter } from 'react-router-dom';
 import LoginGateDialog from './components/auth/LoginGateDialog';
+import SessionBootstrap from './components/auth/SessionBootstrap';
 import ApiLoadingBar from './components/common/ApiLoadingBar';
 import ToastHost from './components/common/ToastHost';
 import { PrefetchProvider } from './contexts/PrefetchContext';
@@ -19,12 +20,14 @@ function ThemedApp() {
     <ThemeProvider theme={darkMode ? darkTheme : lightTheme}>
       <CssBaseline />
       <BrowserRouter>
-        <PrefetchProvider>
-          <ApiLoadingBar />
-          <AppRouter />
-          <ToastHost />
-          <LoginGateDialog />
-        </PrefetchProvider>
+        <SessionBootstrap>
+          <PrefetchProvider>
+            <ApiLoadingBar />
+            <AppRouter />
+            <ToastHost />
+            <LoginGateDialog />
+          </PrefetchProvider>
+        </SessionBootstrap>
       </BrowserRouter>
     </ThemeProvider>
   );

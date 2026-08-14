@@ -33,3 +33,15 @@ def test_worker_narrative_uses_jobpilot():
     assert story["actor_name"] == "JobPilot"
     assert "JobPilot" in story["summary"]
     assert story["outcome"] == "Passed"
+
+
+def test_portal_sync_failed_narrative_points_at_steps():
+    story = narrate_activity(
+        actor_name="",
+        action="portal.sync_failed",
+        message="linkedin sync failed: checkpoint",
+        source="worker",
+        severity="error",
+    )
+    assert story["outcome"] == "Failed"
+    assert "expand" in story["next_step"].lower() or "job portal" in story["next_step"].lower()

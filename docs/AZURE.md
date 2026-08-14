@@ -6,7 +6,7 @@ You pay for API CPU/memory only while it handles traffic (can scale to **0**), a
 
 | Piece | Where |
 |--------|--------|
-| Frontend | Vercel (recommended) or any static host |
+| Frontend | Azure Container Apps (Consumption, min 0) — Vercel still optional |
 | API | Azure Container Apps (Consumption, min 0) |
 | Fetch / Match / Apply | Azure Container Apps **Jobs** (start → run → stop) |
 | MongoDB | [MongoDB Atlas](https://www.mongodb.com/atlas) Flex/Serverless |
@@ -77,7 +77,7 @@ azd env set CORS_ORIGINS "https://your-app.vercel.app"
 azd up
 ```
 
-When finished, azd prints **SERVICE_API_URI** (e.g. `https://ca-jobpilot-api-xxxxxx.eastus.azurecontainerapps.io`).
+When finished, azd prints **SERVICE_API_URI** and **SERVICE_FRONTEND_URI** (e.g. `https://ca-jobpilot-api-xxxxxx.eastus.azurecontainerapps.io`).
 
 Or use the helper:
 
@@ -85,15 +85,17 @@ Or use the helper:
 ./scripts/azure-up.sh
 ```
 
-### 6. Point the frontend at Azure
+### 6. Frontend URL
 
-In the Vercel frontend project → Settings → Environment Variables:
+`azd up` / `azd deploy` also ships the Vite SPA as a Container App (`SERVICE_FRONTEND_URI`). Nginx on that app proxies `/api/` to the Azure API.
+
+If you still host the UI on Vercel, set:
 
 ```
 VITE_API_URL=https://<SERVICE_API_URI>/api/v1
 ```
 
-Redeploy the frontend.
+and include the Vercel origin in `CORS_ORIGINS`.
 
 ### 7. Smoke test
 
@@ -112,6 +114,7 @@ Automation logs should show `automation.azure_job` (not `playwright` missing).
 - Resource group `rg-jobpilot-<env>`
 - Container Apps Environment (Consumption)
 - API Container App (scale 0–5)
+- Frontend Container App (scale 0–3)
 - Jobs: `fetch`, `match`, `apply` (manual trigger)
 - Azure Container Registry (Basic)
 - Key Vault (secrets)
@@ -127,10 +130,32 @@ with `JOB_TYPE` / `JOB_USER_ID` set per execution.
 
 ---
 
+## CI/CD (deploy on every push to `main`)
+
+GitHub Actions workflow [`.github/workflows/azure-dev.yml`](../.github/workflows/azure-dev.yml) logs in to Azure with OIDC, finds the existing JobPilot Container Apps, rebuilds both images in ACR, and updates **frontend + API**.
+
+Required GitHub Actions values are already in `.github/workflows/azure-dev.yml` (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, resource names).
+
+GitHub OIDC subjects for this repo include owner/repo numeric IDs. Create them from a **user** `az login` (Cloud Shell):
+
+```bash
+az ad app federated-credential create \
+  --id b0ad929b-1053-4a68-95cf-6982b70460b9 \
+  --parameters '{"name":"github-production-env-ids","issuer":"https://token.actions.githubusercontent.com","subject":"repo:bihiya@55905431/jobgpt@1324611519:environment:Production","audiences":["api://AzureADTokenExchange"]}'
+
+az ad app federated-credential create \
+  --id b0ad929b-1053-4a68-95cf-6982b70460b9 \
+  --parameters '{"name":"github-main-ids","issuer":"https://token.actions.githubusercontent.com","subject":"repo:bihiya@55905431/jobgpt@1324611519:ref:refs/heads/main","audiences":["api://AzureADTokenExchange"]}'
+```
+
+Then re-run **Actions → Azure Deploy**.
+
+---
+
 ## Day-2 commands
 
 ```bash
-# Redeploy API image after code changes
+# Redeploy API + frontend images after code changes
 azd deploy
 
 # Change env vars / secrets then re-provision
@@ -180,11 +205,9 @@ azd down --force --purge
 ## Architecture (short)
 
 ```text
-Vercel (UI)
-    │
-    ▼
-Container App API  ──starts──►  Container Apps Job (fetch/match/apply)
+Container App (UI)  ──/api──►  Container App API  ──starts──►  Job (fetch/match/apply)
     │                                │
-    ├── MongoDB Atlas                └── Playwright / scoring (one-shot)
-    └── Upstash Redis
+    │                                ├── MongoDB Atlas
+    │                                └── Upstash Redis
+    └── optional: Vercel SPA talking to the same API
 ```
