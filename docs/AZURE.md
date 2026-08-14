@@ -132,30 +132,28 @@ with `JOB_TYPE` / `JOB_USER_ID` set per execution.
 
 ## CI/CD (deploy on every push to `main`)
 
-GitHub Actions workflow [`.github/workflows/azure-dev.yml`](../.github/workflows/azure-dev.yml) logs in to Azure with OIDC and redeploys **frontend + API** (`azd provision` then `azd deploy`).
+GitHub Actions workflow [`.github/workflows/azure-dev.yml`](../.github/workflows/azure-dev.yml) logs in to Azure with OIDC, finds the existing JobPilot Container Apps, rebuilds both images in ACR, and updates **frontend + API**.
 
-### One-time: connect GitHub to Azure
+Required GitHub Actions variables/secrets (repo or the `Production` environment):
 
-From a machine that already has this repo’s azd environment (after `azd up`):
+- `AZURE_CLIENT_ID`
+- `AZURE_TENANT_ID`
+- `AZURE_SUBSCRIPTION_ID`
+
+Optional overrides: `AZURE_RESOURCE_GROUP`, `AZURE_ACR_NAME`, `AZURE_API_APP_NAME`, `AZURE_FRONTEND_APP_NAME`.
+
+To create the Entra app, federated credentials, and RBAC after `az login`:
 
 ```bash
-azd pipeline config
+./scripts/azure-github-oidc.sh
 ```
 
-That command:
+Manual redeploy (same as CI):
 
-1. Creates a Microsoft Entra app + federated credential for `repo:<org>/<repo>:ref:refs/heads/main`
-2. Sets GitHub Actions **variables**: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_ENV_NAME`, `AZURE_LOCATION`
-3. Stores azd env state as secret `AZD_INITIAL_ENVIRONMENT_CONFIG` (plus `MONGODB_URL`, `REDIS_URL`, `SECRET_KEY`)
-
-Manual equivalent (OIDC, no client secret):
-
-1. Register an app in Microsoft Entra ID
-2. Add a federated credential: issuer `https://token.actions.githubusercontent.com`, subject `repo:bihiya/jobgpt:ref:refs/heads/main`, audience `api://AzureADTokenExchange`
-3. Grant the app **Contributor** (and **User Access Administrator** if azd must assign roles) on the subscription or `rg-jobpilot-<env>`
-4. Add the variables/secrets listed above on the GitHub repo (Settings → Secrets and variables → Actions)
-
-After that, every push to `main` (and **Actions → Azure Deploy → Run workflow**) rebuilds and redeploys both Container Apps.
+```bash
+az login
+./scripts/azure-redeploy.sh
+```
 
 ---
 

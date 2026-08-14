@@ -75,7 +75,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs tests on pull requests and push
 2. Frontend unit tests + build
 3. (Optional) Playwright E2E against compose stack
 
-On every push to `main`, [`.github/workflows/azure-dev.yml`](../.github/workflows/azure-dev.yml) logs in to Azure (OIDC) and redeploys the frontend and API Container Apps. See **[docs/AZURE.md](AZURE.md)** (`azd pipeline config`).
+On every push to `main`, [`.github/workflows/azure-dev.yml`](../.github/workflows/azure-dev.yml) logs in to Azure (OIDC) and redeploys the frontend and API Container Apps via `./scripts/azure-redeploy.sh`. See **[docs/AZURE.md](AZURE.md)**.
 
 ## Vercel
 
