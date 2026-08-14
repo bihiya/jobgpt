@@ -55,7 +55,7 @@ class PortalService:
         existing = await self.portals.get_by_name(user_id, payload.name)
         if existing:
             raise ConflictError("Portal already connected")
-        from app.services.session_vault import SessionVault, normalize_cookies
+        from app.services.session_vault import SessionVault, parse_cookie_paste
 
         vault = SessionVault()
         portal = await self.portals.create(
@@ -70,12 +70,12 @@ class PortalService:
                 "status": PortalStatus.CONNECTED,
             }
         )
-        cookies = normalize_cookies(payload.cookies)
+        name = getattr(payload.name, "value", payload.name)
+        cookies = parse_cookie_paste(payload.cookies, portal=str(name))
         if cookies:
             # Only persist cookies that prove auth for portals that require it.
             from app.services.session_vault import has_auth_cookies
 
-            name = getattr(payload.name, "value", payload.name)
             if has_auth_cookies(str(name), cookies) or not portal.credentials.username:
                 vault.save_cookies(portal, cookies)
         if payload.totp_secret:
@@ -115,7 +115,7 @@ class PortalService:
 
     async def update(self, user_id: str, portal_id: str, payload: PortalUpdate) -> PortalResponse:
         portal = await self._owned(user_id, portal_id)
-        from app.services.session_vault import SessionVault, normalize_cookies
+        from app.services.session_vault import SessionVault, parse_cookie_paste
 
         vault = SessionVault()
         data = payload.model_dump(exclude_unset=True)
@@ -140,7 +140,8 @@ class PortalService:
             # Stale cookies would skip a fresh login with the new email/password.
             vault.clear_session(portal)
         if cookies_raw is not None:
-            vault.save_cookies(portal, normalize_cookies(cookies_raw))
+            portal_name = getattr(portal.name, "value", portal.name)
+            vault.save_cookies(portal, parse_cookie_paste(cookies_raw, portal=str(portal_name)))
         if totp is not None:
             vault.save_totp_secret(portal, totp)
         await portal.save()

@@ -2,6 +2,7 @@
 
 from app.automation.auth import (
     LOGIN_FAILED,
+    NOT_LOGGED_IN,
     describe_page,
     detect_auth_failure,
     ensure_logged_in,
@@ -22,6 +23,7 @@ from app.automation.selectors import (
 )
 from app.automation.verify import verify_apply_success
 from app.core.logging import get_logger
+from app.services.session_vault import has_auth_cookies
 
 logger = get_logger(__name__)
 
@@ -130,6 +132,26 @@ class LinkedInPortal(BasePortal):
             )
             await page.goto("https://www.linkedin.com/login")
             login_field = await self._wait_for_login_fields(page, timeout=12000)
+
+        injected: list = []
+        try:
+            injected = await page.page.context.cookies()
+        except Exception:  # noqa: BLE001
+            injected = []
+        if has_auth_cookies(self.name, injected) and not await any_visible(page, pack.all("logged_in")):
+            self.recorder.add(
+                "login",
+                "Saved li_at was rejected — paste a fresh session cookie from your laptop",
+                status="error",
+                detail=snap.get("url", ""),
+            )
+            raise PortalAuthError(
+                "LinkedIn session cookie expired or was rejected. "
+                "Sign in on your laptop, then paste a fresh li_at "
+                "(Chrome → F12 → Application → Cookies → linkedin.com). "
+                "Cloud password login usually hits a captcha.",
+                code=NOT_LOGGED_IN,
+            )
 
         user_selectors = pack.all("login_user")
         snap = await describe_page(page)

@@ -58,4 +58,23 @@ $('send').addEventListener('click', async () => {
   }
 });
 
+$('copyLi')?.addEventListener('click', async () => {
+  $('msg').textContent = 'Reading LinkedIn session…';
+  try {
+    const cookie = await chrome.cookies.get({
+      url: 'https://www.linkedin.com/',
+      name: 'li_at',
+    });
+    if (!cookie?.value) {
+      $('msg').textContent = 'Not logged into LinkedIn in this Chrome profile.';
+      return;
+    }
+    const text = `li_at=${cookie.value}`;
+    await navigator.clipboard.writeText(text);
+    $('msg').textContent = 'Copied li_at — paste it in JobPilot → Job portals → Save & sync';
+  } catch (err) {
+    $('msg').textContent = `Could not read cookie: ${err.message || err}`;
+  }
+});
+
 loadDefaults();

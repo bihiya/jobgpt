@@ -43,7 +43,6 @@ export default function DashboardPage() {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [otpOpen, setOtpOpen] = useState<null | { application_id: string; portal: string }>(null);
   const [otpCode, setOtpCode] = useState('');
-  const [reauthId, setReauthId] = useState<string | null>(null);
   const [cancelId, setCancelId] = useState<string | null>(null);
 
   const storyQ = useQuery({
@@ -90,17 +89,6 @@ export default function DashboardPage() {
     onSettled: () => {
       setCancelId(null);
       invalidateAll();
-    },
-  });
-
-  const reauthMut = useMutation({
-    mutationFn: (id: string) => portalsApi.reauth(id),
-    meta: { successMessage: 'Re-auth started', errorMessage: 'Re-auth failed' },
-    onMutate: (id) => setReauthId(id),
-    onSettled: () => {
-      setReauthId(null);
-      queryClient.invalidateQueries({ queryKey: ['portals'] });
-      queryClient.invalidateQueries({ queryKey: ['approval-blockers'] });
     },
   });
 
@@ -181,8 +169,7 @@ export default function DashboardPage() {
     (b: BlockerItem) => {
       if (!requireAuth('Sign in to clear blockers')) return;
       if (b.blocker_type === 'login_expired' || b.blocker_type === 'portal_paused') {
-        if (b.portal_id) reauthMut.mutate(b.portal_id);
-        else navigate('/job-portals');
+        navigate(b.portal_id ? `/job-portals?reauth=${encodeURIComponent(b.portal_id)}` : '/job-portals');
         return;
       }
       if (b.blocker_type === 'otp' && b.application_id) {
@@ -195,7 +182,7 @@ export default function DashboardPage() {
         setAnswerOpen({ application_id: b.application_id, questions: qs });
       }
     },
-    [navigate, reauthMut, requireAuth],
+    [navigate, requireAuth],
   );
 
   const loading =
@@ -244,10 +231,9 @@ export default function DashboardPage() {
         </Typography>
         <PortalHealthStrip
           portals={Array.isArray(portalsQ.data) ? portalsQ.data : []}
-          busyId={reauthId}
           onReauth={(id) => {
             if (!requireAuth('Sign in to re-auth portals')) return;
-            reauthMut.mutate(id);
+            navigate(`/job-portals?reauth=${encodeURIComponent(id)}`);
           }}
         />
       </Box>

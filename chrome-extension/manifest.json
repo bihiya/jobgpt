@@ -3,8 +3,13 @@
   "name": "JobPilot AI — Send Job",
   "version": "1.0.0",
   "description": "Send the current job posting to JobPilot AI with one click.",
-  "permissions": ["activeTab", "storage", "scripting"],
-  "host_permissions": ["http://localhost:8000/*", "https://*/*"],
+  "permissions": ["activeTab", "storage", "scripting", "cookies"],
+  "host_permissions": [
+    "http://localhost:8000/*",
+    "https://*/*",
+    "https://www.linkedin.com/*",
+    "https://linkedin.com/*"
+  ],
   "action": {
     "default_title": "Send to JobPilot",
     "default_popup": "popup.html"

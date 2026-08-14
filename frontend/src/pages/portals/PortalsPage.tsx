@@ -17,6 +17,7 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { automationApi, portalsApi } from '../../api';
 import PageShell from '../../components/common/PageShell';
 import SyncRunList from '../../components/portals/SyncRunList';
@@ -31,6 +32,7 @@ import {
   withLiveRun,
   type AutomationLogItem,
 } from '../../utils/loginStory';
+import { hasAuthCookie, parseCookiePaste } from '../../utils/sessionCookies';
 
 const PORTALS = [
   'linkedin', 'naukri', 'indeed', 'foundit', 'wellfound', 'greenhouse',
@@ -100,7 +102,7 @@ function loginState(portal: PortalRow): {
       detail:
         lastError ||
         (checkpoint
-          ? 'LinkedIn asked for a captcha — sign in in a normal browser, then Re-auth'
+          ? 'LinkedIn captcha — sign in on your laptop, then paste the li_at cookie (Save & sync)'
           : 'Last sync failed — check email/password or security checks'),
     };
   }
@@ -122,7 +124,7 @@ function loginState(portal: PortalRow): {
   return {
     label: 'Needs login',
     color: 'warning',
-    detail: 'Add username/password (or re-auth) before syncing',
+    detail: 'Add a session cookie (or email/password) before syncing',
   };
 }
 
@@ -131,6 +133,8 @@ export default function PortalsPage() {
   const [name, setName] = useState('linkedin');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [sessionPaste, setSessionPaste] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
   const [menu, setMenu] = useState<{ portal: PortalRow; anchor: HTMLElement } | null>(null);
   const [live, setLive] = useState<LiveSync | null>(null);
   const [liveLogs, setLiveLogs] = useState<AutomationLogItem[]>([]);
@@ -162,13 +166,19 @@ export default function PortalsPage() {
     setDialog(null);
     setUsername('');
     setPassword('');
+    setSessionPaste('');
     setName('linkedin');
+    if (searchParams.get('reauth')) {
+      searchParams.delete('reauth');
+      setSearchParams(searchParams, { replace: true });
+    }
   };
 
   const openConnect = () => {
     setName('linkedin');
     setUsername('');
     setPassword('');
+    setSessionPaste('');
     setDialog({ mode: 'connect' });
   };
 
@@ -176,6 +186,7 @@ export default function PortalsPage() {
     setMenu(null);
     setUsername(portal.username || '');
     setPassword('');
+    setSessionPaste('');
     setDialog({ mode: 'edit', portal });
   };
 
@@ -183,8 +194,16 @@ export default function PortalsPage() {
     setMenu(null);
     setUsername(portal.username || '');
     setPassword('');
+    setSessionPaste('');
     setDialog({ mode: 'reauth', portal });
   };
+
+  useEffect(() => {
+    const id = searchParams.get('reauth');
+    if (!id || dialog) return;
+    const portal = rows.find((row) => row.id === id);
+    if (portal) openReauth(portal);
+  }, [rows, searchParams, dialog]);
 
   const pinLive = (portal: PortalRow, syncId: string, aliasIds: string[] = []) => {
     demoCancel.current?.();
@@ -217,11 +236,19 @@ export default function PortalsPage() {
     }
   };
 
+  const dialogPortalName = dialog && dialog.mode !== 'connect' ? dialog.portal.name : name;
+  const parsedCookies = useMemo(
+    () => parseCookiePaste(sessionPaste, dialogPortalName),
+    [sessionPaste, dialogPortalName],
+  );
+  const cookieReady = hasAuthCookie(parsedCookies, dialogPortalName);
+
   const createMutation = useMutation({
     mutationFn: () =>
       portalsApi.create({
         name,
         credentials: { username, password },
+        ...(parsedCookies.length ? { cookies: parsedCookies } : {}),
       }),
     meta: { successMessage: 'Portal connected', errorMessage: 'Could not connect portal' },
     onSuccess: () => {
@@ -232,7 +259,10 @@ export default function PortalsPage() {
 
   const saveMutation = useMutation({
     mutationFn: ({ id, user, pass }: { id: string; user: string; pass: string }) =>
-      portalsApi.update(id, { credentials: { username: user, password: pass } }),
+      portalsApi.update(id, {
+        credentials: { username: user, password: pass },
+        ...(parsedCookies.length ? { cookies: parsedCookies } : {}),
+      }),
     meta: { successMessage: 'Credentials saved', errorMessage: 'Could not save credentials' },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['portals'] });
@@ -260,6 +290,7 @@ export default function PortalsPage() {
     mutationFn: ({ id, user, pass }: { id: string; user: string; pass: string }) =>
       portalsApi.reauth(id, {
         credentials: { username: user, password: pass },
+        ...(parsedCookies.length ? { cookies: parsedCookies } : {}),
       }),
     meta: { successMessage: 'Saved — sync started', errorMessage: 'Re-auth failed' },
     onMutate: ({ id }) => {
@@ -310,11 +341,14 @@ export default function PortalsPage() {
   const dialogBusy =
     createMutation.isPending || saveMutation.isPending || reauthMutation.isPending;
   const editingPortal = dialog && dialog.mode !== 'connect' ? dialog.portal : null;
-  const saveNeedsPassword = dialog?.mode === 'connect' || (dialog?.mode === 'reauth' && !editingPortal?.has_password);
-  const canSubmit =
+  const saveNeedsPassword =
+    !cookieReady &&
+    (dialog?.mode === 'connect' || (dialog?.mode === 'reauth' && !editingPortal?.has_password));
+  const canSubmit = cookieReady || (
     Boolean(username.trim()) &&
     (saveNeedsPassword ? Boolean(password) : true) &&
-    (dialog?.mode !== 'connect' || Boolean(password));
+    (dialog?.mode !== 'connect' || Boolean(password))
+  );
 
   return (
     <PageShell loading={isLoading} busy={dialogBusy || clearMutation.isPending} stagger={false}>
@@ -482,7 +516,14 @@ export default function PortalsPage() {
               </TextField>
             ) : (
               <Alert severity="info" sx={{ borderRadius: 2 }}>
-                Leave password blank to keep the stored one.
+                Leave password blank to keep the stored one. For LinkedIn, paste a session cookie instead of logging in from the cloud.
+              </Alert>
+            )}
+            {(dialogPortalName === 'linkedin' || dialog?.mode === 'reauth') && (
+              <Alert severity="warning" sx={{ borderRadius: 2 }}>
+                Cloud LinkedIn login hits a captcha. Best: sign in on your laptop, then paste
+                {' '}<strong>li_at</strong> from Chrome → F12 → Application → Cookies → linkedin.com.
+                Cookie-Editor JSON or <code>li_at=…</code> also works.
               </Alert>
             )}
             <TextField
@@ -501,6 +542,20 @@ export default function PortalsPage() {
               autoComplete="current-password"
               placeholder={editingPortal?.has_password ? '••••••••' : ''}
             />
+            <TextField
+              label="Session cookie (li_at)"
+              value={sessionPaste}
+              onChange={(e) => setSessionPaste(e.target.value)}
+              fullWidth
+              multiline
+              minRows={3}
+              placeholder="li_at=AQED…   or Cookie-Editor JSON"
+              helperText={
+                cookieReady
+                  ? 'Session cookie detected — cloud will reuse this login'
+                  : 'Optional if you only want email/password (LinkedIn cloud login usually fails captcha)'
+              }
+            />
           </Stack>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
@@ -517,7 +572,7 @@ export default function PortalsPage() {
           {dialog?.mode === 'edit' && editingPortal && (
             <Button
               variant="contained"
-              disabled={dialogBusy || !username.trim()}
+              disabled={dialogBusy || (!username.trim() && !cookieReady)}
               onClick={() =>
                 saveMutation.mutate({
                   id: editingPortal.id,
@@ -532,7 +587,7 @@ export default function PortalsPage() {
           {dialog?.mode === 'reauth' && editingPortal && (
             <Button
               variant="contained"
-              disabled={dialogBusy || !username.trim() || (saveNeedsPassword && !password)}
+              disabled={dialogBusy || !canSubmit}
               onClick={() =>
                 reauthMutation.mutate({
                   id: editingPortal.id,

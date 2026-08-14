@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from typing import Any
+
+from pydantic import BaseModel, Field, field_validator
 
 from app.models.enums import PortalName, PortalStatus
 
@@ -32,19 +34,41 @@ class PortalCreate(BaseModel):
     name: PortalName
     credentials: CredentialsSchema = Field(default_factory=CredentialsSchema)
     proxy: ProxySchema = Field(default_factory=ProxySchema)
-    cookies: dict | list = Field(default_factory=dict)
+    cookies: Any = Field(default_factory=dict)
     totp_secret: str = ""
     selector_version: int = 1
+
+    @field_validator("cookies", mode="before")
+    @classmethod
+    def parse_create_cookies(cls, value: Any) -> Any:
+        from app.services.session_vault import parse_cookie_paste
+
+        if value is None or value == "" or value == {} or value == []:
+            return {}
+        if isinstance(value, str):
+            return parse_cookie_paste(value)
+        return value
 
 
 class PortalUpdate(BaseModel):
     credentials: CredentialsSchema | None = None
     proxy: ProxySchema | None = None
-    cookies: dict | list | None = None
+    cookies: Any = None
     totp_secret: str | None = None
     selector_version: int | None = None
     status: PortalStatus | None = None
     clear_credentials: bool = False
+
+    @field_validator("cookies", mode="before")
+    @classmethod
+    def parse_update_cookies(cls, value: Any) -> Any:
+        from app.services.session_vault import parse_cookie_paste
+
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return parse_cookie_paste(value)
+        return value
 
 
 class PortalResponse(BaseModel):
