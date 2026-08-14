@@ -192,7 +192,10 @@ class LinkedInPortal(BasePortal):
         except Exception:  # noqa: BLE001
             submitted = await click_first(page, pack.all("login_submit"))
         if submitted:
-            self.recorder.add("login", "Submitted Sign in (enter)" if submitted == "enter" else "Clicked Sign in / submit")
+            self.recorder.add(
+                "login",
+                "Submitted Sign in (enter)" if submitted == "enter" else "Clicked Sign in / submit",
+            )
         else:
             self.recorder.add("login", "Could not click Sign in", status="error")
             raise PortalAuthError("Could not submit LinkedIn login form", code=LOGIN_FAILED)
