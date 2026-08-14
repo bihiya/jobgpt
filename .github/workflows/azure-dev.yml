@@ -1,5 +1,5 @@
 # Redeploy JobPilot frontend + API Container Apps on every push to main.
-# Discovers the existing Azure apps after OIDC login; does not recreate infra.
+# Discovers/uses the existing rg-jobpilot-prod apps after OIDC login.
 
 name: Azure Deploy
 
@@ -23,28 +23,17 @@ jobs:
     timeout-minutes: 90
     environment: Production
     env:
-      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID || secrets.AZURE_CLIENT_ID }}
-      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID || secrets.AZURE_TENANT_ID }}
-      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID || secrets.AZURE_SUBSCRIPTION_ID }}
-      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || secrets.AZURE_RESOURCE_GROUP }}
-      AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME || secrets.AZURE_ACR_NAME }}
-      AZURE_API_APP_NAME: ${{ vars.AZURE_API_APP_NAME || secrets.AZURE_API_APP_NAME }}
-      AZURE_FRONTEND_APP_NAME: ${{ vars.AZURE_FRONTEND_APP_NAME || secrets.AZURE_FRONTEND_APP_NAME }}
+      AZURE_CLIENT_ID: b0ad929b-1053-4a68-95cf-6982b70460b9
+      AZURE_TENANT_ID: c38827c0-7fcb-4df0-b698-2520e6b84476
+      AZURE_SUBSCRIPTION_ID: 9f2ad3eb-c794-4171-a3d8-d9ed52a0ce67
+      AZURE_RESOURCE_GROUP: rg-jobpilot-prod
+      AZURE_ACR_NAME: crjobpilot5zmfpn
+      AZURE_API_APP_NAME: ca-jobpilot-api
+      AZURE_FRONTEND_APP_NAME: ca-jobpilot-web
       IMAGE_TAG: ${{ github.sha }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Check Azure OIDC configuration
-        run: |
-          missing=0
-          for var in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID; do
-            if [ -z "${!var}" ]; then
-              echo "::error::Missing $var. Add it as a GitHub Actions variable or secret (Settings → Secrets and variables → Actions)."
-              missing=1
-            fi
-          done
-          exit "$missing"
 
       - name: Log in to Azure (OIDC)
         uses: azure/login@v2

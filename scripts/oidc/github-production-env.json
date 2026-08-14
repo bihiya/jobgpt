@@ -1,0 +1,7 @@
+{
+  "name": "github-production-env",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:bihiya/jobgpt:environment:Production",
+  "description": "GitHub Actions Production environment",
+  "audiences": ["api://AzureADTokenExchange"]
+}

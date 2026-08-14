@@ -75,8 +75,6 @@ echo "API app:        $API_NAME"
 echo "Frontend app:   $WEB_NAME"
 echo "Image tag:      $TAG"
 
-az acr login --name "$ACR_NAME" >/dev/null
-
 echo "Building API image in ACR..."
 az acr build \
   --registry "$ACR_NAME" \
