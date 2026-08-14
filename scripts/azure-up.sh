@@ -54,6 +54,7 @@ azd up --no-prompt
 
 echo
 echo "Done. Next:"
-echo "  1) Copy SERVICE_API_URI from the output above"
-echo "  2) Set Vercel VITE_API_URL=https://<SERVICE_API_URI>/api/v1"
-echo "  3) See docs/AZURE.md for smoke tests and day-2 commands"
+echo "  1) Open SERVICE_FRONTEND_URI from the output above"
+echo "  2) Optional Vercel: VITE_API_URL=https://<SERVICE_API_URI>/api/v1"
+echo "  3) CI: ./scripts/azure-github-oidc.sh then set AZURE_CLIENT_ID / TENANT_ID / SUBSCRIPTION_ID on GitHub"
+echo "  4) See docs/AZURE.md for smoke tests and day-2 commands"

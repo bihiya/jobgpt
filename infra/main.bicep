@@ -21,7 +21,7 @@ param redisUrl string
 @secure()
 param secretKey string
 
-@description('Comma-separated CORS origins (Vercel frontend URL)')
+@description('Comma-separated extra CORS origins (Vercel or other frontends). The Azure web app origin is always included.')
 param corsOrigins string = 'http://localhost:3000'
 
 @description('Tags applied to all resources')
@@ -58,6 +58,8 @@ output AZURE_CONTAINER_REGISTRY_ENDPOINT string = resources.outputs.acrLoginServ
 output AZURE_CONTAINER_REGISTRY_NAME string = resources.outputs.acrName
 output SERVICE_API_NAME string = resources.outputs.apiName
 output SERVICE_API_URI string = resources.outputs.apiUri
+output SERVICE_FRONTEND_NAME string = resources.outputs.webName
+output SERVICE_FRONTEND_URI string = resources.outputs.webUri
 output AZURE_JOB_FETCH_NAME string = resources.outputs.fetchJobName
 output AZURE_JOB_MATCH_NAME string = resources.outputs.matchJobName
 output AZURE_JOB_APPLY_NAME string = resources.outputs.applyJobName

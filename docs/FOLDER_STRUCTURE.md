@@ -2,7 +2,7 @@
 
 ```
 jobpilot-ai/
-├── .github/workflows/ci.yml
+├── .github/workflows/{ci.yml,azure-dev.yml}
 ├── backend/
 │   ├── app/
 │   │   ├── api/v1/{auth,users,jobs,applications,companies,portals,reports,automation,scheduler,settings}/
