@@ -4,17 +4,28 @@ from __future__ import annotations
 
 from datetime import datetime
 from math import ceil
+from typing import TYPE_CHECKING
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, ValidationAppError
 from app.core.kafka import publish
 from app.models.enums import JobStatus
 from app.producers.events import publish_job_fetch
 from app.models.job import Job
 from app.repository.job_repository import JobRepository
+from app.schemas.application import ApplicationCreate
 from app.schemas.common import PaginatedResponse
-from app.schemas.job import JobFilterParams, JobResponse, JobUpdateRequest
+from app.schemas.job import JobFilterParams, JobMoveResponse, JobResponse, JobUpdateRequest
 from app.services.match_service import MatchService
+from app.services.pipeline import (
+    PIPELINE_COLUMNS,
+    column_for_status,
+    should_queue_apply,
+    target_status_for_column,
+)
 from app.services.user_service import UserService
+
+if TYPE_CHECKING:
+    from app.services.application_service import ApplicationService
 
 
 class JobService:
@@ -23,10 +34,12 @@ class JobService:
         jobs: JobRepository | None = None,
         users: UserService | None = None,
         matcher: MatchService | None = None,
+        applications: ApplicationService | None = None,
     ) -> None:
         self.jobs = jobs or JobRepository()
         self.users = users or UserService()
         self.matcher = matcher or MatchService()
+        self._applications = applications
 
     def _to_response(self, job: Job) -> JobResponse:
         from app.schemas.job import MatchBreakdownSchema
@@ -129,19 +142,19 @@ class JobService:
             pages=pages,
         )
 
+    @property
+    def applications(self) -> ApplicationService:
+        if self._applications is None:
+            from app.services.application_service import ApplicationService
+
+            self._applications = ApplicationService(jobs=self.jobs)
+        return self._applications
+
     async def pipeline(self, user_id: str, *, per_column: int = 40) -> dict:
-        """Kanban columns: Matched → Approved → Applied → Interview → Offer → Rejected."""
-        columns = [
-            ("matched", [JobStatus.MATCHED, JobStatus.AWAITING_APPROVAL, JobStatus.TRACKED]),
-            ("approved", [JobStatus.APPROVED, JobStatus.APPLYING]),
-            ("applied", [JobStatus.APPLIED]),
-            ("interview", [JobStatus.INTERVIEW]),
-            ("offer", [JobStatus.OFFER]),
-            ("rejected", [JobStatus.REJECTED, JobStatus.FAILED, JobStatus.IGNORED]),
-        ]
+        """Kanban columns: Fetched → Queued → Applied → Interview → Shortlisted."""
         result: dict[str, list] = {}
         counts: dict[str, int] = {}
-        for key, statuses in columns:
+        for key, statuses in PIPELINE_COLUMNS:
             page = await self.list_by_statuses(user_id, statuses, page=1, page_size=per_column)
             result[key] = [
                 {
@@ -157,6 +170,62 @@ class JobService:
             ]
             counts[key] = page.total
         return {"columns": result, "counts": counts}
+
+    async def move_to_column(
+        self,
+        user_id: str,
+        job_id: str,
+        column: str,
+        *,
+        resume_id: str | None = None,
+    ) -> JobMoveResponse:
+        """Move a job between pipeline columns. Dropping onto queued starts auto-apply."""
+        try:
+            target_status_for_column(column)
+        except ValueError as exc:
+            raise ValidationAppError(str(exc)) from exc
+
+        job = await self._owned(user_id, job_id)
+        from_column = column_for_status(job.status)
+        queued = False
+        application_id: str | None = None
+
+        if from_column == column:
+            return JobMoveResponse(
+                job=self._to_response(job),
+                column=column,  # type: ignore[arg-type]
+                queued=False,
+            )
+
+        if should_queue_apply(from_column, column):
+            app = await self.applications.queue(
+                user_id,
+                ApplicationCreate(job_id=job_id, resume_id=resume_id),
+            )
+            job_resp = await self.get(user_id, job_id)
+            queued = True
+            application_id = app.id
+        else:
+            if column == "fetched":
+                await self.applications.cancel_active_for_job(user_id, job_id)
+                target = JobStatus.MATCHED if (job.match_score or 0) >= 0.5 else JobStatus.NEW
+            else:
+                target = target_status_for_column(column)
+            job_resp = await self.update(
+                user_id,
+                job_id,
+                JobUpdateRequest(status=target),
+                audit_action="job.pipeline_moved",
+                audit_message=f"Moved {job.title} to {column}",
+            )
+
+        await self._invalidate_job_cache(user_id)
+        return JobMoveResponse(
+            job=job_resp,
+            column=column,  # type: ignore[arg-type]
+            queued=queued,
+            application_id=application_id,
+        )
 
     async def get(self, user_id: str, job_id: str) -> JobResponse:
         job = await self._owned(user_id, job_id)

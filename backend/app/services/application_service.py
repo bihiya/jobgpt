@@ -70,6 +70,30 @@ class ApplicationService:
         if not job or job.user_id != user_id:
             raise NotFoundError("Job not found")
 
+        existing = await self.applications.find_active_for_job(user_id, str(job.id))
+        if existing:
+            if payload.resume_id and existing.resume_id != payload.resume_id:
+                existing.resume_id = payload.resume_id
+            if job.status != JobStatus.APPLYING:
+                job.status = JobStatus.APPLYING
+                job.updated_at = datetime.utcnow()
+                await job.save()
+            if existing.status == ApplicationStatus.PENDING:
+                await existing.save()
+                await publish(
+                    "job.apply",
+                    {
+                        "user_id": user_id,
+                        "job_id": str(job.id),
+                        "application_id": str(existing.id),
+                        "resume_id": existing.resume_id,
+                    },
+                    key=user_id,
+                )
+            else:
+                await existing.save()
+            return self._to_response(existing)
+
         app = await self.applications.create(
             {
                 "user_id": user_id,
@@ -148,6 +172,12 @@ class ApplicationService:
             metadata={"attempt": app.attempts},
         )
         return self._to_response(app)
+
+    async def cancel_active_for_job(self, user_id: str, job_id: str) -> ApplicationResponse | None:
+        active = await self.applications.find_active_for_job(user_id, job_id)
+        if not active:
+            return None
+        return await self.cancel(user_id, str(active.id))
 
     async def cancel(self, user_id: str, application_id: str) -> ApplicationResponse:
         """Cancel a queued / in-progress / paused apply (best-effort)."""

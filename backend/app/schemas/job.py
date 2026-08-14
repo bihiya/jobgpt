@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, HttpUrl
 
 from app.models.enums import JobStatus
+
+PipelineColumn = Literal["fetched", "queued", "applied", "interview", "shortlisted"]
 
 
 class MatchBreakdownSchema(BaseModel):
@@ -42,6 +46,30 @@ class JobResponse(BaseModel):
 
 class JobUpdateRequest(BaseModel):
     status: JobStatus | None = None
+
+
+class JobMoveRequest(BaseModel):
+    """Drag-and-drop pipeline move. Queued starts auto-apply."""
+
+    column: PipelineColumn
+    resume_id: str | None = None
+
+
+class JobPipelineCard(BaseModel):
+    id: str
+    title: str
+    company: str
+    portal: str
+    status: str
+    match_score: float
+    location: str = ""
+
+
+class JobMoveResponse(BaseModel):
+    job: JobResponse
+    column: PipelineColumn
+    queued: bool = False
+    application_id: str | None = None
 
 
 class JobFilterParams(BaseModel):

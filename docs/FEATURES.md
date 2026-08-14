@@ -28,14 +28,14 @@
 | Captcha / 2FA path | 2captcha poll + TOTP vault; OTP blockers on Approvals |
 | Smart batch apply | Approve ≥ threshold for a portal with daily caps + cooldown |
 | Home Digest command center | Ranked match cards, live apply tray, blockers inbox, portal health, weekly story |
-| Pipeline Kanban | Matched → Approved → Applied → Interview → Offer → Rejected |
+| Pipeline Kanban | Fetched → Queued (auto-apply) → Applied → Interview → Shortlisted |
 | Email inbox sync | IMAP poll + classify interview/JD/offer/rejection → pipeline + calendar (`/email`) |
 
 ## Default safer flow
 
 1. Fetch → Match (heuristic + optional LLM)  
 2. If score ≥ threshold → **Approval queue** (not blind apply)  
-3. User approves (web/PWA) or **smart batch** (≥85% + portal + caps) → `job.apply`  
+3. Drag **Fetched → Queued** on Pipeline (or approve / smart batch) → auto-apply (`job.apply`)  
 4. Session vault restores cookies; captcha/TOTP handled; question bank fills forms  
 5. Unknown field or OTP → pause → user answers on Approvals/Questions → resume  
 6. Success **verified** (not assumed); screenshot + DOM proof on fail; follow-up reminder  

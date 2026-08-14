@@ -122,7 +122,7 @@ export const demoWeeklyStory = {
 
 export const demoPipeline = {
   columns: {
-    matched: [
+    fetched: [
       {
         id: 'demo-job-1',
         title: 'Senior Frontend Engineer',
@@ -130,16 +130,27 @@ export const demoPipeline = {
         portal: 'linkedin',
         status: 'matched',
         match_score: 0.92,
+        location: 'Remote',
+      },
+      {
+        id: 'demo-job-4',
+        title: 'Staff Product Engineer',
+        company: 'Lumen Forge',
+        portal: 'indeed',
+        status: 'new',
+        match_score: 0.84,
+        location: 'Remote',
       },
     ],
-    approved: [
+    queued: [
       {
         id: 'demo-job-2',
         title: 'Full-Stack Engineer',
         company: 'Harbor AI',
         portal: 'greenhouse',
-        status: 'approved',
+        status: 'applying',
         match_score: 0.81,
+        location: 'Austin, TX',
       },
     ],
     applied: [
@@ -150,13 +161,23 @@ export const demoPipeline = {
         portal: 'lever',
         status: 'applied',
         match_score: 0.76,
+        location: 'New York, NY',
       },
     ],
-    interview: [],
-    offer: [],
-    rejected: [],
+    interview: [
+      {
+        id: 'demo-job-5',
+        title: 'Frontend Engineer',
+        company: 'Atlas Cloud',
+        portal: 'ashby',
+        status: 'interview',
+        match_score: 0.88,
+        location: 'Remote',
+      },
+    ],
+    shortlisted: [],
   },
-  counts: { matched: 1, approved: 1, applied: 1, interview: 0, offer: 0, rejected: 0 },
+  counts: { fetched: 2, queued: 1, applied: 1, interview: 1, shortlisted: 0 },
 };
 
 export const demoApplications = {

@@ -21,6 +21,7 @@ describe('realtime helpers', () => {
     const keys = queryKeysForEvent('job.matched').map((k) => k[0]);
     expect(keys).toContain('jobs');
     expect(keys).toContain('analytics');
+    expect(keys).toContain('pipeline');
   });
 
   it('maps approval events to approvals queue', () => {
