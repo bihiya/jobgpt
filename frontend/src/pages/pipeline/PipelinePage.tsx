@@ -1,69 +1,140 @@
-import { Box, Chip, MenuItem, Stack, TextField, Typography } from '@mui/material';
+import { Box, Button, Chip, Stack, Typography } from '@mui/material';
 import { alpha } from '@mui/material/styles';
+import DragIndicator from '@mui/icons-material/DragIndicator';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { memo, useMemo, useState } from 'react';
-import { jobsApi } from '../../api';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { applicationsApi, jobsApi } from '../../api';
 import PageShell from '../../components/common/PageShell';
+import LiveApplyTray, { type LiveApplication } from '../../components/digest/LiveApplyTray';
 import JobDetailDrawer, { type JobDetail } from '../../components/jobs/JobDetailDrawer';
 import { useRequireAuth } from '../../hooks/useRequireAuth';
 import { useToast } from '../../hooks/useToast';
+import {
+  PIPELINE_COLUMNS,
+  moveJobInColumns,
+  shouldQueueApply,
+  statusForColumn,
+  type PipeJob,
+  type PipelineColumnKey,
+  type PipelineColumnsState,
+} from './pipelineColumns';
 
-const COLUMNS: { key: string; label: string; next?: string[] }[] = [
-  { key: 'matched', label: 'Matched', next: ['approved', 'rejected'] },
-  { key: 'approved', label: 'Approved', next: ['applied', 'rejected'] },
-  { key: 'applied', label: 'Applied', next: ['interview', 'rejected'] },
-  { key: 'interview', label: 'Interview', next: ['offer', 'rejected'] },
-  { key: 'offer', label: 'Offer', next: [] },
-  { key: 'rejected', label: 'Rejected', next: [] },
-];
-
-type PipeJob = {
-  id: string;
-  title: string;
-  company: string;
-  portal: string;
-  status: string;
-  match_score: number;
-  location?: string;
+const COLUMN_ACCENT: Record<PipelineColumnKey, 'primary' | 'secondary' | 'info' | 'success' | 'warning'> = {
+  fetched: 'info',
+  queued: 'warning',
+  applied: 'success',
+  interview: 'secondary',
+  shortlisted: 'primary',
 };
 
 function PipelinePage() {
   const queryClient = useQueryClient();
   const { requireAuth } = useRequireAuth();
-  const { apiError } = useToast();
+  const { apiError, success } = useToast();
   const [drawerJob, setDrawerJob] = useState<JobDetail | null>(null);
+  const [dragging, setDragging] = useState<{ id: string; from: PipelineColumnKey } | null>(null);
+  const [overColumn, setOverColumn] = useState<PipelineColumnKey | null>(null);
+  const draggedRef = useRef(false);
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['pipeline'],
     queryFn: async () => (await jobsApi.pipeline()).data,
   });
 
-  const move = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) => jobsApi.update(id, { status }),
-    meta: { successMessage: 'Stage updated', errorMessage: 'Could not move job' },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pipeline'] });
-      queryClient.invalidateQueries({ queryKey: ['jobs'] });
-      queryClient.invalidateQueries({ queryKey: ['weekly-story'] });
-    },
+  const appsQ = useQuery({
+    queryKey: ['applications', 'pipeline'],
+    queryFn: async () => (await applicationsApi.list({ page_size: 50 })).data,
   });
 
-  const columns = useMemo(() => data?.columns || {}, [data]);
+  const liveByJob = useMemo(() => {
+    const map = new Map<string, LiveApplication>();
+    for (const app of (appsQ.data?.items || []) as LiveApplication[]) {
+      map.set(app.job_id, app);
+    }
+    return map;
+  }, [appsQ.data]);
+
+  const invalidate = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['pipeline'] });
+    queryClient.invalidateQueries({ queryKey: ['jobs'] });
+    queryClient.invalidateQueries({ queryKey: ['applications'] });
+    queryClient.invalidateQueries({ queryKey: ['weekly-story'] });
+  }, [queryClient]);
+
+  const move = useMutation({
+    mutationFn: ({ id, column }: { id: string; column: PipelineColumnKey; from: PipelineColumnKey }) =>
+      jobsApi.move(id, { column }),
+    meta: { errorMessage: 'Could not move job' },
+    onMutate: async ({ id, column, from }) => {
+      await queryClient.cancelQueries({ queryKey: ['pipeline'] });
+      const previous = queryClient.getQueryData(['pipeline']);
+      queryClient.setQueryData(['pipeline'], (old: { columns?: PipelineColumnsState; counts?: Record<string, number> } | undefined) => {
+        if (!old?.columns) return old;
+        const nextStatus = statusForColumn(column);
+        const columns = moveJobInColumns(old.columns, id, from, column, nextStatus);
+        const counts = { ...(old.counts || {}) };
+        counts[from] = Math.max(0, (counts[from] ?? 0) - (from === column ? 0 : 1));
+        counts[column] = (counts[column] ?? 0) + (from === column ? 0 : 1);
+        return { ...old, columns, counts };
+      });
+      return { previous };
+    },
+    onSuccess: (res) => {
+      if (res.data?.queued) {
+        success('Queued — auto-apply started');
+      } else {
+        success('Stage updated');
+      }
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['pipeline'], context.previous);
+      }
+    },
+    onSettled: invalidate,
+  });
+
+  const cancel = useMutation({
+    mutationFn: (id: string) => applicationsApi.cancel(id),
+    meta: { successMessage: 'Apply cancelled', errorMessage: 'Could not cancel' },
+    onSettled: invalidate,
+  });
+
+  const columns = useMemo<PipelineColumnsState>(() => data?.columns || {}, [data]);
   const counts = useMemo(() => data?.counts || {}, [data]);
 
+  const requestMove = useCallback(
+    (job: PipeJob, from: PipelineColumnKey, to: PipelineColumnKey) => {
+      if (from === to) return;
+      if (!requireAuth(to === 'queued' ? 'Sign in to queue auto-apply' : 'Sign in to move pipeline stages')) {
+        return;
+      }
+      move.mutate({ id: job.id, column: to, from });
+    },
+    [move, requireAuth],
+  );
+
+  const openJob = useCallback(
+    async (id: string) => {
+      try {
+        const { data: full } = await jobsApi.get(id);
+        setDrawerJob(full);
+      } catch (err) {
+        apiError(err, 'Could not open job');
+      }
+    },
+    [apiError],
+  );
+
   return (
-    <PageShell
-      spacing={2}
-      loading={isLoading}
-      fetching={!isLoading && isFetching}
-      busy={move.isPending}
-    >
+    <PageShell spacing={2} loading={isLoading} fetching={!isLoading && isFetching}>
       <Box>
         <Typography variant="h4" sx={{ fontFamily: '"Fraunces", Georgia, serif' }}>
           Pipeline
         </Typography>
         <Typography color="text.secondary">
-          Matched → Approved → Applied → Interview → Offer → Rejected
+          Fetched → Queued → Applied → Interview → Shortlisted. Drag a fetched job onto Queued to start
+          auto-applying.
         </Typography>
       </Box>
 
@@ -71,90 +142,174 @@ function PipelinePage() {
         sx={{
           display: 'grid',
           gap: 1.5,
-          gridAutoFlow: 'column',
-          gridAutoColumns: { xs: 'minmax(240px, 85%)', md: 'minmax(220px, 1fr)' },
-          overflowX: 'auto',
-          pb: 1,
+          gridTemplateColumns: { xs: '1fr', md: 'repeat(5, minmax(0, 1fr))' },
+          alignItems: 'stretch',
         }}
       >
-        {COLUMNS.map((col) => {
+        {PIPELINE_COLUMNS.map((col) => {
           const jobs: PipeJob[] = columns[col.key] || [];
+          const accent = COLUMN_ACCENT[col.key];
+          const isOver = overColumn === col.key && dragging && dragging.from !== col.key;
+          const willAutoApply = Boolean(dragging && shouldQueueApply(dragging.from, col.key));
           return (
             <Box
               key={col.key}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setOverColumn(col.key);
+              }}
+              onDragLeave={() => {
+                setOverColumn((current) => (current === col.key ? null : current));
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                setOverColumn(null);
+                const raw = e.dataTransfer.getData('application/json') || e.dataTransfer.getData('text/plain');
+                setDragging(null);
+                if (!raw) return;
+                try {
+                  const payload = JSON.parse(raw) as { id: string; from: PipelineColumnKey };
+                  const job = (columns[payload.from] || []).find((item) => item.id === payload.id);
+                  if (!job) return;
+                  requestMove(job, payload.from, col.key);
+                } catch {
+                  /* ignore malformed drag payload */
+                }
+              }}
               sx={{
                 p: 1.5,
                 borderRadius: 3,
                 border: '1px solid',
-                borderColor: 'divider',
-                bgcolor: (t) => alpha(t.palette.background.paper, 0.9),
-                minHeight: 360,
+                borderColor: isOver ? `${accent}.main` : 'divider',
+                bgcolor: (t) =>
+                  alpha(t.palette.background.paper, isOver ? 0.98 : 0.9),
+                boxShadow: (t) =>
+                  isOver ? `0 0 0 2px ${alpha(t.palette[accent].main, 0.45)}` : 'none',
+                minHeight: { xs: 220, md: 420 },
+                maxHeight: { md: '72vh' },
+                overflowY: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
+                transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
               }}
             >
-              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.25 }}>
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.75 }}>
                 <Typography sx={{ fontWeight: 800 }}>{col.label}</Typography>
-                <Chip size="small" label={counts[col.key] ?? jobs.length} />
+                <Chip size="small" color={accent} label={counts[col.key] ?? jobs.length} />
               </Stack>
-              <Stack spacing={1}>
-                {jobs.map((job) => (
-                  <Box
-                    key={job.id}
-                    sx={{
-                      p: 1.25,
-                      borderRadius: 2,
-                      border: '1px solid',
-                      borderColor: 'divider',
-                      cursor: 'pointer',
-                      transition: 'transform 0.15s ease',
-                      '&:hover': { transform: 'translateY(-1px)' },
-                    }}
-                    onClick={async () => {
-                      try {
-                        const { data: full } = await jobsApi.get(job.id);
-                        setDrawerJob(full);
-                      } catch (err) {
-                        apiError(err, 'Could not open job');
-                      }
-                    }}
-                  >
-                    <Typography sx={{ fontWeight: 700, fontSize: '0.95rem' }}>{job.title}</Typography>
-                    <Typography variant="caption" color="text.secondary" display="block">
-                      {job.company}
-                    </Typography>
-                    <Stack direction="row" spacing={0.75} sx={{ mt: 0.75 }} alignItems="center">
-                      <Chip size="small" label={`${Math.round((job.match_score || 0) * 100)}%`} />
-                      {col.next && col.next.length > 0 && (
-                        <TextField
-                          select
-                          size="small"
-                          label="Move"
-                          value=""
-                          sx={{ minWidth: 110 }}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={(e) => {
-                            if (!requireAuth('Sign in to move pipeline stages')) return;
-                            move.mutate({ id: job.id, status: e.target.value });
-                          }}
-                        >
-                          {col.next.map((n) => (
-                            <MenuItem key={n} value={n}>
-                              {n}
-                            </MenuItem>
-                          ))}
-                        </TextField>
-                      )}
-                    </Stack>
-                  </Box>
-                ))}
+              <Typography variant="caption" color="text.secondary" sx={{ mb: 1.25, display: 'block' }}>
+                {isOver ? (willAutoApply ? 'Drop to start auto-apply' : col.dropHint) : col.hint}
+              </Typography>
+              <Stack spacing={1} sx={{ flex: 1 }}>
+                {jobs.map((job) => {
+                  const live = liveByJob.get(job.id);
+                  const applying = job.status === 'applying' || ['pending', 'in_progress', 'retrying'].includes(live?.status || '');
+                  return (
+                    <Box
+                      key={job.id}
+                      draggable
+                      onDragStart={(e) => {
+                        draggedRef.current = true;
+                        setDragging({ id: job.id, from: col.key });
+                        e.dataTransfer.effectAllowed = 'move';
+                        e.dataTransfer.setData(
+                          'application/json',
+                          JSON.stringify({ id: job.id, from: col.key }),
+                        );
+                        e.dataTransfer.setData('text/plain', JSON.stringify({ id: job.id, from: col.key }));
+                      }}
+                      onDragEnd={() => {
+                        setDragging(null);
+                        setOverColumn(null);
+                        window.setTimeout(() => {
+                          draggedRef.current = false;
+                        }, 0);
+                      }}
+                      sx={{
+                        p: 1.25,
+                        borderRadius: 2,
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        cursor: 'grab',
+                        opacity: dragging?.id === job.id ? 0.45 : 1,
+                        transition: 'transform 0.15s ease, opacity 0.15s ease',
+                        '&:hover': { transform: 'translateY(-1px)' },
+                        '&:active': { cursor: 'grabbing' },
+                      }}
+                      onClick={() => {
+                        if (draggedRef.current) return;
+                        void openJob(job.id);
+                      }}
+                    >
+                      <Stack direction="row" spacing={0.5} alignItems="flex-start">
+                        <DragIndicator fontSize="small" sx={{ mt: 0.15, color: 'text.disabled' }} />
+                        <Box sx={{ minWidth: 0, flex: 1 }}>
+                          <Typography sx={{ fontWeight: 700, fontSize: '0.95rem' }}>{job.title}</Typography>
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            {job.company}
+                            {job.portal ? ` · ${job.portal}` : ''}
+                          </Typography>
+                          <Stack direction="row" spacing={0.75} sx={{ mt: 0.75 }} alignItems="center" flexWrap="wrap" useFlexGap>
+                            <Chip size="small" label={`${Math.round((job.match_score || 0) * 100)}%`} />
+                            {applying && (
+                              <Chip
+                                size="small"
+                                color="warning"
+                                label="Auto-applying"
+                                sx={{ animation: 'jp-pulse-soft 2.2s ease infinite' }}
+                              />
+                            )}
+                            {col.key === 'fetched' && (
+                              <Button
+                                size="small"
+                                variant="contained"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  requestMove(job, 'fetched', 'queued');
+                                }}
+                              >
+                                Queue apply
+                              </Button>
+                            )}
+                          </Stack>
+                        </Box>
+                      </Stack>
+                    </Box>
+                  );
+                })}
                 {jobs.length === 0 && (
                   <Typography variant="body2" color="text.secondary">
-                    Empty
+                    {col.key === 'queued' ? 'Drop a fetched job here to auto-apply' : 'Empty'}
                   </Typography>
                 )}
               </Stack>
             </Box>
           );
         })}
+      </Box>
+
+      <Box>
+        <Typography variant="h6" sx={{ mb: 1 }}>
+          Live auto-apply
+        </Typography>
+        <LiveApplyTray
+          applications={(appsQ.data?.items || []).map((app: LiveApplication & { title?: string }) => {
+            const job = Object.values(columns)
+              .flat()
+              .find((item) => item.id === app.job_id);
+            return {
+              ...app,
+              title: job?.title,
+              company: job?.company,
+              portal: job?.portal,
+            };
+          })}
+          onCancel={(id) => {
+            if (!requireAuth('Sign in to cancel an apply')) return;
+            cancel.mutate(id);
+          }}
+          busyId={cancel.isPending ? cancel.variables || null : null}
+        />
       </Box>
 
       <JobDetailDrawer open={!!drawerJob} job={drawerJob} onClose={() => setDrawerJob(null)} />

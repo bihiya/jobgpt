@@ -53,12 +53,22 @@ Content-Type: `application/json`
 | GET | `/jobs/tracked` | Tracked jobs |
 | GET | `/jobs/applied` | Applied jobs |
 | GET | `/jobs/history` | History |
+| GET | `/jobs/pipeline` | Kanban: fetched, queued, applied, interview, shortlisted |
 | GET | `/jobs/{id}` | Detail |
 | PATCH | `/jobs/{id}` | Update status |
+| POST | `/jobs/{id}/move` | Move pipeline column (queued starts auto-apply) |
 | POST | `/jobs/{id}/track` | Mark tracked |
 | POST | `/jobs/{id}/ignore` | Ignore |
 
 Query params: `q`, `portal`, `company`, `status`, `min_score`, `page`, `page_size`, `sort_by`, `sort_dir`
+
+### Move job (pipeline)
+```json
+// POST /jobs/{id}/move
+{ "column": "queued" }
+// Response 200 — queued starts auto-apply
+{ "job": { "id": "...", "status": "applying" }, "column": "queued", "queued": true, "application_id": "..." }
+```
 
 ## Applications
 
