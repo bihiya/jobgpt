@@ -76,11 +76,14 @@ echo "Frontend app:   $WEB_NAME"
 echo "Image tag:      $TAG"
 
 echo "Building API image in ACR..."
-az acr build \
-  --registry "$ACR_NAME" \
-  --image "jobpilot-api:${TAG}" \
-  --file Dockerfile \
-  "${ROOT}/backend"
+(
+  cd "${ROOT}/backend"
+  az acr build \
+    --registry "$ACR_NAME" \
+    --image "jobpilot-api:${TAG}" \
+    --file Dockerfile \
+    .
+)
 
 echo "Updating API Container App..."
 az containerapp update \
@@ -90,13 +93,16 @@ az containerapp update \
   --output none
 
 echo "Building frontend image in ACR..."
-az acr build \
-  --registry "$ACR_NAME" \
-  --image "jobpilot-web:${TAG}" \
-  --file Dockerfile \
-  --build-arg NGINX_CONF=nginx.azure.conf \
-  --build-arg VITE_API_URL=/api/v1 \
-  "${ROOT}/frontend"
+(
+  cd "${ROOT}/frontend"
+  az acr build \
+    --registry "$ACR_NAME" \
+    --image "jobpilot-web:${TAG}" \
+    --file Dockerfile \
+    --build-arg NGINX_CONF=nginx.azure.conf \
+    --build-arg VITE_API_URL=/api/v1 \
+    .
+)
 
 if az containerapp show --name "$WEB_NAME" --resource-group "$RG" >/dev/null 2>&1; then
   echo "Updating frontend Container App..."
