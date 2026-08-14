@@ -2,24 +2,28 @@
 
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 
 from playwright.async_api import Browser, BrowserContext, Page, async_playwright
 
+from app.automation.stealth import STEALTH_INIT_SCRIPT
 from app.core.config import settings
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Chrome 120 fingerprints as a bot on LinkedIn 2026 login (captcha checkpoint).
-DEFAULT_USER_AGENT = (
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/139.0.7258.127 Safari/537.36"
-)
-STEALTH_INIT_SCRIPT = """
-Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-"""
+
+def chrome_user_agent(version: str) -> str:
+    """Chrome UA without the HeadlessChrome token LinkedIn fingerprints."""
+    ver = (version or "").strip() or "148.0.0.0"
+    if ver.count(".") == 1:
+        ver = f"{ver}.0.0"
+    return (
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+        f"(KHTML, like Gecko) Chrome/{ver} Safari/537.36"
+    )
 
 
 class BaseBrowser:
@@ -35,54 +39,76 @@ class BaseBrowser:
         self.cookies = cookies or []
         self.last_cookies: list[dict[str, Any]] = []
 
-    async def _launch(self, playwright: Any) -> Browser:
+    def _effective_headless(self) -> bool:
+        if self.headless is False:
+            return False
+        prefer = bool(getattr(settings, "playwright_prefer_headed", True))
+        display = (os.environ.get("DISPLAY") or "").strip()
+        if prefer and display:
+            logger.info("browser_headed_via_display", display=display)
+            return False
+        return True
+
+    async def _launch(self, playwright: Any, *, headless: bool) -> Browser:
         launch_args: dict[str, Any] = {
-            "headless": self.headless,
+            "headless": headless,
             "args": [
                 "--disable-blink-features=AutomationControlled",
                 "--disable-dev-shm-usage",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--window-size=1440,900",
             ],
             "ignore_default_args": ["--enable-automation"],
         }
         if self.proxy and self.proxy.get("server"):
             launch_args["proxy"] = self.proxy
 
-        channel = (settings.playwright_channel or "").strip() or None
-        if channel:
-            launch_args["channel"] = channel
-            browser = await playwright.chromium.launch(**launch_args)
-            logger.info("browser_launched", channel=channel, headless=self.headless)
-            return browser
-
-        try:
-            browser = await playwright.chromium.launch(**launch_args)
-            logger.info("browser_launched", channel="bundled", headless=self.headless)
-            return browser
-        except Exception as exc:  # noqa: BLE001
-            message = str(exc)
-            if "Executable doesn't exist" not in message and "does not support" not in message:
-                raise
-            # macOS 12+ and fresh installs often lack bundled Chromium; use system Chrome.
-            launch_args["channel"] = "chrome"
-            browser = await playwright.chromium.launch(**launch_args)
-            logger.warning(
-                "browser_fallback_channel",
-                channel="chrome",
-                reason=message[:200],
-            )
-            return browser
+        requested = (settings.playwright_channel or "").strip() or None
+        # Real Google Chrome has window.chrome + PDF plugins; bundled Chromium often does not.
+        channels: list[str | None] = [requested] if requested else ["chrome", None]
+        last_exc: Exception | None = None
+        for channel in channels:
+            try:
+                args = dict(launch_args)
+                if channel:
+                    args["channel"] = channel
+                browser = await playwright.chromium.launch(**args)
+                logger.info(
+                    "browser_launched",
+                    channel=channel or "bundled",
+                    headless=headless,
+                )
+                return browser
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                logger.warning(
+                    "browser_launch_failed",
+                    channel=channel or "bundled",
+                    error=str(exc)[:200],
+                )
+        if last_exc:
+            raise last_exc
+        raise RuntimeError("Playwright failed to launch Chromium")
 
     @asynccontextmanager
     async def session(self) -> AsyncIterator[tuple[Browser, BrowserContext, Page]]:
         async with async_playwright() as playwright:
-            browser = await self._launch(playwright)
-            context = await browser.new_context(
-                viewport={"width": 1440, "height": 900},
-                user_agent=DEFAULT_USER_AGENT,
-                locale="en-US",
-                timezone_id="America/New_York",
-                extra_http_headers={"Accept-Language": "en-US,en;q=0.9"},
-            )
+            headless = self._effective_headless()
+            browser = await self._launch(playwright, headless=headless)
+            context_kwargs: dict[str, Any] = {
+                "viewport": {"width": 1440, "height": 900},
+                "screen": {"width": 1920, "height": 1080},
+                "locale": "en-US",
+                "timezone_id": "America/New_York",
+                "color_scheme": "light",
+                "device_scale_factor": 1,
+                "has_touch": False,
+                "extra_http_headers": {"Accept-Language": "en-US,en;q=0.9"},
+            }
+            if headless:
+                context_kwargs["user_agent"] = chrome_user_agent(getattr(browser, "version", "") or "")
+            context = await browser.new_context(**context_kwargs)
             try:
                 await context.add_init_script(STEALTH_INIT_SCRIPT)
             except Exception as exc:  # noqa: BLE001
@@ -93,7 +119,12 @@ class BaseBrowser:
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("cookie_inject_failed", error=str(exc))
             page = await context.new_page()
-            logger.info("browser_session_started", headless=self.headless, cookies=len(self.cookies))
+            logger.info(
+                "browser_session_started",
+                headless=headless,
+                cookies=len(self.cookies),
+                ua_override=bool(headless),
+            )
             try:
                 yield browser, context, page
             finally:
