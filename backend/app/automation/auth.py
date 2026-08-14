@@ -87,7 +87,14 @@ async def detect_auth_failure(
     landed = format_landed(snap)
     try:
         raw = await page.page.inner_text("body")
-        body = str(raw or "").lower()
+        body = (
+            str(raw or "")
+            .lower()
+            .replace("\u2019", "'")
+            .replace("\u2018", "'")
+            .replace("\u201c", '"')
+            .replace("\u201d", '"')
+        )
         if "magicmock" in body:
             body = ""
     except Exception:  # noqa: BLE001
@@ -109,13 +116,25 @@ async def detect_auth_failure(
             f"Wrong email or password — check credentials and try again (landed on {landed})",
             code=WRONG_PASSWORD,
         )
-    if await any_visible(page, pack.all("checkpoint")) or _url_looks_like_checkpoint(url):
+    checkpoint_body = (
+        "let's do a quick security check",
+        "lets do a quick security check",
+        "security verification",
+        "verify you are human",
+    )
+    if (
+        await any_visible(page, pack.all("checkpoint"))
+        or _url_looks_like_checkpoint(url)
+        or any(marker in body for marker in checkpoint_body)
+        or "captchasitekey" in body.replace(" ", "")
+    ):
         return PortalAuthError(
-            "Security checkpoint / challenge required — complete it in a real browser, then Re-auth "
+            "LinkedIn security checkpoint / captcha — sign in once in a normal browser on your computer, "
+            "then Re-auth so we can reuse those cookies. Headless/cloud browsers usually cannot pass this check "
             f"(landed on {landed})",
             code=CHECKPOINT,
         )
-    if await any_visible(page, pack.all("captcha")) or "verify you are human" in body:
+    if await any_visible(page, pack.all("captcha")):
         return PortalAuthError(
             f"CAPTCHA challenge blocking login — solve it or re-auth with a fresh session (landed on {landed})",
             code=CAPTCHA,

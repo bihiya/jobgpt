@@ -119,3 +119,11 @@ async def test_automation_match_still_runs_inline_without_playwright():
         result = await service.run("user-1", "match")
         assert result["mode"] == "inline"
         create_task.assert_called_once()
+
+
+def test_browser_stealth_uses_current_chrome_ua():
+    from app.automation.base.browser import DEFAULT_USER_AGENT, STEALTH_INIT_SCRIPT
+
+    assert "Chrome/120" not in DEFAULT_USER_AGENT
+    assert "Chrome/139" in DEFAULT_USER_AGENT
+    assert "webdriver" in STEALTH_INIT_SCRIPT

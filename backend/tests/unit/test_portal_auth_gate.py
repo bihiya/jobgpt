@@ -219,6 +219,20 @@ async def test_describe_page_ignores_magicmock_title():
 
 
 @pytest.mark.asyncio
+async def test_detect_checkpoint_from_security_check_copy():
+    from app.automation.auth import CHECKPOINT
+
+    page = _fake_page(url="https://www.linkedin.com/login")
+    page.page.inner_text = AsyncMock(
+        return_value="Sign in Join now\nLet’s do a quick security check\nLinkedIn © 2026"
+    )
+    err = await detect_auth_failure(page, "linkedin")
+    assert err is not None
+    assert err.code == CHECKPOINT
+    assert "normal browser" in err.message
+
+
+@pytest.mark.asyncio
 async def test_detect_checkpoint_includes_landed_url():
     from app.automation.auth import CHECKPOINT
 

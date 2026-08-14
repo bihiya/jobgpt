@@ -210,6 +210,11 @@ def test_selector_pack_includes_email_and_username_fields() -> None:
     assert "session_password" in joined_pass
     assert "autocomplete='current-password'" in joined_pass
     assert "login-submit" in joined_submit
+    assert ":text-is('Sign in')" in joined_submit
+    submit = pack.all("login_submit")
+    assert submit.index("button:text-is('Sign in')") < next(
+        i for i, sel in enumerate(submit) if ":has-text('Sign in')" in sel
+    )
 
 
 @pytest.mark.asyncio
@@ -316,6 +321,39 @@ async def test_linkedin_login_missing_fields_reports_landed_url() -> None:
     assert "LOGIN_FAILED" in str(exc.value)
     assert inner.gotos[0] == FEED_URL
     assert "https://www.linkedin.com/login" in inner.gotos
+
+
+@pytest.mark.asyncio
+async def test_wait_any_selector_skips_selector_with_no_visible_match() -> None:
+    page = _Page(_InnerPage(LOGIN_URL, visible={"input[type='email']"}))
+    assert (
+        await wait_any_selector(
+            page,
+            ["input[autocomplete='username']", "input[type='email']"],
+            timeout=2_000,
+        )
+        == "input[type='email']"
+    )
+
+
+@pytest.mark.asyncio
+async def test_linkedin_login_fills_2026_webauthn_email_form() -> None:
+    """Live LinkedIn 2026 login: generated ids, username webauthn, Sign in type=button."""
+    inner = _InnerPage(
+        FEED_URL,
+        visible={
+            "input[type='email']",
+            "input[autocomplete='username webauthn']",
+            "input[type='password']",
+            "input[autocomplete='current-password']",
+            "button:text-is('Sign in')",
+        },
+    )
+    page = _Page(inner)
+    await _portal().login(page)
+    assert inner.filled["input[autocomplete='username webauthn']"] == "me@example.com"
+    assert inner.filled["input[autocomplete='current-password']"] == "secret"
+    assert any(cookie["name"] == "li_at" for cookie in inner.cookies)
 
 
 @pytest.mark.asyncio

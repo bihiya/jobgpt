@@ -12,6 +12,15 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Chrome 120 fingerprints as a bot on LinkedIn 2026 login (captcha checkpoint).
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/139.0.7258.127 Safari/537.36"
+)
+STEALTH_INIT_SCRIPT = """
+Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+"""
+
 
 class BaseBrowser:
     def __init__(
@@ -27,7 +36,14 @@ class BaseBrowser:
         self.last_cookies: list[dict[str, Any]] = []
 
     async def _launch(self, playwright: Any) -> Browser:
-        launch_args: dict[str, Any] = {"headless": self.headless}
+        launch_args: dict[str, Any] = {
+            "headless": self.headless,
+            "args": [
+                "--disable-blink-features=AutomationControlled",
+                "--disable-dev-shm-usage",
+            ],
+            "ignore_default_args": ["--enable-automation"],
+        }
         if self.proxy and self.proxy.get("server"):
             launch_args["proxy"] = self.proxy
 
@@ -62,11 +78,15 @@ class BaseBrowser:
             browser = await self._launch(playwright)
             context = await browser.new_context(
                 viewport={"width": 1440, "height": 900},
-                user_agent=(
-                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                ),
+                user_agent=DEFAULT_USER_AGENT,
+                locale="en-US",
+                timezone_id="America/New_York",
+                extra_http_headers={"Accept-Language": "en-US,en;q=0.9"},
             )
+            try:
+                await context.add_init_script(STEALTH_INIT_SCRIPT)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("stealth_init_failed", error=str(exc)[:200])
             if self.cookies:
                 try:
                     await context.add_cookies(self.cookies)
