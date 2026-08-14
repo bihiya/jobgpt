@@ -210,11 +210,8 @@ def test_selector_pack_includes_email_and_username_fields() -> None:
     assert "session_password" in joined_pass
     assert "autocomplete='current-password'" in joined_pass
     assert "login-submit" in joined_submit
-    assert ":text-is('Sign in')" in joined_submit
-    submit = pack.all("login_submit")
-    assert submit.index("button:text-is('Sign in')") < next(
-        i for i, sel in enumerate(submit) if ":has-text('Sign in')" in sel
-    )
+    assert "not(:has-text('Apple'))" in joined_submit
+    assert "button:has-text('Sign in')" not in pack.all("login_submit")
 
 
 @pytest.mark.asyncio
@@ -346,7 +343,7 @@ async def test_linkedin_login_fills_2026_webauthn_email_form() -> None:
             "input[autocomplete='username webauthn']",
             "input[type='password']",
             "input[autocomplete='current-password']",
-            "button:text-is('Sign in')",
+            "button:has-text('Sign in'):not(:has-text('Apple')):not(:has-text('Google'))",
         },
     )
     page = _Page(inner)

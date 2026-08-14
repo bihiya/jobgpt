@@ -60,9 +60,9 @@ LINKEDIN_V1 = SelectorPack(
             "button[data-litms-control-urn='login-submit']",
             "button[type='submit']",
             "button.btn__primary--large",
-            # :has-text('Sign in') also matches "Sign in with Apple".
-            "button:text-is('Sign in')",
+            # :has-text('Sign in') also matches "Sign in with Apple" (and :text-is misses nested spans).
             "button:has-text('Sign in'):not(:has-text('Apple')):not(:has-text('Google'))",
+            "button >> text='Sign in'",
             "button:has-text('Continue')",
             "input[type='submit']",
         ],
@@ -299,6 +299,7 @@ def _css_join(selectors: list[str]) -> str:
         if not sel.startswith("text=")
         and ":has-text(" not in sel
         and ":text-is(" not in sel
+        and " >> " not in sel
     )
 
 
