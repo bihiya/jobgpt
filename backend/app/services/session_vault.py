@@ -137,10 +137,16 @@ class SessionVault:
     def save_cookies(self, portal: Portal, cookies: list[dict[str, Any]]) -> None:
         normalized = normalize_cookies(cookies)
         if not normalized:
+            self.clear_session(portal)
             return
         portal.cookies = {"cookies": normalized}
         portal.session_blob = encrypt_blob(normalized)
         portal.session_updated_at = datetime.utcnow()
+
+    def clear_session(self, portal: Portal) -> None:
+        portal.cookies = {}
+        portal.session_blob = ""
+        portal.session_updated_at = None
 
     def load_totp_secret(self, portal: Portal) -> str:
         enc = getattr(portal, "totp_secret_encrypted", "") or ""

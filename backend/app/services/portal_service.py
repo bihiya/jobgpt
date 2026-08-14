@@ -7,7 +7,7 @@ from datetime import datetime
 from app.core.exceptions import ConflictError, NotFoundError
 from app.core.times import iso_utc
 from app.models.enums import PortalStatus
-from app.models.portal import Portal
+from app.models.portal import Portal, PortalCredentials
 from app.producers.events import publish_job_fetch
 from app.repository.portal_repository import PortalRepository
 from app.schemas.portal import PortalCreate, PortalResponse, PortalUpdate
@@ -36,7 +36,9 @@ class PortalService:
             last_attempt_at=iso_utc(getattr(portal, "updated_at", None)),
             sync_started_at=iso_utc(getattr(portal, "sync_started_at", None)),
             created_at=iso_utc(portal.created_at) or "",
-            has_credentials=bool(portal.credentials.username),
+            username=(getattr(portal.credentials, "username", "") or "").strip(),
+            has_credentials=bool(getattr(portal.credentials, "username", "")),
+            has_password=bool(getattr(portal.credentials, "password", "")),
             has_session=self._has_auth_session(portal),
             has_totp=bool(getattr(portal, "totp_secret_encrypted", "")),
             session_updated_at=iso_utc(getattr(portal, "session_updated_at", None)),
@@ -91,6 +93,25 @@ class PortalService:
         )
         return self._to_response(portal)
 
+    @staticmethod
+    def _merge_credentials(
+        current: PortalCredentials | None,
+        incoming: dict | None,
+        *,
+        clear: bool = False,
+    ) -> PortalCredentials:
+        """Replace username; keep existing password when the new one is blank."""
+        if clear:
+            return PortalCredentials()
+        current = current or PortalCredentials()
+        incoming = incoming or {}
+        username = str(incoming.get("username") or "").strip()
+        password = str(incoming.get("password") or "")
+        return PortalCredentials(
+            username=username or current.username,
+            password=password or current.password,
+        )
+
     async def update(self, user_id: str, portal_id: str, payload: PortalUpdate) -> PortalResponse:
         portal = await self._owned(user_id, portal_id)
         from app.services.session_vault import SessionVault, normalize_cookies
@@ -99,14 +120,37 @@ class PortalService:
         data = payload.model_dump(exclude_unset=True)
         totp = data.pop("totp_secret", None)
         cookies_raw = data.pop("cookies", None)
+        creds = data.pop("credentials", None)
+        clear = bool(data.pop("clear_credentials", False))
         data["updated_at"] = datetime.utcnow()
+
+        creds_changed = False
+        if clear or creds is not None:
+            before_user = getattr(portal.credentials, "username", "") or ""
+            before_pass = getattr(portal.credentials, "password", "") or ""
+            merged = self._merge_credentials(portal.credentials, creds, clear=clear)
+            data["credentials"] = merged.model_dump()
+            creds_changed = clear or merged.username != before_user or (
+                bool((creds or {}).get("password")) and merged.password != before_pass
+            )
+
         portal = await self.portals.update(portal, data)
+        if creds_changed:
+            # Stale cookies would skip a fresh login with the new email/password.
+            vault.clear_session(portal)
         if cookies_raw is not None:
             vault.save_cookies(portal, normalize_cookies(cookies_raw))
         if totp is not None:
             vault.save_totp_secret(portal, totp)
         await portal.save()
         return self._to_response(portal)
+
+    async def clear_credentials(self, user_id: str, portal_id: str) -> PortalResponse:
+        return await self.update(
+            user_id,
+            portal_id,
+            PortalUpdate(clear_credentials=True),
+        )
 
     async def sync(self, user_id: str, portal_id: str) -> PortalResponse:
         portal = await self._owned(user_id, portal_id)

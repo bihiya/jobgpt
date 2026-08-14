@@ -44,6 +44,7 @@ class PortalUpdate(BaseModel):
     totp_secret: str | None = None
     selector_version: int | None = None
     status: PortalStatus | None = None
+    clear_credentials: bool = False
 
 
 class PortalResponse(BaseModel):
@@ -54,7 +55,9 @@ class PortalResponse(BaseModel):
     last_attempt_at: str | None = None
     sync_started_at: str | None = None
     created_at: str
+    username: str = ""
     has_credentials: bool = False
+    has_password: bool = False
     has_session: bool = False
     has_totp: bool = False
     session_updated_at: str | None = None

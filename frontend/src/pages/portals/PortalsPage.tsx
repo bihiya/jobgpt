@@ -1,5 +1,7 @@
+import { DeleteOutline, EditOutlined } from '@mui/icons-material';
 import {
   Alert,
+  Box,
   Button,
   Chip,
   Dialog,
@@ -12,7 +14,6 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { DataGrid, GridColDef } from '@mui/x-data-grid';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
@@ -37,7 +38,9 @@ type PortalRow = {
   last_sync_at?: string | null;
   last_attempt_at?: string | null;
   sync_started_at?: string | null;
+  username?: string;
   has_credentials?: boolean;
+  has_password?: boolean;
   has_session?: boolean;
   has_totp?: boolean;
   session_updated_at?: string | null;
@@ -49,6 +52,11 @@ type PortalRow = {
     paused_reason?: string;
   };
 };
+
+type CredsDialog =
+  | { mode: 'connect' }
+  | { mode: 'edit'; portal: PortalRow }
+  | { mode: 'reauth'; portal: PortalRow };
 
 function isSyncInFlight(portal: PortalRow, optimisticId?: string | null): boolean {
   if (optimisticId && portal.id === optimisticId) return true;
@@ -117,13 +125,11 @@ function stepColor(level?: string): 'success' | 'warning' | 'error' | 'info' | '
 }
 
 export default function PortalsPage() {
-  const [open, setOpen] = useState(false);
-  const [reauthOpen, setReauthOpen] = useState<null | PortalRow>(null);
+  const [dialog, setDialog] = useState<CredsDialog | null>(null);
   const [name, setName] = useState('linkedin');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [syncingId, setSyncingId] = useState<string | null>(null);
-  const [reauthId, setReauthId] = useState<string | null>(null);
   const [pollUntil, setPollUntil] = useState(0);
   const queryClient = useQueryClient();
   const timeZone = useUserTimeZone();
@@ -158,9 +164,34 @@ export default function PortalsPage() {
   useEffect(() => {
     if (!syncingId) return;
     const row = rows.find((p) => p.id === syncingId);
-    // Once the server has sync_started_at, drop the optimistic id.
     if (row?.sync_started_at) setSyncingId(null);
   }, [rows, syncingId]);
+
+  const closeDialog = () => {
+    setDialog(null);
+    setUsername('');
+    setPassword('');
+    setName('linkedin');
+  };
+
+  const openConnect = () => {
+    setName('linkedin');
+    setUsername('');
+    setPassword('');
+    setDialog({ mode: 'connect' });
+  };
+
+  const openEdit = (portal: PortalRow) => {
+    setUsername(portal.username || '');
+    setPassword('');
+    setDialog({ mode: 'edit', portal });
+  };
+
+  const openReauth = (portal: PortalRow) => {
+    setUsername(portal.username || '');
+    setPassword('');
+    setDialog({ mode: 'reauth', portal });
+  };
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -168,12 +199,20 @@ export default function PortalsPage() {
         name,
         credentials: { username, password },
       }),
-    meta: { successMessage: 'Portal connected — sync to verify login', errorMessage: 'Could not connect portal' },
+    meta: { successMessage: 'Portal connected — credentials saved', errorMessage: 'Could not connect portal' },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['portals'] });
-      setOpen(false);
-      setUsername('');
-      setPassword('');
+      closeDialog();
+    },
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: ({ id, user, pass }: { id: string; user: string; pass: string }) =>
+      portalsApi.update(id, { credentials: { username: user, password: pass } }),
+    meta: { successMessage: 'Credentials saved', errorMessage: 'Could not save credentials' },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['portals'] });
+      closeDialog();
     },
   });
 
@@ -196,22 +235,27 @@ export default function PortalsPage() {
       portalsApi.reauth(id, {
         credentials: { username: user, password: pass },
       }),
-    meta: { successMessage: 'Re-auth + sync started', errorMessage: 'Re-auth failed' },
+    meta: { successMessage: 'Credentials saved — sync started', errorMessage: 'Re-auth failed' },
     onMutate: ({ id }) => {
-      setReauthId(id);
       setSyncingId(id);
       setPollUntil(Date.now() + 45_000);
     },
     onSuccess: () => {
-      setReauthOpen(null);
-      setUsername('');
-      setPassword('');
+      closeDialog();
       void queryClient.invalidateQueries({ queryKey: ['portals'] });
       void queryClient.invalidateQueries({ queryKey: ['approval-blockers'] });
       void queryClient.invalidateQueries({ queryKey: ['automation-logs'] });
     },
     onError: () => setSyncingId(null),
-    onSettled: () => setReauthId(null),
+  });
+
+  const clearMutation = useMutation({
+    mutationFn: (id: string) => portalsApi.clearCredentials(id),
+    meta: { successMessage: 'Credentials removed', errorMessage: 'Could not clear credentials' },
+    onSuccess: () => {
+      closeDialog();
+      void queryClient.invalidateQueries({ queryKey: ['portals'] });
+    },
   });
 
   const removeMutation = useMutation({
@@ -220,140 +264,20 @@ export default function PortalsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['portals'] }),
   });
 
-  const columns: GridColDef<PortalRow>[] = useMemo(
-    () => [
-      {
-        field: 'name',
-        headerName: 'Portal',
-        flex: 0.9,
-        minWidth: 120,
-        renderCell: (params) => (
-          <Typography sx={{ textTransform: 'capitalize', fontWeight: 600 }}>
-            {params.value}
-          </Typography>
-        ),
-      },
-      {
-        field: 'login',
-        headerName: 'Login',
-        flex: 1.2,
-        minWidth: 180,
-        sortable: false,
-        renderCell: (params) => {
-          const state = loginState(params.row);
-          return (
-            <Stack spacing={0.25} justifyContent="center" sx={{ py: 0.5, width: '100%' }}>
-              <Chip size="small" color={state.color} label={state.label} sx={{ width: 'fit-content' }} />
-              <Typography variant="caption" color="text.secondary" noWrap title={state.detail}>
-                {state.detail}
-              </Typography>
-            </Stack>
-          );
-        },
-      },
-      {
-        field: 'sync',
-        headerName: 'Sync',
-        flex: 1.3,
-        minWidth: 200,
-        sortable: false,
-        renderCell: (params) => {
-          const syncing = isSyncInFlight(params.row, syncingId);
-          const lastTry = params.row.last_attempt_at;
-          const lastOk = params.row.last_sync_at;
-          const score = Math.round(params.row.health?.score ?? 100);
-          const same = roughlySame(lastTry, lastOk);
-          return (
-            <Stack spacing={0.5} justifyContent="center" sx={{ py: 0.5, width: '100%' }}>
-              {syncing ? (
-                <>
-                  <Chip size="small" color="info" label="Syncing live…" sx={{ width: 'fit-content' }} />
-                  <LinearProgress sx={{ height: 3, borderRadius: 1 }} />
-                </>
-              ) : same || (!lastTry && lastOk) ? (
-                <Typography variant="body2">
-                  Last sync · {lastOk ? formatWhen(lastOk, timeZone) : 'Never'}
-                </Typography>
-              ) : (
-                <>
-                  <Typography variant="body2">
-                    Last try · {lastTry ? formatWhen(lastTry, timeZone) : 'Never'}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Last success · {lastOk ? fromNowLocal(lastOk) : 'Never'}
-                  </Typography>
-                </>
-              )}
-              <Typography variant="caption" color="text.secondary">
-                Health {score}
-                {params.row.health?.last_error && !syncing
-                  ? ` · ${params.row.health.last_error}`
-                  : ''}
-              </Typography>
-            </Stack>
-          );
-        },
-      },
-      {
-        field: 'actions',
-        headerName: '',
-        width: 280,
-        sortable: false,
-        renderCell: (params) => {
-          const syncing = isSyncInFlight(params.row, syncingId);
-          const needsAuth =
-            !params.row.has_session ||
-            Boolean(params.row.health?.auto_paused) ||
-            params.row.status === 'error';
-          return (
-            <Stack direction="row" spacing={0.75} alignItems="center">
-              <Button
-                size="small"
-                variant="contained"
-                disabled={syncing || syncMutation.isPending}
-                onClick={() => syncMutation.mutate(params.row.id)}
-              >
-                {syncing ? 'Syncing…' : 'Sync'}
-              </Button>
-              {needsAuth && (
-                <Button
-                  size="small"
-                  variant="outlined"
-                  disabled={reauthId === params.row.id}
-                  onClick={() => {
-                    setUsername('');
-                    setPassword('');
-                    setReauthOpen(params.row);
-                  }}
-                >
-                  Re-auth
-                </Button>
-              )}
-              <Button
-                size="small"
-                color="inherit"
-                disabled={removeMutation.isPending}
-                onClick={() => {
-                  if (window.confirm(`Disconnect ${params.row.name}?`)) {
-                    removeMutation.mutate(params.row.id);
-                  }
-                }}
-              >
-                Remove
-              </Button>
-            </Stack>
-          );
-        },
-      },
-    ],
-    [syncingId, syncMutation, reauthId, removeMutation, timeZone],
-  );
+  const dialogBusy =
+    createMutation.isPending || saveMutation.isPending || reauthMutation.isPending;
+  const editingPortal = dialog && dialog.mode !== 'connect' ? dialog.portal : null;
+  const saveNeedsPassword = dialog?.mode === 'connect' || (dialog?.mode === 'reauth' && !editingPortal?.has_password);
+  const canSubmit =
+    Boolean(username.trim()) &&
+    (saveNeedsPassword ? Boolean(password) : true) &&
+    (dialog?.mode !== 'connect' || Boolean(password));
 
   return (
     <PageShell
       loading={isLoading}
       fetching={!isLoading && isFetching}
-      busy={createMutation.isPending || syncMutation.isPending || reauthMutation.isPending}
+      busy={dialogBusy || syncMutation.isPending || clearMutation.isPending}
     >
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
@@ -364,30 +288,28 @@ export default function PortalsPage() {
         <Stack spacing={0.5}>
           <Typography variant="h4">Job portals</Typography>
           <Typography color="text.secondary" variant="body2">
-            Connect → Sync verifies login in a headless browser → jobs land here live.
+            Each portal stores its own email/password. Sync uses those credentials to log in.
           </Typography>
         </Stack>
         <Stack direction="row" spacing={1}>
           <Button component={RouterLink} to="/automation" variant="outlined">
             Watch logs
           </Button>
-          <Button variant="contained" onClick={() => setOpen(true)}>
+          <Button variant="contained" onClick={openConnect}>
             Connect portal
           </Button>
         </Stack>
       </Stack>
 
       <Alert severity="info" sx={{ borderRadius: 2 }}>
-        <strong>Sync flow:</strong> credentials are saved on Connect (that is not a full login).
-        Sync queues a background fetch — the worker logs into the portal, pulls jobs, then saves
-        the session. While it runs you&apos;ll see <em>Syncing live…</em>; when login works the
-        Login column flips to <em>Logged in</em>. Times use your device timezone
-        ({timeZone}).
+        <strong>Credentials:</strong> email is shown here; the password is stored and used on Sync
+        but never sent back to the browser. Edit to change, Clear to delete. Times use your device
+        timezone ({timeZone}).
       </Alert>
 
       {anySyncing && (
         <Alert severity="success" sx={{ borderRadius: 2 }}>
-          Live sync in progress — this table refreshes every few seconds. Step-by-step progress is
+          Live sync in progress — this page refreshes every few seconds. Step-by-step progress is
           also on{' '}
           <Button component={RouterLink} to="/automation" size="small" sx={{ verticalAlign: 'baseline' }}>
             Automation
@@ -396,101 +318,211 @@ export default function PortalsPage() {
         </Alert>
       )}
 
-      <DataGrid
-        autoHeight
-        getRowHeight={() => 88}
-        rows={rows}
-        columns={columns}
-        loading={isFetching && !rows.length}
-        pageSizeOptions={[10, 25]}
-        initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
-        disableRowSelectionOnClick
-        sx={{ bgcolor: 'background.paper', borderRadius: 3, width: '100%' }}
-        localeText={{ noRowsLabel: 'No portals yet — connect LinkedIn, Naukri, or Indeed to start.' }}
-      />
+      {!rows.length && !isFetching && (
+        <Typography color="text.secondary">
+          No portals yet — connect LinkedIn, Naukri, or Indeed to start.
+        </Typography>
+      )}
 
       {rows.map((portal) => {
+        const state = loginState(portal);
+        const syncing = isSyncInFlight(portal, syncingId);
+        const lastTry = portal.last_attempt_at;
+        const lastOk = portal.last_sync_at;
+        const same = roughlySame(lastTry, lastOk);
+        const score = Math.round(portal.health?.score ?? 100);
         const steps = lastPortalRun(logItems, portal.name);
-        if (!steps.length) return null;
         const stamp = steps[steps.length - 1]?.created_at;
         return (
-          <Stack
-            key={`${portal.id}-story`}
-            spacing={1}
-            sx={{ bgcolor: 'background.paper', borderRadius: 3, p: 2, border: '1px solid', borderColor: 'divider' }}
+          <Box
+            key={portal.id}
+            sx={{
+              bgcolor: 'background.paper',
+              borderRadius: 3,
+              p: { xs: 1.5, sm: 2 },
+              border: '1px solid',
+              borderColor: 'divider',
+            }}
           >
-            <Typography variant="subtitle1" fontWeight={700} sx={{ textTransform: 'capitalize' }}>
-              Last {portal.name} login
-              {stamp ? ` · ${formatWhen(stamp, timeZone)}` : ''}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              Each line is one browser step: page opened → email → password → submit → what loaded next.
-            </Typography>
-            <Stack spacing={0.75}>
-              {steps.map((step, idx) => (
-                <Stack key={step.id} direction="row" spacing={1} alignItems="flex-start">
-                  <Chip
-                    size="small"
-                    label={idx + 1}
-                    color={stepColor(step.level)}
-                    sx={{ minWidth: 36 }}
-                  />
-                  <Stack spacing={0}>
-                    <Typography variant="body2">{step.message || step.action}</Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {formatWhen(step.created_at, timeZone)}
-                      {step.action === 'fetch.login' ? '' : ` · ${step.action}`}
+            <Stack
+              direction={{ xs: 'column', md: 'row' }}
+              spacing={2}
+              justifyContent="space-between"
+              alignItems={{ xs: 'stretch', md: 'flex-start' }}
+            >
+              <Stack spacing={1} sx={{ minWidth: 0, flex: 1 }}>
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                  <Typography variant="h6" sx={{ textTransform: 'capitalize', fontWeight: 700 }}>
+                    {portal.name}
+                  </Typography>
+                  <Chip size="small" color={state.color} label={state.label} />
+                  {syncing && <Chip size="small" color="info" label="Syncing live…" />}
+                </Stack>
+                <Typography variant="caption" color="text.secondary">
+                  {state.detail}
+                </Typography>
+
+                <Box
+                  sx={{
+                    mt: 0.5,
+                    p: 1.25,
+                    borderRadius: 2,
+                    bgcolor: 'action.hover',
+                  }}
+                >
+                  <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 0.75 }}>
+                    Credentials
+                  </Typography>
+                  <Stack spacing={0.25}>
+                    <Typography variant="body2">
+                      Email / username · {portal.username || 'Not saved'}
+                    </Typography>
+                    <Typography variant="body2">
+                      Password · {portal.has_password ? '••••••••  (stored, used on Sync)' : 'Not saved'}
                     </Typography>
                   </Stack>
+                  <Stack direction="row" spacing={1} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<EditOutlined />}
+                      onClick={() => openEdit(portal)}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      size="small"
+                      color="error"
+                      startIcon={<DeleteOutline />}
+                      disabled={!portal.has_credentials && !portal.has_password}
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            `Delete saved ${portal.name} email/password? Sync will not be able to log in until you add them again.`,
+                          )
+                        ) {
+                          clearMutation.mutate(portal.id);
+                        }
+                      }}
+                    >
+                      Clear
+                    </Button>
+                  </Stack>
+                </Box>
+              </Stack>
+
+              <Stack spacing={1} sx={{ minWidth: { md: 220 } }}>
+                {syncing ? (
+                  <LinearProgress sx={{ height: 3, borderRadius: 1 }} />
+                ) : same || (!lastTry && lastOk) ? (
+                  <Typography variant="body2">
+                    Last sync · {lastOk ? formatWhen(lastOk, timeZone) : 'Never'}
+                  </Typography>
+                ) : (
+                  <>
+                    <Typography variant="body2">
+                      Last try · {lastTry ? formatWhen(lastTry, timeZone) : 'Never'}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Last success · {lastOk ? fromNowLocal(lastOk) : 'Never'}
+                    </Typography>
+                  </>
+                )}
+                <Typography variant="caption" color="text.secondary">
+                  Health {score}
+                  {portal.health?.last_error && !syncing ? ` · ${portal.health.last_error}` : ''}
+                </Typography>
+                <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    disabled={syncing || syncMutation.isPending}
+                    onClick={() => syncMutation.mutate(portal.id)}
+                  >
+                    {syncing ? 'Syncing…' : 'Sync'}
+                  </Button>
+                  <Button size="small" variant="outlined" onClick={() => openReauth(portal)}>
+                    Save & sync
+                  </Button>
+                  <Button
+                    size="small"
+                    color="inherit"
+                    disabled={removeMutation.isPending}
+                    onClick={() => {
+                      if (window.confirm(`Disconnect ${portal.name}? This removes the portal and its credentials.`)) {
+                        removeMutation.mutate(portal.id);
+                      }
+                    }}
+                  >
+                    Remove
+                  </Button>
                 </Stack>
-              ))}
+              </Stack>
             </Stack>
-          </Stack>
+
+            {!!steps.length && (
+              <Stack spacing={0.75} sx={{ mt: 2, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
+                <Typography variant="subtitle2" fontWeight={700}>
+                  Last login
+                  {stamp ? ` · ${formatWhen(stamp, timeZone)}` : ''}
+                </Typography>
+                {steps.map((step, idx) => (
+                  <Stack key={step.id} direction="row" spacing={1} alignItems="flex-start">
+                    <Chip size="small" label={idx + 1} color={stepColor(step.level)} sx={{ minWidth: 36 }} />
+                    <Stack spacing={0}>
+                      <Typography variant="body2">{step.message || step.action}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {formatWhen(step.created_at, timeZone)}
+                        {step.action === 'fetch.login' ? '' : ` · ${step.action}`}
+                      </Typography>
+                    </Stack>
+                  </Stack>
+                ))}
+              </Stack>
+            )}
+          </Box>
         );
       })}
 
-      <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Connect portal</DialogTitle>
+      <Dialog open={Boolean(dialog)} onClose={closeDialog} fullWidth maxWidth="sm">
+        <DialogTitle>
+          {dialog?.mode === 'connect'
+            ? 'Connect portal'
+            : dialog?.mode === 'reauth'
+              ? `Save & sync ${editingPortal?.name || ''}`
+              : `Edit ${editingPortal?.name || ''} credentials`}
+        </DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
-            <Alert severity="warning" sx={{ borderRadius: 2 }}>
-              Saving credentials marks the portal connected, but login is only verified when you
-              press Sync (or Re-auth).
-            </Alert>
-            <TextField select label="Portal" value={name} onChange={(e) => setName(e.target.value)} fullWidth>
-              {PORTALS.map((p) => (
-                <MenuItem key={p} value={p}>{p}</MenuItem>
-              ))}
-            </TextField>
-            <TextField label="Username / Email" value={username} onChange={(e) => setUsername(e.target.value)} fullWidth />
-            <TextField label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} fullWidth />
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpen(false)}>Cancel</Button>
-          <Button
-            variant="contained"
-            onClick={() => createMutation.mutate()}
-            disabled={createMutation.isPending || !username || !password}
-          >
-            Connect
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={Boolean(reauthOpen)} onClose={() => setReauthOpen(null)} fullWidth maxWidth="sm">
-        <DialogTitle>Re-auth {reauthOpen?.name}</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <Typography variant="body2" color="text.secondary">
-              Update credentials, clear the pause, and start a fresh sync. Login succeeds only if
-              the worker can sign in.
-            </Typography>
+            {dialog?.mode === 'connect' ? (
+              <>
+                <Alert severity="warning" sx={{ borderRadius: 2 }}>
+                  Email and password are stored on this portal and used the next time you press Sync.
+                </Alert>
+                <TextField
+                  select
+                  label="Portal"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  fullWidth
+                >
+                  {PORTALS.map((p) => (
+                    <MenuItem key={p} value={p}>{p}</MenuItem>
+                  ))}
+                </TextField>
+              </>
+            ) : (
+              <Alert severity="info" sx={{ borderRadius: 2 }}>
+                Leave password blank to keep the stored one. Email is shown; the saved password is
+                never returned to the browser.
+              </Alert>
+            )}
             <TextField
               label="Username / Email"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               fullWidth
+              autoComplete="username"
             />
             <TextField
               label="Password"
@@ -498,25 +530,78 @@ export default function PortalsPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               fullWidth
+              autoComplete="current-password"
+              placeholder={editingPortal?.has_password ? '••••••••' : ''}
+              helperText={
+                editingPortal?.has_password && !password
+                  ? 'Stored password will be kept'
+                  : 'Stored and used on the next Sync — never shown again'
+              }
             />
           </Stack>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setReauthOpen(null)}>Cancel</Button>
-          <Button
-            variant="contained"
-            disabled={!reauthOpen || reauthMutation.isPending || !username || !password}
-            onClick={() => {
-              if (!reauthOpen) return;
-              reauthMutation.mutate({
-                id: reauthOpen.id,
-                user: username,
-                pass: password,
-              });
-            }}
-          >
-            {reauthMutation.isPending ? 'Starting…' : 'Save & sync'}
-          </Button>
+        <DialogActions sx={{ px: 3, pb: 2, justifyContent: 'space-between' }}>
+          {editingPortal ? (
+            <Button
+              color="error"
+              disabled={clearMutation.isPending || (!editingPortal.has_credentials && !editingPortal.has_password)}
+              onClick={() => {
+                if (
+                  window.confirm(
+                    `Delete saved ${editingPortal.name} email/password?`,
+                  )
+                ) {
+                  clearMutation.mutate(editingPortal.id);
+                }
+              }}
+            >
+              Delete credentials
+            </Button>
+          ) : (
+            <span />
+          )}
+          <Stack direction="row" spacing={1}>
+            <Button onClick={closeDialog}>Cancel</Button>
+            {dialog?.mode === 'connect' && (
+              <Button
+                variant="contained"
+                onClick={() => createMutation.mutate()}
+                disabled={dialogBusy || !canSubmit}
+              >
+                {createMutation.isPending ? 'Saving…' : 'Save credentials'}
+              </Button>
+            )}
+            {dialog?.mode === 'edit' && editingPortal && (
+              <Button
+                variant="contained"
+                disabled={dialogBusy || !username.trim()}
+                onClick={() =>
+                  saveMutation.mutate({
+                    id: editingPortal.id,
+                    user: username,
+                    pass: password,
+                  })
+                }
+              >
+                {saveMutation.isPending ? 'Saving…' : 'Save'}
+              </Button>
+            )}
+            {dialog?.mode === 'reauth' && editingPortal && (
+              <Button
+                variant="contained"
+                disabled={dialogBusy || !username.trim() || (saveNeedsPassword && !password)}
+                onClick={() =>
+                  reauthMutation.mutate({
+                    id: editingPortal.id,
+                    user: username,
+                    pass: password,
+                  })
+                }
+              >
+                {reauthMutation.isPending ? 'Starting…' : 'Save & sync'}
+              </Button>
+            )}
+          </Stack>
         </DialogActions>
       </Dialog>
     </PageShell>
