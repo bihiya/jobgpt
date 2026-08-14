@@ -56,6 +56,7 @@ def _fake_page(*, url: str = "https://www.linkedin.com/feed/", visible: set[str]
     page.page.query_selector = AsyncMock(side_effect=query_selector)
     page.page.context.cookies = AsyncMock(return_value=[])
     page.page.title = MagicMock(return_value="LinkedIn")
+    page.page.inner_text = AsyncMock(return_value="")
     return page
 
 
@@ -68,6 +69,17 @@ async def test_detect_wrong_password():
     err = await detect_auth_failure(page, "linkedin")
     assert err is not None
     assert err.code == WRONG_PASSWORD
+
+
+@pytest.mark.asyncio
+async def test_detect_wrong_password_from_body_text():
+    page = _fake_page(url="https://www.linkedin.com/login")
+    page.page.inner_text = AsyncMock(return_value="Hmm, that's not the right password. Try again.")
+    err = await detect_auth_failure(page, "linkedin")
+    assert err is not None
+    assert err.code == WRONG_PASSWORD
+    assert "Wrong email or password" in err.message
+    assert "/login" in err.message
 
 
 @pytest.mark.asyncio

@@ -31,11 +31,13 @@ LINKEDIN_V1 = SelectorPack(
     portal="linkedin",
     version=1,
     selectors={
+        # LinkedIn 2025+ uses generated ids; keep classic #username plus type/autocomplete.
         "login_user": [
             "#username",
             "input[name='session_key']",
             "input#session_key",
             "input[autocomplete='username']",
+            "input[autocomplete='username webauthn']",
             "input[id*='username']",
             "input[type='email']",
             "input[aria-label*='Email']",
@@ -246,6 +248,20 @@ def get_selector_pack(portal: str, version: int | None = None) -> SelectorPack:
 
 async def click_first(page: "BasePage", selectors: list[str], timeout: int = 5000) -> str | None:
     for sel in selectors:
+        try:
+            locator = page.page.locator(sel)
+            count = await locator.count()
+            for idx in range(count):
+                item = locator.nth(idx)
+                try:
+                    if not await item.is_visible():
+                        continue
+                    await item.click(timeout=timeout)
+                    return sel
+                except Exception:  # noqa: BLE001
+                    continue
+        except Exception:  # noqa: BLE001
+            pass
         if await page.safe_click(sel, timeout=timeout):
             return sel
     return None
@@ -314,6 +330,22 @@ async def wait_any_selector(
 
 
 async def fill_first(page: "BasePage", selectors: list[str], value: str, timeout: int = 8000) -> str | None:
+    """Fill the first *visible* matching input (LinkedIn duplicates hidden fields)."""
+    for sel in selectors:
+        try:
+            locator = page.page.locator(sel)
+            count = await locator.count()
+            for idx in range(int(count)):
+                item = locator.nth(idx)
+                try:
+                    if not await item.is_visible():
+                        continue
+                    await item.fill(value, timeout=timeout)
+                    return sel
+                except Exception:  # noqa: BLE001
+                    continue
+        except Exception:  # noqa: BLE001
+            continue
     sel = await wait_any_selector(page, selectors, timeout=timeout)
     if not sel:
         return None
@@ -327,6 +359,18 @@ async def fill_first(page: "BasePage", selectors: list[str], value: str, timeout
 
 async def query_first(page: "BasePage", selectors: list[str]) -> Any:
     for sel in selectors:
+        try:
+            locator = page.page.locator(sel)
+            count = await locator.count()
+            for idx in range(count):
+                item = locator.nth(idx)
+                try:
+                    if await item.is_visible():
+                        return await item.element_handle()
+                except Exception:  # noqa: BLE001
+                    continue
+        except Exception:  # noqa: BLE001
+            pass
         el = await page.page.query_selector(sel)
         if el:
             return el

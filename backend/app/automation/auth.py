@@ -85,8 +85,26 @@ async def detect_auth_failure(
     url = page.page.url or ""
     snap = await describe_page(page)
     landed = format_landed(snap)
+    try:
+        raw = await page.page.inner_text("body")
+        body = str(raw or "").lower()
+        if "magicmock" in body:
+            body = ""
+    except Exception:  # noqa: BLE001
+        body = ""
 
-    if await any_visible(page, pack.all("login_error")):
+    wrong_password_markers = (
+        "wrong email or password",
+        "that's not the right password",
+        "that’s not the right password",
+        "hmm, that's not the right password",
+        "couldn't find a linkedin account",
+        "invalid email or password",
+        "incorrect password",
+    )
+    if await any_visible(page, pack.all("login_error")) or any(
+        marker in body for marker in wrong_password_markers
+    ):
         return PortalAuthError(
             f"Wrong email or password — check credentials and try again (landed on {landed})",
             code=WRONG_PASSWORD,
@@ -97,12 +115,12 @@ async def detect_auth_failure(
             f"(landed on {landed})",
             code=CHECKPOINT,
         )
-    if await any_visible(page, pack.all("captcha")):
+    if await any_visible(page, pack.all("captcha")) or "verify you are human" in body:
         return PortalAuthError(
             f"CAPTCHA challenge blocking login — solve it or re-auth with a fresh session (landed on {landed})",
             code=CAPTCHA,
         )
-    if await any_visible(page, pack.all("otp")):
+    if await any_visible(page, pack.all("otp")) or "enter the code" in body:
         return PortalAuthError(
             "OTP / 2FA required — add a TOTP secret or enter a one-time code, then re-auth "
             f"(landed on {landed})",

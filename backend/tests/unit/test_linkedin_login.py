@@ -144,6 +144,7 @@ def test_selector_pack_includes_email_and_username_fields() -> None:
     joined_submit = " ".join(pack.all("login_submit"))
     assert "session_key" in joined_user
     assert "autocomplete='username'" in joined_user
+    assert "username webauthn" in joined_user
     assert "type='email'" in joined_user
     assert "session_password" in joined_pass
     assert "autocomplete='current-password'" in joined_pass
@@ -167,6 +168,40 @@ async def test_fill_first_waits_then_fills() -> None:
     )
     assert used == "input[type='email']"
     assert page.page.filled["input[type='email']"] == "me@example.com"
+
+
+@pytest.mark.asyncio
+async def test_fill_first_skips_hidden_duplicate_inputs() -> None:
+    class _LocItem:
+        def __init__(self, visible: bool, sink: dict[str, str], selector: str) -> None:
+            self._visible = visible
+            self._sink = sink
+            self._selector = selector
+
+        async def is_visible(self) -> bool:
+            return self._visible
+
+        async def fill(self, value: str, timeout: int = 0) -> None:
+            self._sink[self._selector] = value
+
+    class _Locator:
+        def __init__(self, items: list[_LocItem]) -> None:
+            self._items = items
+
+        async def count(self) -> int:
+            return len(self._items)
+
+        def nth(self, idx: int) -> _LocItem:
+            return self._items[idx]
+
+    inner = _InnerPage(LOGIN_URL, visible={"input[type='email']"})
+    hidden = _LocItem(False, inner.filled, "input[type='email']")
+    shown = _LocItem(True, inner.filled, "input[type='email']")
+    inner.locator = lambda sel: _Locator([hidden, shown])  # type: ignore[method-assign]
+    page = _Page(inner)
+    used = await fill_first(page, ["input[type='email']"], "me@example.com", timeout=2_000)
+    assert used == "input[type='email']"
+    assert inner.filled["input[type='email']"] == "me@example.com"
 
 
 @pytest.mark.asyncio

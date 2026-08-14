@@ -50,6 +50,7 @@ type PortalRow = {
   has_credentials?: boolean;
   has_password?: boolean;
   has_session?: boolean;
+  session_updated_at?: string | null;
   health?: {
     score?: number;
     auto_paused?: boolean;
@@ -77,12 +78,47 @@ function isSyncInFlight(portal: PortalRow, live?: LiveSync | null): boolean {
   return Number.isFinite(started) && Date.now() - started < SYNC_STALE_MS;
 }
 
-function loginState(portal: PortalRow): { label: string; color: 'success' | 'warning' | 'error' | 'default' } {
-  if (portal.health?.auto_paused) return { label: 'Paused', color: 'error' };
-  if (portal.status === 'error') return { label: 'Login failed', color: 'error' };
-  if (portal.has_session) return { label: 'Logged in', color: 'success' };
-  if (portal.has_credentials) return { label: 'Saved', color: 'warning' };
-  return { label: 'Needs login', color: 'warning' };
+function loginState(portal: PortalRow): {
+  label: string;
+  color: 'success' | 'warning' | 'error' | 'default';
+  detail: string;
+} {
+  const lastError = (portal.health?.last_error || '').trim();
+  const paused = Boolean(portal.health?.auto_paused);
+  if (paused) {
+    return {
+      label: 'Paused',
+      color: 'error',
+      detail: portal.health?.paused_reason || lastError || 'Re-auth required',
+    };
+  }
+  if (portal.status === 'error' || lastError) {
+    return {
+      label: 'Login failed',
+      color: 'error',
+      detail: lastError || 'Last sync failed — check email/password or security checks',
+    };
+  }
+  if (portal.has_session) {
+    const when = portal.session_updated_at ? fromNowLocal(portal.session_updated_at) : '';
+    return {
+      label: 'Logged in',
+      color: 'success',
+      detail: when && when !== '—' ? `Session updated ${when}` : 'Browser session saved',
+    };
+  }
+  if (portal.has_credentials) {
+    return {
+      label: 'Not verified',
+      color: 'warning',
+      detail: 'Credentials saved — sync to verify login (errors show here)',
+    };
+  }
+  return {
+    label: 'Needs login',
+    color: 'warning',
+    detail: 'Add username/password (or re-auth) before syncing',
+  };
 }
 
 export default function PortalsPage() {
@@ -363,6 +399,11 @@ export default function PortalsPage() {
                   {portal.username || 'No email saved'}
                   {portal.last_sync_at ? ` · last sync ${fromNowLocal(portal.last_sync_at)}` : ' · never synced'}
                 </Typography>
+                {state.color === 'error' && state.detail && (
+                  <Typography variant="caption" color="error" sx={{ display: 'block' }}>
+                    {state.detail}
+                  </Typography>
+                )}
               </Stack>
               <Stack direction="row" spacing={0.75} alignItems="center">
                 <Button

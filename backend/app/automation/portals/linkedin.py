@@ -142,6 +142,14 @@ class LinkedInPortal(BasePortal):
             self.recorder.add("login", "Filled email / username")
         else:
             self.recorder.add("login", "Could not find the email field on the login page", status="error")
+            url = (snap.get("url") or page.page.url or "").lower()
+            if "authwall" in url:
+                raise PortalAuthError(
+                    "LinkedIn authwall blocked login (bot/IP check). "
+                    "Sign in once in a normal browser, then Re-auth with working credentials/cookies "
+                    f"(landed on {format_landed(snap)})",
+                    code=LOGIN_FAILED,
+                )
             raise PortalAuthError(
                 f"Could not fill LinkedIn login form — selectors missed username/password fields "
                 f"(landed on {format_landed(snap)})",
@@ -174,17 +182,43 @@ class LinkedInPortal(BasePortal):
                 f"(landed on {format_landed(snap)})",
                 code=LOGIN_FAILED,
             )
-        submitted = await click_first(page, pack.all("login_submit"))
+        # Enter on the visible password field is more reliable than the Sign-in button.
+        submitted: str | None = None
+        try:
+            await page.page.locator("input[type='password']").locator("visible=true").first.press(
+                "Enter"
+            )
+            submitted = "enter"
+        except Exception:  # noqa: BLE001
+            submitted = await click_first(page, pack.all("login_submit"))
         if submitted:
-            self.recorder.add("login", "Clicked Sign in / submit")
+            self.recorder.add("login", "Submitted Sign in (enter)" if submitted == "enter" else "Clicked Sign in / submit")
         else:
             self.recorder.add("login", "Could not click Sign in", status="error")
             raise PortalAuthError("Could not submit LinkedIn login form", code=LOGIN_FAILED)
         try:
-            await page.page.wait_for_load_state("networkidle", timeout=15000)
+            await page.page.wait_for_function(
+                """() => {
+                  const body = (document.body && document.body.innerText || '').toLowerCase();
+                  if (body.includes('wrong email or password') || body.includes('security check')) {
+                    return true;
+                  }
+                  const path = location.pathname || '';
+                  return path && !path.includes('/login');
+                }""",
+                timeout=15000,
+            )
         except Exception as exc:  # noqa: BLE001
-            logger.warning("linkedin_login_networkidle_timeout", error=str(exc)[:200])
-            self.recorder.add("login", "Page still loading after submit (timeout) — checking result anyway", status="warn")
+            logger.warning("linkedin_login_result_wait_timeout", error=str(exc)[:200])
+            self.recorder.add(
+                "login",
+                "Page still loading after submit (timeout) — checking result anyway",
+                status="warn",
+            )
+            try:
+                await page.page.wait_for_timeout(2000)
+            except Exception:  # noqa: BLE001
+                pass
         snap = await describe_page(page)
         self.recorder.add("login", f"After submit — {format_landed(snap)}", detail=snap.get("url", ""))
         try:
