@@ -123,7 +123,7 @@ export async function restoreSession(): Promise<boolean> {
 }
 
 api.interceptors.request.use(async (config) => {
-  let token = store.getState().auth.accessToken;
+  let token: string | null = store.getState().auth.accessToken;
   if (!token && !isAuthPublicPath(config.url || '')) {
     token = await ensureAccessToken();
   }
