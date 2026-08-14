@@ -9,7 +9,7 @@ import pytest
 from app.automation.auth import LOGIN_FAILED
 from app.automation.errors import PortalAuthError
 from app.automation.portals.linkedin import LinkedInPortal
-from app.automation.selectors import fill_first, get_selector_pack, wait_any_selector
+from app.automation.selectors import click_first, fill_first, get_selector_pack, wait_any_selector
 
 FEED_URL = "https://www.linkedin.com/feed/"
 UAS_LOGIN = (
@@ -318,6 +318,26 @@ async def test_linkedin_login_missing_fields_reports_landed_url() -> None:
     assert "LOGIN_FAILED" in str(exc.value)
     assert inner.gotos[0] == FEED_URL
     assert "https://www.linkedin.com/login" in inner.gotos
+
+
+@pytest.mark.asyncio
+async def test_click_first_skips_missing_css_without_waiting() -> None:
+    inner = _InnerPage(
+        LOGIN_URL,
+        visible={"button:has-text('Sign in'):not(:has-text('Apple')):not(:has-text('Google'))"},
+    )
+    page = _Page(inner)
+    used = await click_first(
+        page,
+        [
+            "button[type='submit']",
+            "button.btn__primary--large",
+            "button:has-text('Sign in'):not(:has-text('Apple')):not(:has-text('Google'))",
+        ],
+        timeout=5_000,
+    )
+    assert used is not None and "Sign in" in used
+    assert "button[type='submit']" not in inner.clicks
 
 
 @pytest.mark.asyncio

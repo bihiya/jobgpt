@@ -257,6 +257,8 @@ async def click_first(page: "BasePage", selectors: list[str], timeout: int = 500
         try:
             locator = page.page.locator(sel)
             count = await locator.count()
+            if int(count) == 0:
+                continue
             for idx in range(count):
                 item = locator.nth(idx)
                 try:
@@ -268,8 +270,9 @@ async def click_first(page: "BasePage", selectors: list[str], timeout: int = 500
                     continue
         except Exception:  # noqa: BLE001
             pass
-        if await page.safe_click(sel, timeout=timeout):
-            return sel
+        if ":has-text(" in sel or sel.startswith("text=") or " >> " in sel:
+            if await page.safe_click(sel, timeout=min(1500, timeout)):
+                return sel
     return None
 
 
