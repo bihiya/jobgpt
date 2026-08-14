@@ -128,6 +128,10 @@ class Settings(BaseSettings):
     # Use installed browser when Playwright's bundled Chromium is unavailable
     # (e.g. macOS 12). Common values: "chrome", "msedge", "chromium".
     playwright_channel: str | None = None
+    # Key-by-key typing + mouse movement (disabled automatically when APP_ENV=test).
+    playwright_humanize: bool = True
+    # If DISPLAY is set, launch headed Chrome so the UA is not HeadlessChrome.
+    playwright_prefer_headed: bool = True
     upload_dir: str = "/tmp/jobpilot/uploads"
     screenshot_dir: str = "/tmp/jobpilot/screenshots"
     report_dir: str = "/tmp/jobpilot/reports"

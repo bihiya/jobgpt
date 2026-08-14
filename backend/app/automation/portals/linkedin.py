@@ -11,6 +11,7 @@ from app.automation.base.page import BasePage
 from app.automation.base.portal import ApplyResult, BasePortal, ExtractedJob
 from app.automation.errors import PortalAuthError
 from app.automation.form_fields import resolve_and_fill
+from app.automation.humanize import humanize_enabled, pause, wander_mouse
 from app.automation.selectors import (
     any_visible,
     click_first,
@@ -87,6 +88,8 @@ class LinkedInPortal(BasePortal):
     async def login(self, page: BasePage) -> None:
         pack = self._pack()
         await page.goto("https://www.linkedin.com/feed/")
+        await wander_mouse(page)
+        await pause(page, 700, 1600)
         snap = await describe_page(page)
         self.recorder.add("login", "Opened LinkedIn (checking existing session)", detail=snap.get("url", ""))
         if await any_visible(page, pack.all("logged_in")):
@@ -158,6 +161,7 @@ class LinkedInPortal(BasePortal):
         user_sel = await fill_first(page, user_selectors, self.credentials["username"], timeout=8000)
         if user_sel:
             self.recorder.add("login", "Filled email / username")
+            await pause(page, 350, 900)
         else:
             self.recorder.add("login", "Could not find the email field on the login page", status="error")
             url = (snap.get("url") or page.page.url or "").lower()
@@ -200,15 +204,27 @@ class LinkedInPortal(BasePortal):
                 f"(landed on {format_landed(snap)})",
                 code=LOGIN_FAILED,
             )
-        # Enter on the visible password field is more reliable than the Sign-in button.
+        # Humans click Sign in; instant Enter right after fill() is a bot tell.
         submitted: str | None = None
-        try:
-            await page.page.locator("input[type='password']").locator("visible=true").first.press(
-                "Enter"
-            )
-            submitted = "enter"
-        except Exception:  # noqa: BLE001
+        if humanize_enabled():
+            await pause(page, 280, 700)
             submitted = await click_first(page, pack.all("login_submit"))
+            if not submitted:
+                try:
+                    await page.page.locator("input[type='password']").locator("visible=true").first.press(
+                        "Enter"
+                    )
+                    submitted = "enter"
+                except Exception:  # noqa: BLE001
+                    submitted = None
+        else:
+            try:
+                await page.page.locator("input[type='password']").locator("visible=true").first.press(
+                    "Enter"
+                )
+                submitted = "enter"
+            except Exception:  # noqa: BLE001
+                submitted = await click_first(page, pack.all("login_submit"))
         if submitted:
             self.recorder.add(
                 "login",

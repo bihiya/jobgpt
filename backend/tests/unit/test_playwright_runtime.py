@@ -121,9 +121,11 @@ async def test_automation_match_still_runs_inline_without_playwright():
         create_task.assert_called_once()
 
 
-def test_browser_stealth_uses_current_chrome_ua():
-    from app.automation.base.browser import DEFAULT_USER_AGENT, STEALTH_INIT_SCRIPT
+def test_browser_stealth_hides_webdriver_and_headless_ua():
+    from app.automation.base.browser import chrome_user_agent
+    from app.automation.stealth import STEALTH_INIT_SCRIPT
 
-    assert "Chrome/120" not in DEFAULT_USER_AGENT
-    assert "Chrome/139" in DEFAULT_USER_AGENT
+    assert "HeadlessChrome" not in chrome_user_agent("151.0.7922.34")
     assert "webdriver" in STEALTH_INIT_SCRIPT
+    assert "HeadlessChrome" in STEALTH_INIT_SCRIPT
+    assert "window.chrome" in STEALTH_INIT_SCRIPT
