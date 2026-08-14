@@ -7,7 +7,7 @@ import {
 } from '@mui/material';
 import { DataGrid, GridColDef } from '@mui/x-data-grid';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { automationApi } from '../../api';
 import PageShell from '../../components/common/PageShell';
@@ -30,30 +30,23 @@ function levelColor(level?: string): 'default' | 'success' | 'warning' | 'error'
 
 export default function AutomationPage() {
   const queryClient = useQueryClient();
-  const [pollUntil, setPollUntil] = useState(0);
   const timeZone = useUserTimeZone();
 
-  const { data: status, isLoading: statusLoading, isFetching: statusFetching } = useQuery({
+  const { data: status, isLoading: statusLoading } = useQuery({
     queryKey: ['automation-status'],
     queryFn: async () => (await automationApi.status()).data,
-    refetchInterval: Date.now() < pollUntil ? 1500 : false,
   });
-  const { data: logs, isLoading, isFetching } = useQuery({
+  const { data: logs, isLoading } = useQuery({
     queryKey: ['automation-logs'],
     queryFn: async () => (await automationApi.logs({ page_size: 200 })).data,
-    refetchInterval: Date.now() < pollUntil ? 1500 : false,
   });
   const loading = statusLoading || isLoading;
-  const fetching = !loading && (statusFetching || isFetching);
 
   const runMutation = useMutation({
     mutationFn: (jobType: string) => automationApi.run(jobType),
     meta: { successMessage: 'Worker triggered', errorMessage: 'Could not run worker' },
     onSuccess: () => {
-      // Keep refreshing for a few seconds while the inline/async worker writes logs.
-      setPollUntil(Date.now() + 12_000);
       void queryClient.invalidateQueries({ queryKey: ['automation-status'] });
-      void queryClient.invalidateQueries({ queryKey: ['automation-logs'] });
       void queryClient.invalidateQueries({ queryKey: ['jobs'] });
       void queryClient.invalidateQueries({ queryKey: ['portals'] });
     },
@@ -109,7 +102,7 @@ export default function AutomationPage() {
   );
 
   return (
-    <PageShell loading={loading} fetching={fetching} busy={runMutation.isPending}>
+    <PageShell loading={loading} busy={runMutation.isPending} stagger={false}>
       <Typography variant="h4">Automation</Typography>
       <Typography color="text.secondary">
         Total logs: {status?.total_logs ?? 0}. Trigger workers manually when needed.
@@ -171,7 +164,7 @@ export default function AutomationPage() {
         rows={rows}
         columns={columns}
         getRowId={(row) => row.id}
-        loading={isFetching || runMutation.isPending}
+        loading={runMutation.isPending}
         pageSizeOptions={[10, 25, 50]}
         initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
         localeText={{ noRowsLabel: emptyHint || 'No rows' }}

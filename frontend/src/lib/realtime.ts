@@ -90,12 +90,15 @@ export function queryKeysForEvent(event: string): string[][] {
         ['calendar'],
       ];
     case 'automation.log':
+      // Applied in-place on the logs cache — do not HTTP-refetch every step.
+      return [];
     case 'automation.triggered':
-      return [['automation-logs'], ['automation-status']];
+      return [['automation-status']];
     case 'report.ready':
     case 'report.failed':
       return [['reports']];
     case 'portal.sync_started':
+      return [['portals']];
     case 'portal.synced':
     case 'portal.health':
       return [
@@ -106,8 +109,6 @@ export function queryKeysForEvent(event: string): string[][] {
         ['approval-blockers'],
         ['weekly-story'],
         ['pipeline'],
-        ['automation-logs'],
-        ['automation-status'],
       ];
     case 'reminder.due':
     case 'reminder.scheduled':
@@ -146,7 +147,6 @@ export function shouldToastEvent(event: string): boolean {
     'application.cancelled',
     'report.ready',
     'report.failed',
-    'portal.sync_started',
     'portal.synced',
     'portal.health',
     'reminder.due',
@@ -155,4 +155,51 @@ export function shouldToastEvent(event: string): boolean {
     'email.ingested',
     'email.applied',
   ].includes(event);
+}
+
+export type AutomationLogEventItem = {
+  id: string;
+  created_at: string;
+  portal?: string;
+  action: string;
+  level?: string;
+  message: string;
+  correlation_id?: string;
+};
+
+/** Turn an `automation.log` socket frame into the same shape as GET /automation/logs. */
+export function automationLogFromEvent(payload: RealtimeEvent): AutomationLogEventItem | null {
+  if (payload.event !== 'automation.log') return null;
+  const data = payload.data || {};
+  const id = String(data.id || '').trim();
+  if (!id) return null;
+  return {
+    id,
+    created_at: String(payload.ts || new Date().toISOString()),
+    portal: String(data.portal || ''),
+    action: String(data.action || ''),
+    level: String(data.level || 'info'),
+    message: String(data.message || payload.body || ''),
+    correlation_id: String(data.correlation_id || ''),
+  };
+}
+
+type LogsPage = {
+  items?: AutomationLogEventItem[];
+  total?: number;
+  [key: string]: unknown;
+};
+
+/** Prepend a live log without refetching. Drops duplicates by id. */
+export function prependAutomationLog(
+  page: LogsPage | undefined,
+  item: AutomationLogEventItem,
+): LogsPage {
+  const items = Array.isArray(page?.items) ? page.items : [];
+  if (items.some((row) => row.id === item.id)) return page || { items };
+  return {
+    ...page,
+    items: [item, ...items].slice(0, 200),
+    total: typeof page?.total === 'number' ? page.total + 1 : items.length + 1,
+  };
 }

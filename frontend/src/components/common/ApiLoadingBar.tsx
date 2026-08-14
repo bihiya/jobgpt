@@ -2,9 +2,11 @@ import { LinearProgress } from '@mui/material';
 import { useIsFetching, useIsMutating } from '@tanstack/react-query';
 import { memo } from 'react';
 
-/** Global top progress bar for in-flight React Query fetches and mutations. */
+/** Global top progress bar for first-load fetches and mutations — not background refetches. */
 function ApiLoadingBarComponent() {
-  const fetching = useIsFetching();
+  const fetching = useIsFetching({
+    predicate: (query) => query.state.data === undefined,
+  });
   const mutating = useIsMutating();
   const active = fetching + mutating > 0;
 
