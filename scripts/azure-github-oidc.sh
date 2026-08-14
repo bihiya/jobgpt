@@ -66,8 +66,8 @@ EOF
   echo "Created federated credential ${name}"
 }
 
-create_fed "github-main" "repo:${REPO}:ref:refs/heads/main"
-create_fed "github-production-env" "repo:${REPO}:environment:Production"
+create_fed "github-main-ids" "repo:bihiya@55905431/jobgpt@1324611519:ref:refs/heads/main"
+create_fed "github-production-env-ids" "repo:bihiya@55905431/jobgpt@1324611519:environment:Production"
 
 echo "Assigning Contributor on ${RG}..."
 az role assignment create \
