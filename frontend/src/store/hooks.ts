@@ -6,6 +6,7 @@ export type RootState = {
     user: any;
     accessToken: string | null;
     isAuthenticated: boolean;
+    status: 'idle' | 'restoring' | 'ready';
   };
   ui: {
     darkMode: boolean;

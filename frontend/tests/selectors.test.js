@@ -1,4 +1,5 @@
 import {
+  selectAuthStatus,
   selectIsAdmin,
   selectIsAuthenticated,
   selectUserDisplayName,
@@ -9,6 +10,7 @@ describe('authSelectors', () => {
     auth: {
       isAuthenticated: true,
       accessToken: 't',
+      status: 'ready',
       user: { full_name: 'Ada', email: 'a@b.com', roles: ['admin'] },
     },
   };
@@ -17,5 +19,6 @@ describe('authSelectors', () => {
     expect(selectIsAuthenticated(state)).toBe(true);
     expect(selectUserDisplayName(state)).toBe('Ada');
     expect(selectIsAdmin(state)).toBe(true);
+    expect(selectAuthStatus(state)).toBe('ready');
   });
 });

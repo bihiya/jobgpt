@@ -1,6 +1,6 @@
 import axios, { type AxiosAdapter, type InternalAxiosRequestConfig } from 'axios';
 import store from '../store/store';
-import { logout, setAccessToken } from '../store/slices/authSlice';
+import { logout, setAccessToken, setCredentials } from '../store/slices/authSlice';
 import { openLoginGate } from '../store/slices/uiSlice';
 import { toastFromStore } from '../hooks/useToast';
 import { resolveDemoData } from '../lib/demoData';
@@ -20,6 +20,14 @@ function isAuthPublicPath(url = ''): boolean {
     url.includes('/auth/refresh') ||
     url.includes('/auth/forgot')
   );
+}
+
+export function getStoredRefreshToken(): string | null {
+  try {
+    return localStorage.getItem('refresh_token');
+  } catch {
+    return null;
+  }
 }
 
 function guestAdapter(config: InternalAxiosRequestConfig): AxiosAdapter {
@@ -63,8 +71,62 @@ function guestAdapter(config: InternalAxiosRequestConfig): AxiosAdapter {
   };
 }
 
-api.interceptors.request.use((config) => {
-  const token = store.getState().auth.accessToken;
+let refreshing: Promise<string | null> | null = null;
+
+async function refreshAccessToken(): Promise<string | null> {
+  const refreshToken = getStoredRefreshToken();
+  if (!refreshToken) return null;
+  try {
+    const { data } = await axios.post(
+      `${API_BASE}/auth/refresh`,
+      { refresh_token: refreshToken },
+      { timeout: 15_000 },
+    );
+    store.dispatch(setAccessToken(data.access_token));
+    if (data.refresh_token) {
+      localStorage.setItem('refresh_token', data.refresh_token);
+    }
+    return data.access_token as string;
+  } catch {
+    store.dispatch(logout());
+    localStorage.removeItem('refresh_token');
+    return null;
+  }
+}
+
+/** Single-flight: reuse an in-flight refresh so page-load requests don't rotate twice. */
+export async function ensureAccessToken(): Promise<string | null> {
+  const existing = store.getState().auth.accessToken;
+  if (existing) return existing;
+  if (!getStoredRefreshToken()) return null;
+  refreshing = refreshing ?? refreshAccessToken().finally(() => {
+    refreshing = null;
+  });
+  return refreshing;
+}
+
+/** Rehydrate Redux auth from the persisted refresh token after a full page reload. */
+export async function restoreSession(): Promise<boolean> {
+  const token = await ensureAccessToken();
+  if (!token) return false;
+  try {
+    const { data } = await api.get('/auth/me', {
+      headers: { 'X-Silent-Toast': '1' },
+    });
+    store.dispatch(setCredentials({ user: data, accessToken: token }));
+    return true;
+  } catch {
+    store.dispatch(logout());
+    localStorage.removeItem('refresh_token');
+    return false;
+  }
+}
+
+api.interceptors.request.use(async (config) => {
+  let token: string | null = store.getState().auth.accessToken;
+  if (!token && !isAuthPublicPath(config.url || '')) {
+    token = await ensureAccessToken();
+  }
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
     return config;
@@ -77,25 +139,6 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-let refreshing: Promise<string | null> | null = null;
-
-async function refreshAccessToken(): Promise<string | null> {
-  const refreshToken = localStorage.getItem('refresh_token');
-  if (!refreshToken) return null;
-  try {
-    const { data } = await axios.post(`${API_BASE}/auth/refresh`, {
-      refresh_token: refreshToken,
-    });
-    store.dispatch(setAccessToken(data.access_token));
-    localStorage.setItem('refresh_token', data.refresh_token);
-    return data.access_token as string;
-  } catch {
-    store.dispatch(logout());
-    localStorage.removeItem('refresh_token');
-    return null;
-  }
-}
-
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -104,9 +147,19 @@ api.interceptors.response.use(
     }
 
     const original = error.config;
-    const silent = Boolean(original?.headers?.['X-Silent-Toast']);
+    const headers = original?.headers;
+    const silent = Boolean(
+      headers?.['X-Silent-Toast'] ||
+        headers?.['x-silent-toast'] ||
+        (typeof headers?.get === 'function' && headers.get('X-Silent-Toast')),
+    );
 
-    if (error.response?.status === 401 && original && !original._retry) {
+    if (
+      error.response?.status === 401 &&
+      original &&
+      !original._retry &&
+      !isAuthPublicPath(original.url || '')
+    ) {
       original._retry = true;
       refreshing = refreshing ?? refreshAccessToken().finally(() => {
         refreshing = null;
