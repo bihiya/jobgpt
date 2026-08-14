@@ -1,7 +1,9 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import {
+  automationLogFromEvent,
   getRealtimeUrl,
+  prependAutomationLog,
   queryKeysForEvent,
   shouldToastEvent,
   type RealtimeEvent,
@@ -112,8 +114,15 @@ export function useRealtimeSocket(enabled = true) {
           if (!payload?.event || payload.event === 'pong') return;
           setLastEvent(payload);
 
-          for (const key of queryKeysForEvent(payload.event)) {
-            void queryClient.invalidateQueries({ queryKey: key });
+          const liveLog = automationLogFromEvent(payload);
+          if (liveLog) {
+            queryClient.setQueryData(['automation-logs'], (old) =>
+              prependAutomationLog(old as { items?: typeof liveLog[] } | undefined, liveLog),
+            );
+          } else {
+            for (const key of queryKeysForEvent(payload.event)) {
+              void queryClient.invalidateQueries({ queryKey: key });
+            }
           }
 
           if (

@@ -129,21 +129,18 @@ export default function PortalsPage() {
   const [menu, setMenu] = useState<{ portal: PortalRow; anchor: HTMLElement } | null>(null);
   const [live, setLive] = useState<LiveSync | null>(null);
   const [liveLogs, setLiveLogs] = useState<AutomationLogItem[]>([]);
-  const [pollUntil, setPollUntil] = useState(0);
   const demoCancel = useRef<(() => void) | null>(null);
   const queryClient = useQueryClient();
   const timeZone = useUserTimeZone();
   const { isAuthenticated } = useRequireAuth();
 
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['portals'],
     queryFn: async () => (await portalsApi.list()).data as PortalRow[],
-    refetchInterval: Date.now() < pollUntil ? 1500 : false,
   });
   const { data: logsData } = useQuery({
     queryKey: ['automation-logs'],
     queryFn: async () => (await automationApi.logs({ page_size: 200 })).data,
-    refetchInterval: Date.now() < pollUntil ? 1200 : false,
   });
 
   const rows = useMemo(() => (Array.isArray(data) ? data : []), [data]);
@@ -155,18 +152,6 @@ export default function PortalsPage() {
   }, [logsData, liveLogs]);
 
   useEffect(() => () => demoCancel.current?.(), []);
-
-  useEffect(() => {
-    if (!live) return;
-    const current = withLiveRun(groupPortalRuns(logItems, live.portalName), live).find(
-      (run) => run.id === live.syncId,
-    );
-    if (!current || !isSyncRunFinished(current)) return;
-    setPollUntil((until) => {
-      const next = Date.now() + 4_000;
-      return until > next ? next : until;
-    });
-  }, [live, logItems]);
 
   const closeDialog = () => {
     setDialog(null);
@@ -210,7 +195,6 @@ export default function PortalsPage() {
         correlation_id: syncId,
       },
     ]);
-    setPollUntil(Date.now() + 90_000);
   };
 
   const adoptSyncId = (syncId: string) => {
@@ -260,7 +244,6 @@ export default function PortalsPage() {
       const row = rows.find((p) => p.id === portalId);
       if (row && !live) pinLive(row, cid || newSyncId());
       void queryClient.invalidateQueries({ queryKey: ['portals'] });
-      void queryClient.invalidateQueries({ queryKey: ['automation-logs'] });
     },
     onError: () => {
       setLive(null);
@@ -284,7 +267,6 @@ export default function PortalsPage() {
       closeDialog();
       void queryClient.invalidateQueries({ queryKey: ['portals'] });
       void queryClient.invalidateQueries({ queryKey: ['approval-blockers'] });
-      void queryClient.invalidateQueries({ queryKey: ['automation-logs'] });
     },
     onError: () => {
       setLive(null);
@@ -311,10 +293,9 @@ export default function PortalsPage() {
     const syncId = newSyncId();
     pinLive(portal, syncId);
     if (!isAuthenticated) {
-      demoCancel.current = playDemoSync(portal.name, syncId, (step, index, done) => {
+      demoCancel.current = playDemoSync(portal.name, syncId, (step, index) => {
         if (index === 0) return;
         setLiveLogs((prev) => [step, ...prev.filter((item) => item.id !== step.id)]);
-        if (done) setPollUntil(Date.now() + 4_000);
       });
       return;
     }
@@ -331,11 +312,7 @@ export default function PortalsPage() {
     (dialog?.mode !== 'connect' || Boolean(password));
 
   return (
-    <PageShell
-      loading={isLoading}
-      fetching={!isLoading && isFetching}
-      busy={dialogBusy || clearMutation.isPending}
-    >
+    <PageShell loading={isLoading} busy={dialogBusy || clearMutation.isPending} stagger={false}>
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
         justifyContent="space-between"
@@ -353,7 +330,7 @@ export default function PortalsPage() {
         </Button>
       </Stack>
 
-      {!rows.length && !isFetching && (
+      {!rows.length && (
         <Typography color="text.secondary">
           No portals yet — connect LinkedIn, Naukri, or Indeed to start.
         </Typography>
