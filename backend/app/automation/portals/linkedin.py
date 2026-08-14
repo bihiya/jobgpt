@@ -183,7 +183,7 @@ class LinkedInPortal(BasePortal):
                 + [
                     "button:has-text('Continue')",
                     "button:has-text('Next')",
-                    "button:has-text('Sign in')",
+                    "button:has-text('Sign in'):not(:has-text('Apple')):not(:has-text('Google'))",
                 ],
                 timeout=2500,
             )

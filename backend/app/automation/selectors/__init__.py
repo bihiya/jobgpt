@@ -60,7 +60,9 @@ LINKEDIN_V1 = SelectorPack(
             "button[data-litms-control-urn='login-submit']",
             "button[type='submit']",
             "button.btn__primary--large",
-            "button:has-text('Sign in')",
+            # :has-text('Sign in') also matches "Sign in with Apple" (and :text-is misses nested spans).
+            "button:has-text('Sign in'):not(:has-text('Apple')):not(:has-text('Google'))",
+            "button >> text='Sign in'",
             "button:has-text('Continue')",
             "input[type='submit']",
         ],
@@ -290,6 +292,17 @@ async def click_if_present(page: "BasePage", selectors: list[str]) -> str | None
     return None
 
 
+def _css_join(selectors: list[str]) -> str:
+    return ", ".join(
+        sel
+        for sel in selectors
+        if not sel.startswith("text=")
+        and ":has-text(" not in sel
+        and ":text-is(" not in sel
+        and " >> " not in sel
+    )
+
+
 async def wait_any_selector(
     page: "BasePage",
     selectors: list[str],
@@ -297,19 +310,39 @@ async def wait_any_selector(
     *,
     state: str = "visible",
 ) -> str | None:
-    """Wait until any selector appears (including in child frames)."""
+    """Wait until any selector appears (including in child frames).
+
+    Prefer *visible* locators. LinkedIn 2026 duplicates email/password as hidden
+    inputs with generated ids; query_selector would otherwise return the hidden one.
+    """
     if not selectors:
         return None
-    css = ", ".join(
-        sel
-        for sel in selectors
-        if not sel.startswith("text=") and ":has-text(" not in sel
-    )
+
+    async def _first_locator_match() -> str | None:
+        for sel in selectors:
+            try:
+                loc = page.page.locator(sel)
+                if state == "visible":
+                    loc = loc.locator("visible=true")
+                if int(await loc.count()) > 0:
+                    return sel
+            except Exception:  # noqa: BLE001
+                continue
+        return None
+
+    found = await _first_locator_match()
+    if found:
+        return found
+
+    css = _css_join(selectors)
     if css:
         try:
             await page.page.wait_for_selector(css, timeout=timeout, state=state)
         except Exception:  # noqa: BLE001
             pass
+        found = await _first_locator_match()
+        if found:
+            return found
         for sel in selectors:
             try:
                 el = await page.page.query_selector(sel)

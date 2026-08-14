@@ -93,10 +93,15 @@ function loginState(portal: PortalRow): {
     };
   }
   if (portal.status === 'error' || lastError) {
+    const checkpoint = /CHECKPOINT|security check|captcha|challenge required/i.test(lastError);
     return {
-      label: 'Login failed',
+      label: checkpoint ? 'Security check' : 'Login failed',
       color: 'error',
-      detail: lastError || 'Last sync failed — check email/password or security checks',
+      detail:
+        lastError ||
+        (checkpoint
+          ? 'LinkedIn asked for a captcha — sign in in a normal browser, then Re-auth'
+          : 'Last sync failed — check email/password or security checks'),
     };
   }
   if (portal.has_session) {
