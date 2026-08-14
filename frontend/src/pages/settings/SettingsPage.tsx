@@ -88,6 +88,7 @@ export default function SettingsPage() {
         value={form.timezone}
         onChange={(e) => setForm({ ...form, timezone: e.target.value })}
         fullWidth
+        helperText="IANA name such as Asia/Kolkata. Leave UTC to use your device timezone."
       />
       <FormControlLabel
         control={

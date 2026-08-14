@@ -9,6 +9,7 @@ from app.core.config import settings
 from app.core.exceptions import ServiceUnavailableError
 from app.core.kafka import publish
 from app.core.logging import get_logger
+from app.core.times import iso_utc
 from app.events.realtime import emit_realtime
 from app.repository.report_repository import AutomationLogRepository
 from app.schemas.common import PaginatedResponse
@@ -155,7 +156,7 @@ class AutomationService:
                     "level": log.level,
                     "message": log.message,
                     "portal": log.portal,
-                    "created_at": log.created_at.isoformat(),
+                    "created_at": iso_utc(log.created_at),
                 }
                 for log in recent
             ],
@@ -179,7 +180,7 @@ class AutomationService:
                     "portal": log.portal,
                     "job_id": log.job_id,
                     "correlation_id": log.correlation_id,
-                    "created_at": log.created_at.isoformat(),
+                    "created_at": iso_utc(log.created_at),
                 }
                 for log in items
             ],

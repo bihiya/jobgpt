@@ -51,6 +51,7 @@ class PortalResponse(BaseModel):
     name: PortalName
     status: PortalStatus
     last_sync_at: str | None = None
+    last_attempt_at: str | None = None
     sync_started_at: str | None = None
     created_at: str
     has_credentials: bool = False

@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from app.core.exceptions import ConflictError, NotFoundError
+from app.core.times import iso_utc
 from app.models.enums import PortalStatus
 from app.models.portal import Portal
 from app.producers.events import publish_job_fetch
@@ -31,21 +32,14 @@ class PortalService:
             id=str(portal.id),
             name=portal.name,
             status=portal.status,
-            last_sync_at=portal.last_sync_at.isoformat() if portal.last_sync_at else None,
-            sync_started_at=(
-                portal.sync_started_at.isoformat()
-                if getattr(portal, "sync_started_at", None)
-                else None
-            ),
-            created_at=portal.created_at.isoformat(),
+            last_sync_at=iso_utc(portal.last_sync_at),
+            last_attempt_at=iso_utc(getattr(portal, "updated_at", None)),
+            sync_started_at=iso_utc(getattr(portal, "sync_started_at", None)),
+            created_at=iso_utc(portal.created_at) or "",
             has_credentials=bool(portal.credentials.username),
             has_session=self._has_auth_session(portal),
             has_totp=bool(getattr(portal, "totp_secret_encrypted", "")),
-            session_updated_at=(
-                portal.session_updated_at.isoformat()
-                if getattr(portal, "session_updated_at", None)
-                else None
-            ),
+            session_updated_at=iso_utc(getattr(portal, "session_updated_at", None)),
             selector_version=int(getattr(portal, "selector_version", 1) or 1),
             health=PortalHealthSchema(**health),
         )
