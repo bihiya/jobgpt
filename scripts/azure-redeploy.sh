@@ -75,15 +75,24 @@ echo "API app:        $API_NAME"
 echo "Frontend app:   $WEB_NAME"
 echo "Image tag:      $TAG"
 
-echo "Building API image in ACR..."
-(
-  cd "${ROOT}/backend"
-  az acr build \
-    --registry "$ACR_NAME" \
-    --image "jobpilot-api:${TAG}" \
-    --file Dockerfile \
-    .
-)
+docker_cmd() {
+  if docker info >/dev/null 2>&1; then
+    docker "$@"
+  elif sudo docker info >/dev/null 2>&1; then
+    sudo docker "$@"
+  else
+    echo "Docker is required to build images (ACR Tasks are not available on this registry)." >&2
+    exit 1
+  fi
+}
+
+echo "Logging in to ACR..."
+TOKEN="$(az acr login --name "$ACR_NAME" --expose-token --query accessToken -o tsv)"
+echo "$TOKEN" | docker_cmd login "$ACR_LOGIN" -u 00000000-0000-0000-0000-000000000000 --password-stdin >/dev/null
+
+echo "Building API image..."
+docker_cmd build --platform linux/amd64 -t "${ACR_LOGIN}/jobpilot-api:${TAG}" "${ROOT}/backend"
+docker_cmd push "${ACR_LOGIN}/jobpilot-api:${TAG}"
 
 echo "Updating API Container App..."
 az containerapp update \
@@ -92,17 +101,13 @@ az containerapp update \
   --image "${ACR_LOGIN}/jobpilot-api:${TAG}" \
   --output none
 
-echo "Building frontend image in ACR..."
-(
-  cd "${ROOT}/frontend"
-  az acr build \
-    --registry "$ACR_NAME" \
-    --image "jobpilot-web:${TAG}" \
-    --file Dockerfile \
-    --build-arg NGINX_CONF=nginx.azure.conf \
-    --build-arg VITE_API_URL=/api/v1 \
-    .
-)
+echo "Building frontend image..."
+docker_cmd build --platform linux/amd64 \
+  --build-arg NGINX_CONF=nginx.azure.conf \
+  --build-arg VITE_API_URL=/api/v1 \
+  -t "${ACR_LOGIN}/jobpilot-web:${TAG}" \
+  "${ROOT}/frontend"
+docker_cmd push "${ACR_LOGIN}/jobpilot-web:${TAG}"
 
 if az containerapp show --name "$WEB_NAME" --resource-group "$RG" >/dev/null 2>&1; then
   echo "Updating frontend Container App..."
