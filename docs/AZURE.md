@@ -134,26 +134,21 @@ with `JOB_TYPE` / `JOB_USER_ID` set per execution.
 
 GitHub Actions workflow [`.github/workflows/azure-dev.yml`](../.github/workflows/azure-dev.yml) logs in to Azure with OIDC, finds the existing JobPilot Container Apps, rebuilds both images in ACR, and updates **frontend + API**.
 
-Required GitHub Actions variables/secrets (repo or the `Production` environment):
+Required GitHub Actions values are already in `.github/workflows/azure-dev.yml` (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, resource names).
 
-- `AZURE_CLIENT_ID`
-- `AZURE_TENANT_ID`
-- `AZURE_SUBSCRIPTION_ID`
-
-Optional overrides: `AZURE_RESOURCE_GROUP`, `AZURE_ACR_NAME`, `AZURE_API_APP_NAME`, `AZURE_FRONTEND_APP_NAME`.
-
-To create the Entra app, federated credentials, and RBAC after `az login`:
+GitHub OIDC subjects for this repo include owner/repo numeric IDs. Create them from a **user** `az login` (Cloud Shell):
 
 ```bash
-./scripts/azure-github-oidc.sh
+az ad app federated-credential create \
+  --id b0ad929b-1053-4a68-95cf-6982b70460b9 \
+  --parameters '{"name":"github-production-env-ids","issuer":"https://token.actions.githubusercontent.com","subject":"repo:bihiya@55905431/jobgpt@1324611519:environment:Production","audiences":["api://AzureADTokenExchange"]}'
+
+az ad app federated-credential create \
+  --id b0ad929b-1053-4a68-95cf-6982b70460b9 \
+  --parameters '{"name":"github-main-ids","issuer":"https://token.actions.githubusercontent.com","subject":"repo:bihiya@55905431/jobgpt@1324611519:ref:refs/heads/main","audiences":["api://AzureADTokenExchange"]}'
 ```
 
-Manual redeploy (same as CI):
-
-```bash
-az login
-./scripts/azure-redeploy.sh
-```
+Then re-run **Actions → Azure Deploy**.
 
 ---
 

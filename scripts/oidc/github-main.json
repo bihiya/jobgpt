@@ -1,7 +1,7 @@
 {
-  "name": "github-main",
+  "name": "github-main-ids",
   "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:bihiya/jobgpt:ref:refs/heads/main",
-  "description": "GitHub Actions main branch",
+  "subject": "repo:bihiya@55905431/jobgpt@1324611519:ref:refs/heads/main",
+  "description": "GitHub Actions main branch (owner/repo numeric IDs)",
   "audiences": ["api://AzureADTokenExchange"]
 }
