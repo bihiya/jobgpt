@@ -3,6 +3,14 @@
 name: jobpilot
 metadata:
   template: jobpilot-aca@0.1.0
+pipeline:
+  provider: github
+  variables:
+    - CORS_ORIGINS
+  secrets:
+    - MONGODB_URL
+    - REDIS_URL
+    - SECRET_KEY
 services:
   api:
     project: ./backend
@@ -11,6 +19,18 @@ services:
     docker:
       path: ./Dockerfile
       context: .
+      remoteBuild: true
+  frontend:
+    project: ./frontend
+    language: js
+    host: containerapp
+    docker:
+      path: ./Dockerfile
+      context: .
+      remoteBuild: true
+      buildArgs:
+        - NGINX_CONF=nginx.azure.conf
+        - VITE_API_URL=/api/v1
 infra:
   provider: bicep
   path: ./infra

@@ -1,0 +1,89 @@
+# Deploy frontend + backend to Azure Container Apps on every push to main.
+# One-time setup from a machine that already has `azd env`: `azd pipeline config`
+# https://learn.microsoft.com/azure/developer/azure-developer-cli/configure-devops-pipeline
+
+name: Azure Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: azure-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Login and redeploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID || secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID || secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID || secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME || secrets.AZURE_ENV_NAME }}
+      AZURE_LOCATION: ${{ vars.AZURE_LOCATION || secrets.AZURE_LOCATION }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check Azure OIDC configuration
+        run: |
+          missing=0
+          for var in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID AZURE_ENV_NAME AZURE_LOCATION; do
+            if [ -z "${!var}" ]; then
+              echo "::error::Missing $var. Run 'azd pipeline config' or set GitHub Actions variables/secrets. See docs/AZURE.md."
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Install azd
+        uses: Azure/setup-azd@v2
+
+      - name: Log in to Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Log in to azd (federated credentials)
+        run: |
+          azd auth login \
+            --client-id "$AZURE_CLIENT_ID" \
+            --federated-credential-provider github \
+            --tenant-id "$AZURE_TENANT_ID"
+
+      - name: Provision infrastructure
+        run: azd provision --no-prompt
+        env:
+          AZD_INITIAL_ENVIRONMENT_CONFIG: ${{ secrets.AZD_INITIAL_ENVIRONMENT_CONFIG }}
+          MONGODB_URL: ${{ secrets.MONGODB_URL }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          CORS_ORIGINS: ${{ vars.CORS_ORIGINS || secrets.CORS_ORIGINS }}
+
+      - name: Redeploy frontend and backend
+        run: azd deploy --no-prompt
+        env:
+          AZD_INITIAL_ENVIRONMENT_CONFIG: ${{ secrets.AZD_INITIAL_ENVIRONMENT_CONFIG }}
+          MONGODB_URL: ${{ secrets.MONGODB_URL }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          CORS_ORIGINS: ${{ vars.CORS_ORIGINS || secrets.CORS_ORIGINS }}
+
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          api_uri="$(azd env get-values | sed -n 's/^SERVICE_API_URI="\(.*\)"/\1/p')"
+          web_uri="$(azd env get-values | sed -n 's/^SERVICE_FRONTEND_URI="\(.*\)"/\1/p')"
+          echo "API $api_uri"
+          echo "Frontend $web_uri"
+          curl -fsS --retry 8 --retry-all-errors --retry-delay 8 "$api_uri/health"
+          curl -fsS --retry 8 --retry-all-errors --retry-delay 8 -o /dev/null "$web_uri/"

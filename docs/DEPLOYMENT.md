@@ -69,13 +69,13 @@ kubectl -n jobpilot scale deploy jobpilot-backend --replicas=3
 
 ## CI/CD
 
-GitHub Actions (`.github/workflows/ci.yml`) runs:
+GitHub Actions (`.github/workflows/ci.yml`) runs tests on pull requests and pushes:
 
 1. Backend unit tests (Pytest)
 2. Frontend unit tests + build
 3. (Optional) Playwright E2E against compose stack
 
-Promote images after CI green; deploy via GitOps or `kubectl set image`.
+On every push to `main`, [`.github/workflows/azure-dev.yml`](../.github/workflows/azure-dev.yml) logs in to Azure (OIDC) and redeploys the frontend and API Container Apps. See **[docs/AZURE.md](AZURE.md)** (`azd pipeline config`).
 
 ## Vercel
 
