@@ -58,6 +58,15 @@ async def reauth_portal(
     return await service.reauth(str(user.id), portal_id, payload or PortalUpdate())
 
 
+@router.delete("/{portal_id}/credentials", response_model=PortalResponse)
+async def clear_portal_credentials(
+    portal_id: str,
+    user: User = Depends(get_current_user),
+    service: PortalService = Depends(get_portal_service),
+):
+    return await service.clear_credentials(str(user.id), portal_id)
+
+
 @router.delete("/{portal_id}", response_model=MessageResponse)
 async def delete_portal(
     portal_id: str,

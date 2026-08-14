@@ -15,6 +15,7 @@ export const portalsApi = {
   list: () => api.get('/job-portals'),
   create: (payload: Record<string, unknown>) => api.post('/job-portals', payload),
   update: (id: string, payload: Record<string, unknown>) => api.patch(`/job-portals/${id}`, payload),
+  clearCredentials: (id: string) => api.delete(`/job-portals/${id}/credentials`),
   sync: (id: string) => api.post(`/job-portals/${id}/sync`),
   reauth: (id: string, payload?: Record<string, unknown>) =>
     api.post(`/job-portals/${id}/reauth`, payload || {}),
