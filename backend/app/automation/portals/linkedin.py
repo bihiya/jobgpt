@@ -53,6 +53,7 @@ class LinkedInPortal(BasePortal):
                 "button[action-type='ACCEPT']",
                 "button:has-text('Accept')",
                 "button:has-text('Accept cookies')",
+                "button:has-text('Allow essential cookies')",
             ],
         )
         await click_if_present(
@@ -64,8 +65,24 @@ class LinkedInPortal(BasePortal):
                 "a:has-text('Sign in with password')",
                 "button:has-text('Use password')",
                 "button:has-text('Continue with email')",
+                "button:has-text('Sign in with email or phone')",
+                "a:has-text('Sign in with email or phone')",
+                "button:has-text('Email or phone')",
             ],
         )
+
+    async def _wait_for_login_fields(self, page: BasePage, timeout: int = 8000) -> str | None:
+        pack = self._pack()
+        await self._dismiss_login_interstitials(page)
+        try:
+            await page.page.wait_for_load_state("domcontentloaded", timeout=min(8000, timeout))
+        except Exception:  # noqa: BLE001
+            pass
+        found = await wait_any_selector(page, pack.all("login_user"), timeout=timeout)
+        if found:
+            return found
+        await self._dismiss_login_interstitials(page)
+        return await wait_any_selector(page, pack.all("login_user"), timeout=timeout)
 
     async def login(self, page: BasePage) -> None:
         pack = self._pack()
@@ -99,18 +116,19 @@ class LinkedInPortal(BasePortal):
                 detail=snap.get("url", ""),
             )
 
-        await self._dismiss_login_interstitials(page)
-        try:
-            await page.page.wait_for_load_state("domcontentloaded", timeout=8000)
-        except Exception:  # noqa: BLE001
-            pass
+        login_field = await self._wait_for_login_fields(page, timeout=8000)
+        if not login_field:
+            # /uas/login is often a passkey/marketing shell with no email field.
+            self.recorder.add(
+                "login",
+                "Login form not on this page — opening https://www.linkedin.com/login",
+                status="warn",
+                detail=(page.page.url or "")[:400],
+            )
+            await page.goto("https://www.linkedin.com/login")
+            login_field = await self._wait_for_login_fields(page, timeout=12000)
 
         user_selectors = pack.all("login_user")
-        login_field = await wait_any_selector(page, user_selectors, timeout=8000)
-        if not login_field:
-            # Passkey / magic-link shells hide the email field until this click.
-            await self._dismiss_login_interstitials(page)
-            login_field = await wait_any_selector(page, user_selectors, timeout=8000)
         snap = await describe_page(page)
         if login_field:
             self.recorder.add("login", "Login page opened", detail=snap.get("url", "") or "https://www.linkedin.com/login")

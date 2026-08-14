@@ -39,12 +39,15 @@ LINKEDIN_V1 = SelectorPack(
             "input[autocomplete='username']",
             "input[autocomplete='username webauthn']",
             "input[id*='username']",
+            "input[id*='email']",
             "input[type='email']",
+            "input[inputmode='email']",
             "input[aria-label*='Email']",
             "input[placeholder*='Email']",
             "input[name='email']",
             "form.login__form input[type='text']",
             "form.login__form input:not([type='hidden']):not([type='password']):not([type='checkbox'])",
+            "#organic-div input[type='text']",
         ],
         "login_pass": [
             "#password",
@@ -268,14 +271,20 @@ async def click_first(page: "BasePage", selectors: list[str], timeout: int = 500
 
 
 async def click_if_present(page: "BasePage", selectors: list[str]) -> str | None:
-    """Click the first selector that already exists — no long timeout if missing."""
+    """Click the first visible match. Supports Playwright :has-text() (query_selector cannot)."""
     for sel in selectors:
         try:
-            el = await page.page.query_selector(sel)
-            if not el:
-                continue
-            await page.page.click(sel, timeout=1500)
-            return sel
+            locator = page.page.locator(sel)
+            count = await locator.count()
+            for idx in range(int(count)):
+                item = locator.nth(idx)
+                try:
+                    if not await item.is_visible():
+                        continue
+                    await item.click(timeout=1500)
+                    return sel
+                except Exception:  # noqa: BLE001
+                    continue
         except Exception:  # noqa: BLE001
             continue
     return None
@@ -316,7 +325,13 @@ async def wait_any_selector(
             continue
     frames = getattr(page.page, "frames", None) or []
     for frame in frames:
+        wait = getattr(frame, "wait_for_selector", None)
         query = getattr(frame, "query_selector", None)
+        if css and callable(wait):
+            try:
+                await wait(css, timeout=min(4000, timeout), state=state)
+            except Exception:  # noqa: BLE001
+                pass
         if not callable(query):
             continue
         for sel in selectors:

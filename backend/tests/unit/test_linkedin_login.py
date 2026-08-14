@@ -28,6 +28,59 @@ class _El:
         return self._selector in self._inner.visible
 
 
+class _PwLocator:
+    """Minimal Playwright locator stand-in for unit tests."""
+
+    def __init__(self, inner: _InnerPage, selector: str) -> None:
+        self._inner = inner
+        self._selector = selector
+
+    def _hits(self) -> list[str]:
+        parts = [part.strip() for part in self._selector.split(",") if part.strip()]
+        return [part for part in parts if part in self._inner.visible]
+
+    async def count(self) -> int:
+        return len(self._hits())
+
+    def nth(self, idx: int) -> _PwItem:
+        hits = self._hits()
+        return _PwItem(self._inner, hits[idx] if idx < len(hits) else self._selector)
+
+    @property
+    def first(self) -> "_PwItem":
+        hits = self._hits()
+        return _PwItem(self._inner, hits[0] if hits else self._selector)
+
+    def locator(self, sel: str) -> "_PwLocator":
+        if sel.startswith("visible"):
+            return self
+        return _PwLocator(self._inner, sel)
+
+
+class _PwItem:
+    def __init__(self, inner: _InnerPage, selector: str) -> None:
+        self._inner = inner
+        self._selector = selector
+
+    async def is_visible(self) -> bool:
+        return self._selector in self._inner.visible
+
+    async def click(self, timeout: int = 0) -> None:
+        await self._inner.click(self._selector, timeout=timeout)
+
+    async def fill(self, value: str, timeout: int = 0) -> None:
+        await self._inner.fill(self._selector, value, timeout=timeout)
+
+    async def wait_for(self, timeout: int = 0, state: str = "visible") -> None:
+        if self._selector not in self._inner.visible:
+            raise TimeoutError(f"Timeout {timeout}ms waiting for {self._selector} ({state})")
+
+    async def press(self, _key: str) -> None:
+        if self._selector not in self._inner.visible:
+            raise TimeoutError("password field not visible")
+        await self._inner.click("enter")
+
+
 class _InnerPage:
     def __init__(self, start: str, *, visible: set[str] | None = None) -> None:
         self.url = start
@@ -53,6 +106,9 @@ class _InnerPage:
         if ", " in selector:
             return [part.strip() for part in selector.split(", ")]
         return [selector]
+
+    def locator(self, selector: str) -> _PwLocator:
+        return _PwLocator(self, selector)
 
     async def query_selector(self, selector: str):
         for part in self._parts(selector):
@@ -89,6 +145,11 @@ class _InnerPage:
 
     async def click(self, selector: str, timeout: int = 0) -> None:
         self.clicks.append(selector)
+        low = selector.lower()
+        if "sign in with email" in low or "sign in with password" in low or "continue with email" in low:
+            self.visible.update({"#username", "#password", "button[type='submit']"})
+            self.url = LOGIN_URL
+            return
         if self.two_step and not self._password_filled():
             self.visible.add("#password")
             return
@@ -253,5 +314,18 @@ async def test_linkedin_login_missing_fields_reports_landed_url() -> None:
         await _portal().login(page)
     assert exc.value.code == LOGIN_FAILED
     assert "LOGIN_FAILED" in str(exc.value)
-    assert "uas/login" in str(exc.value)
-    assert inner.gotos == [FEED_URL]
+    assert inner.gotos[0] == FEED_URL
+    assert "https://www.linkedin.com/login" in inner.gotos
+
+
+@pytest.mark.asyncio
+async def test_linkedin_login_clicks_sign_in_with_email_then_fills() -> None:
+    inner = _InnerPage(
+        FEED_URL,
+        visible={"button:has-text('Sign in with email')"},
+    )
+    page = _Page(inner)
+    await _portal().login(page)
+    assert any("Sign in with email" in click for click in inner.clicks)
+    assert inner.filled["#username"] == "me@example.com"
+    assert inner.filled["#password"] == "secret"
