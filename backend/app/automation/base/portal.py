@@ -150,8 +150,18 @@ class BasePortal(ABC):
                             cookies=live_cookies,
                             selector_version=self.selector_version,
                         )
+                    self.recorder.add(
+                        "search",
+                        f'Searched “{query}”',
+                        detail=location or "",
+                    )
                     await self.search(page, query, location)
                     jobs = await self.extract_jobs(page)
+                    self.recorder.add(
+                        "extract",
+                        f"Found {len(jobs)} job listing(s)",
+                        count=len(jobs),
+                    )
                     logger.info("jobs_extracted", portal=self.name, count=len(jobs))
                     return jobs
         return []

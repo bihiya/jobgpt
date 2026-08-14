@@ -59,3 +59,30 @@ def test_session_recorder_timeline():
         "verified",
     ]
     assert steps[2]["metadata"]["count"] == 3
+
+
+def test_compact_sync_steps_trims_fields():
+    from app.automation.session_recorder import compact_sync_steps
+
+    compact = compact_sync_steps(
+        [
+            {
+                "key": "login",
+                "label": "Login page opened",
+                "status": "ok",
+                "detail": "https://www.linkedin.com/login",
+                "at": "2026-08-14T08:00:00Z",
+                "html": "<huge>",
+            }
+        ]
+    )
+    assert compact == [
+        {
+            "key": "login",
+            "label": "Login page opened",
+            "status": "ok",
+            "detail": "https://www.linkedin.com/login",
+            "at": "2026-08-14T08:00:00Z",
+        }
+    ]
+    assert "html" not in compact[0]

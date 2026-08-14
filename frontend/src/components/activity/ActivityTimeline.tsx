@@ -49,7 +49,7 @@ type Props = {
   onJobClick?: (jobId: string) => void;
 };
 
-const HIDDEN_META_KEYS = new Set(['changes', 'fields', 'outcome', 'next_step']);
+const HIDDEN_META_KEYS = new Set(['changes', 'fields', 'outcome', 'next_step', 'steps']);
 
 function severityColor(severity?: string): 'default' | 'success' | 'warning' | 'error' | 'info' {
   if (severity === 'success') return 'success';
@@ -85,6 +85,19 @@ function humanizeField(field: string): string {
     .replace(/^profile\./, '')
     .replace(/[._]/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function extractSteps(metadata?: Record<string, unknown>): { label: string; status?: string; detail?: string }[] {
+  const raw = metadata?.steps;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((row): row is Record<string, unknown> => !!row && typeof row === 'object')
+    .map((row) => ({
+      label: String(row.label || row.key || ''),
+      status: row.status ? String(row.status) : '',
+      detail: row.detail ? String(row.detail) : '',
+    }))
+    .filter((row) => row.label);
 }
 
 function extractChanges(metadata?: Record<string, unknown>): ActivityChange[] {
@@ -153,6 +166,7 @@ function DetailBlock({ label, children }: { label: string; children: ReactNode }
 
 function ActivityDetails({ item }: { item: ActivityItem }) {
   const changes = useMemo(() => extractChanges(item.metadata), [item.metadata]);
+  const steps = useMemo(() => extractSteps(item.metadata), [item.metadata]);
   const extraMeta = useMemo(() => {
     if (!item.metadata) return [];
     return Object.entries(item.metadata).filter(([key, value]) => {
@@ -193,6 +207,26 @@ function ActivityDetails({ item }: { item: ActivityItem }) {
       {nextStep && (
         <DetailBlock label="Further steps">
           <Typography variant="body2">{nextStep}</Typography>
+        </DetailBlock>
+      )}
+
+      {steps.length > 0 && (
+        <DetailBlock label={`Sync steps (${steps.length})`}>
+          <Stack spacing={0.75}>
+            {steps.map((step, idx) => (
+              <Stack key={`${step.label}-${idx}`} direction="row" spacing={1} alignItems="flex-start">
+                <Chip size="small" label={idx + 1} sx={{ minWidth: 36 }} />
+                <Stack spacing={0}>
+                  <Typography variant="body2">{step.label}</Typography>
+                  {(step.detail || step.status) && (
+                    <Typography variant="caption" color="text.secondary">
+                      {[step.status, step.detail].filter(Boolean).join(' · ')}
+                    </Typography>
+                  )}
+                </Stack>
+              </Stack>
+            ))}
+          </Stack>
         </DetailBlock>
       )}
 

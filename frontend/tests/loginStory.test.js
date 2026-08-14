@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { lastPortalRun } from '../src/utils/loginStory';
+import { groupPortalRuns, lastPortalRun } from '../src/utils/loginStory';
 
 describe('lastPortalRun', () => {
   it('returns chronological steps for the latest LinkedIn sync', () => {
@@ -27,5 +27,22 @@ describe('lastPortalRun', () => {
       'linkedin sync failed: checkpoint',
       'Fetch finished',
     ]);
+  });
+});
+
+describe('groupPortalRuns', () => {
+  it('groups two syncs by correlation_id, newest first', () => {
+    const logs = [
+      { id: 'b2', created_at: 't4', portal: 'linkedin', action: 'fetch.failed', message: 'checkpoint', correlation_id: 'run-b', level: 'error' },
+      { id: 'b1', created_at: 't3', portal: 'linkedin', action: 'fetch.portal', message: 'Fetching jobs from linkedin…', correlation_id: 'run-b' },
+      { id: 'a2', created_at: 't2', portal: 'linkedin', action: 'fetch.complete', message: 'added 3', correlation_id: 'run-a', level: 'success' },
+      { id: 'a1', created_at: 't1', portal: 'linkedin', action: 'fetch.portal', message: 'Fetching jobs from linkedin…', correlation_id: 'run-a' },
+    ];
+    const runs = groupPortalRuns(logs, 'linkedin');
+    expect(runs.map((r) => r.id)).toEqual(['run-b', 'run-a']);
+    expect(runs[0].outcome).toBe('error');
+    expect(runs[0].steps.map((s) => s.id)).toEqual(['b1', 'b2']);
+    expect(runs[1].outcome).toBe('success');
+    expect(runs[1].stepCount).toBe(2);
   });
 });
