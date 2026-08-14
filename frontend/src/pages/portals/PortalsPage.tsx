@@ -21,7 +21,8 @@ import { automationApi, portalsApi } from '../../api';
 import PageShell from '../../components/common/PageShell';
 import { useUserTimeZone } from '../../hooks/useUserTimeZone';
 import { formatWhen, fromNowLocal, parseApiDate } from '../../utils/datetime';
-import { lastPortalRun, type AutomationLogItem } from '../../utils/loginStory';
+import { groupPortalRuns, type AutomationLogItem } from '../../utils/loginStory';
+import SyncRunList from '../../components/portals/SyncRunList';
 
 const PORTALS = [
   'linkedin', 'naukri', 'indeed', 'foundit', 'wellfound', 'greenhouse',
@@ -116,14 +117,6 @@ function loginState(portal: PortalRow): {
   };
 }
 
-function stepColor(level?: string): 'success' | 'warning' | 'error' | 'info' | 'default' {
-  if (level === 'success') return 'success';
-  if (level === 'warning') return 'warning';
-  if (level === 'error') return 'error';
-  if (level === 'info') return 'info';
-  return 'default';
-}
-
 export default function PortalsPage() {
   const [dialog, setDialog] = useState<CredsDialog | null>(null);
   const [name, setName] = useState('linkedin');
@@ -141,7 +134,7 @@ export default function PortalsPage() {
   });
   const { data: logsData } = useQuery({
     queryKey: ['automation-logs'],
-    queryFn: async () => (await automationApi.logs({ page_size: 80 })).data,
+    queryFn: async () => (await automationApi.logs({ page_size: 200 })).data,
     refetchInterval: Date.now() < pollUntil ? 2000 : false,
   });
 
@@ -331,8 +324,7 @@ export default function PortalsPage() {
         const lastOk = portal.last_sync_at;
         const same = roughlySame(lastTry, lastOk);
         const score = Math.round(portal.health?.score ?? 100);
-        const steps = lastPortalRun(logItems, portal.name);
-        const stamp = steps[steps.length - 1]?.created_at;
+        const runs = groupPortalRuns(logItems, portal.name);
         return (
           <Box
             key={portal.id}
@@ -460,24 +452,15 @@ export default function PortalsPage() {
               </Stack>
             </Stack>
 
-            {!!steps.length && (
+            {!!runs.length && (
               <Stack spacing={0.75} sx={{ mt: 2, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
                 <Typography variant="subtitle2" fontWeight={700}>
-                  Last login
-                  {stamp ? ` · ${formatWhen(stamp, timeZone)}` : ''}
+                  Sync history
                 </Typography>
-                {steps.map((step, idx) => (
-                  <Stack key={step.id} direction="row" spacing={1} alignItems="flex-start">
-                    <Chip size="small" label={idx + 1} color={stepColor(step.level)} sx={{ minWidth: 36 }} />
-                    <Stack spacing={0}>
-                      <Typography variant="body2">{step.message || step.action}</Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {formatWhen(step.created_at, timeZone)}
-                        {step.action === 'fetch.login' ? '' : ` · ${step.action}`}
-                      </Typography>
-                    </Stack>
-                  </Stack>
-                ))}
+                <Typography variant="caption" color="text.secondary">
+                  Each sync is audited. Expand a run to see every recorded step.
+                </Typography>
+                <SyncRunList runs={runs} timeZone={timeZone} />
               </Stack>
             )}
           </Box>

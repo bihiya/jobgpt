@@ -11,16 +11,13 @@ import { useMemo, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { automationApi } from '../../api';
 import PageShell from '../../components/common/PageShell';
+import SyncRunList from '../../components/portals/SyncRunList';
 import { useUserTimeZone } from '../../hooks/useUserTimeZone';
 import { formatWhen, formatWhenLong } from '../../utils/datetime';
+import { groupPortalRuns, type AutomationLogItem } from '../../utils/loginStory';
 
-type LogRow = {
-  id: string;
-  created_at: string;
-  portal?: string;
-  action: string;
+type LogRow = AutomationLogItem & {
   level: string;
-  message: string;
 };
 
 function levelColor(level?: string): 'default' | 'success' | 'warning' | 'error' | 'info' {
@@ -43,7 +40,7 @@ export default function AutomationPage() {
   });
   const { data: logs, isLoading, isFetching } = useQuery({
     queryKey: ['automation-logs'],
-    queryFn: async () => (await automationApi.logs({ page_size: 50 })).data,
+    queryFn: async () => (await automationApi.logs({ page_size: 200 })).data,
     refetchInterval: Date.now() < pollUntil ? 1500 : false,
   });
   const loading = statusLoading || isLoading;
@@ -63,6 +60,7 @@ export default function AutomationPage() {
   });
 
   const rows = useMemo<LogRow[]>(() => logs?.items || [], [logs?.items]);
+  const syncRuns = useMemo(() => groupPortalRuns(rows), [rows]);
   const playwrightAvailable = status?.playwright_available !== false;
   const playwrightMessage =
     typeof status?.playwright_message === 'string' ? status.playwright_message : null;
@@ -125,7 +123,7 @@ export default function AutomationPage() {
           <Button component={RouterLink} to="/job-portals" size="small" sx={{ ml: 0.5 }}>
             Job Portals
           </Button>{' '}
-          first, then run fetch — each step shows up in the log table below.
+          first, then run fetch — each sync is audited and listed below as a collapse/expand step trail.
         </Alert>
       )}
 
@@ -146,7 +144,16 @@ export default function AutomationPage() {
         })}
       </Stack>
 
-      {!!status?.recent?.length && (
+      {!!syncRuns.length && (
+        <Stack spacing={0.75}>
+          <Typography variant="subtitle2" fontWeight={700}>
+            Sync history
+          </Typography>
+          <SyncRunList runs={syncRuns} timeZone={timeZone} showPortal />
+        </Stack>
+      )}
+
+      {!!status?.recent?.length && !syncRuns.length && (
         <Stack spacing={0.75}>
           <Typography variant="subtitle2" fontWeight={700}>
             Latest

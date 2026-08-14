@@ -96,3 +96,21 @@ class ApplySessionRecorder:
 
     def to_list(self) -> list[dict[str, Any]]:
         return [s.to_dict() for s in self.steps]
+
+
+def compact_sync_steps(steps: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """Trim recorder steps for audit metadata (no huge blobs)."""
+    out: list[dict[str, Any]] = []
+    for step in (steps or [])[:50]:
+        if not isinstance(step, dict):
+            continue
+        out.append(
+            {
+                "key": str(step.get("key") or "step")[:40],
+                "label": str(step.get("label") or step.get("message") or "")[:240],
+                "status": str(step.get("status") or "ok")[:20],
+                "detail": str(step.get("detail") or "")[:400],
+                "at": str(step.get("at") or "")[:40],
+            }
+        )
+    return out
