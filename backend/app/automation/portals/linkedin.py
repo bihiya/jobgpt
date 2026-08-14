@@ -1,11 +1,24 @@
 """LinkedIn portal adapter with session persistence + verified apply."""
 
-from app.automation.auth import LOGIN_FAILED, describe_page, ensure_logged_in, format_landed
+from app.automation.auth import (
+    LOGIN_FAILED,
+    describe_page,
+    detect_auth_failure,
+    ensure_logged_in,
+    format_landed,
+)
 from app.automation.base.page import BasePage
 from app.automation.base.portal import ApplyResult, BasePortal, ExtractedJob
 from app.automation.errors import PortalAuthError
 from app.automation.form_fields import resolve_and_fill
-from app.automation.selectors import any_visible, click_first, fill_first, get_selector_pack
+from app.automation.selectors import (
+    any_visible,
+    click_first,
+    click_if_present,
+    fill_first,
+    get_selector_pack,
+    wait_any_selector,
+)
 from app.automation.verify import verify_apply_success
 from app.core.logging import get_logger
 
@@ -17,6 +30,42 @@ class LinkedInPortal(BasePortal):
 
     def _pack(self):
         return get_selector_pack(self.name, self.selector_version)
+
+    @staticmethod
+    def _is_login_url(url: str) -> bool:
+        hay = (url or "").lower()
+        return any(
+            marker in hay
+            for marker in (
+                "/login",
+                "/uas/login",
+                "/checkpoint/",
+                "/challenge/",
+                "/authwall",
+            )
+        )
+
+    async def _dismiss_login_interstitials(self, page: BasePage) -> None:
+        await click_if_present(
+            page,
+            [
+                "#onetrust-accept-btn-handler",
+                "button[action-type='ACCEPT']",
+                "button:has-text('Accept')",
+                "button:has-text('Accept cookies')",
+            ],
+        )
+        await click_if_present(
+            page,
+            [
+                "button:has-text('Sign in with email')",
+                "a:has-text('Sign in with email')",
+                "button:has-text('Sign in with password')",
+                "a:has-text('Sign in with password')",
+                "button:has-text('Use password')",
+                "button:has-text('Continue with email')",
+            ],
+        )
 
     async def login(self, page: BasePage) -> None:
         pack = self._pack()
@@ -41,13 +90,29 @@ class LinkedInPortal(BasePortal):
                     detail=snap.get("url", ""),
                 )
 
-        await page.goto("https://www.linkedin.com/login")
+        if not self._is_login_url(snap.get("url", "") or page.page.url or ""):
+            await page.goto("https://www.linkedin.com/login")
+        else:
+            self.recorder.add(
+                "login",
+                "Already on a LinkedIn login URL — waiting for the form",
+                detail=snap.get("url", ""),
+            )
+
+        await self._dismiss_login_interstitials(page)
+        try:
+            await page.page.wait_for_load_state("domcontentloaded", timeout=8000)
+        except Exception:  # noqa: BLE001
+            pass
+
+        user_selectors = pack.all("login_user")
+        login_field = await wait_any_selector(page, user_selectors, timeout=8000)
+        if not login_field:
+            # Passkey / magic-link shells hide the email field until this click.
+            await self._dismiss_login_interstitials(page)
+            login_field = await wait_any_selector(page, user_selectors, timeout=8000)
         snap = await describe_page(page)
-        login_open = await any_visible(
-            page,
-            pack.all("login_user") + ["#username", "input[name='session_key']"],
-        )
-        if login_open:
+        if login_field:
             self.recorder.add("login", "Login page opened", detail=snap.get("url", "") or "https://www.linkedin.com/login")
         else:
             self.recorder.add(
@@ -56,6 +121,10 @@ class LinkedInPortal(BasePortal):
                 status="warn",
                 detail=snap.get("url", ""),
             )
+            failure = await detect_auth_failure(page, self.name, selector_version=self.selector_version)
+            if failure:
+                self.recorder.add("login", f"Login blocked: {failure}", status="error", detail=snap.get("url", ""))
+                raise failure
 
         if not self.credentials.get("username"):
             self.recorder.add("login", "No credentials — continuing with cookies only", status="warn")
@@ -68,22 +137,41 @@ class LinkedInPortal(BasePortal):
                 )
             return
 
-        user_sel = await fill_first(page, pack.all("login_user"), self.credentials["username"])
+        user_sel = await fill_first(page, user_selectors, self.credentials["username"], timeout=8000)
         if user_sel:
             self.recorder.add("login", "Filled email / username")
         else:
             self.recorder.add("login", "Could not find the email field on the login page", status="error")
             raise PortalAuthError(
-                "Could not fill LinkedIn login form — selectors missed username/password fields",
+                f"Could not fill LinkedIn login form — selectors missed username/password fields "
+                f"(landed on {format_landed(snap)})",
                 code=LOGIN_FAILED,
             )
-        pass_sel = await fill_first(page, pack.all("login_pass"), self.credentials.get("password", ""))
+
+        pass_selectors = pack.all("login_pass")
+        pass_field = await wait_any_selector(page, pass_selectors, timeout=3000)
+        if not pass_field:
+            await click_first(
+                page,
+                pack.all("login_submit")
+                + [
+                    "button:has-text('Continue')",
+                    "button:has-text('Next')",
+                    "button:has-text('Sign in')",
+                ],
+                timeout=2500,
+            )
+            self.recorder.add("login", "Clicked continue after email — waiting for password")
+            await wait_any_selector(page, pass_selectors, timeout=8000)
+
+        pass_sel = await fill_first(page, pass_selectors, self.credentials.get("password", ""), timeout=8000)
         if pass_sel:
             self.recorder.add("login", "Filled password")
         else:
             self.recorder.add("login", "Could not find the password field on the login page", status="error")
             raise PortalAuthError(
-                "Could not fill LinkedIn login form — selectors missed username/password fields",
+                f"Could not fill LinkedIn login form — selectors missed username/password fields "
+                f"(landed on {format_landed(snap)})",
                 code=LOGIN_FAILED,
             )
         submitted = await click_first(page, pack.all("login_submit"))

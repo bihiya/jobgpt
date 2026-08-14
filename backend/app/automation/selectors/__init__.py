@@ -31,9 +31,34 @@ LINKEDIN_V1 = SelectorPack(
     portal="linkedin",
     version=1,
     selectors={
-        "login_user": ["#username", "input[name='session_key']"],
-        "login_pass": ["#password", "input[name='session_password']"],
-        "login_submit": ["button[type='submit']", "button.btn__primary--large"],
+        "login_user": [
+            "#username",
+            "input[name='session_key']",
+            "input#session_key",
+            "input[autocomplete='username']",
+            "input[id*='username']",
+            "input[type='email']",
+            "input[aria-label*='Email']",
+            "input[placeholder*='Email']",
+            "input[name='email']",
+            "form.login__form input[type='text']",
+            "form.login__form input:not([type='hidden']):not([type='password']):not([type='checkbox'])",
+        ],
+        "login_pass": [
+            "#password",
+            "input[name='session_password']",
+            "input#session_password",
+            "input[autocomplete='current-password']",
+            "input[type='password']",
+        ],
+        "login_submit": [
+            "button[data-litms-control-urn='login-submit']",
+            "button[type='submit']",
+            "button.btn__primary--large",
+            "button:has-text('Sign in')",
+            "button:has-text('Continue')",
+            "input[type='submit']",
+        ],
         # Strong signals only — a[href*='/feed'] appears on marketing/login pages.
         "logged_in": [
             "img.global-nav__me-photo",
@@ -226,15 +251,78 @@ async def click_first(page: "BasePage", selectors: list[str], timeout: int = 500
     return None
 
 
-async def fill_first(page: "BasePage", selectors: list[str], value: str) -> str | None:
+async def click_if_present(page: "BasePage", selectors: list[str]) -> str | None:
+    """Click the first selector that already exists — no long timeout if missing."""
     for sel in selectors:
         try:
-            if await page.page.query_selector(sel):
-                await page.fill(sel, value)
-                return sel
+            el = await page.page.query_selector(sel)
+            if not el:
+                continue
+            await page.page.click(sel, timeout=1500)
+            return sel
         except Exception:  # noqa: BLE001
             continue
     return None
+
+
+async def wait_any_selector(
+    page: "BasePage",
+    selectors: list[str],
+    timeout: int = 15000,
+    *,
+    state: str = "visible",
+) -> str | None:
+    """Wait until any selector appears (including in child frames)."""
+    if not selectors:
+        return None
+    css = ", ".join(
+        sel
+        for sel in selectors
+        if not sel.startswith("text=") and ":has-text(" not in sel
+    )
+    if css:
+        try:
+            await page.page.wait_for_selector(css, timeout=timeout, state=state)
+        except Exception:  # noqa: BLE001
+            pass
+        for sel in selectors:
+            try:
+                el = await page.page.query_selector(sel)
+                if el:
+                    return sel
+            except Exception:  # noqa: BLE001
+                continue
+    for sel in selectors:
+        try:
+            await page.page.wait_for_selector(sel, timeout=min(2500, timeout), state=state)
+            return sel
+        except Exception:  # noqa: BLE001
+            continue
+    frames = getattr(page.page, "frames", None) or []
+    for frame in frames:
+        query = getattr(frame, "query_selector", None)
+        if not callable(query):
+            continue
+        for sel in selectors:
+            try:
+                el = await query(sel)
+                if el:
+                    return sel
+            except Exception:  # noqa: BLE001
+                continue
+    return None
+
+
+async def fill_first(page: "BasePage", selectors: list[str], value: str, timeout: int = 8000) -> str | None:
+    sel = await wait_any_selector(page, selectors, timeout=timeout)
+    if not sel:
+        return None
+    try:
+        await page.fill(sel, value)
+        return sel
+    except Exception:  # noqa: BLE001
+        logger.warning("fill_failed", selector=sel)
+        return None
 
 
 async def query_first(page: "BasePage", selectors: list[str]) -> Any:
