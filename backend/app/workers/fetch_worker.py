@@ -81,18 +81,15 @@ class FetchWorker(BaseWorker):
             level = "warning" if step.get("status") in {"warn", "warning"} else (
                 "error" if step.get("status") in {"error", "failed"} else "info"
             )
+            label = str(step.get("label") or step.get("message") or step.get("key") or "login step")
+            detail = str(step.get("detail") or "").strip()
+            message = f"{label} — {detail}" if detail and detail not in label else label
             await write_automation_log(
                 user_id,
                 action="fetch.login",
                 level=level,
                 portal=portal_name,
-                message=str(
-                    step.get("label")
-                    or step.get("detail")
-                    or step.get("message")
-                    or step.get("key")
-                    or "login step"
-                ),
+                message=message,
                 metadata={"step": step},
                 correlation_id=correlation_id,
             )

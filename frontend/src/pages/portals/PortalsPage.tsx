@@ -14,14 +14,13 @@ import {
 } from '@mui/material';
 import { DataGrid, GridColDef } from '@mui/x-data-grid';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import dayjs from 'dayjs';
-import relativeTime from 'dayjs/plugin/relativeTime';
 import { useEffect, useMemo, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
-import { portalsApi } from '../../api';
+import { automationApi, portalsApi } from '../../api';
 import PageShell from '../../components/common/PageShell';
-
-dayjs.extend(relativeTime);
+import { useUserTimeZone } from '../../hooks/useUserTimeZone';
+import { formatWhen, fromNowLocal, parseApiDate } from '../../utils/datetime';
+import { lastPortalRun, type AutomationLogItem } from '../../utils/loginStory';
 
 const PORTALS = [
   'linkedin', 'naukri', 'indeed', 'foundit', 'wellfound', 'greenhouse',
@@ -36,6 +35,7 @@ type PortalRow = {
   name: string;
   status?: string;
   last_sync_at?: string | null;
+  last_attempt_at?: string | null;
   sync_started_at?: string | null;
   has_credentials?: boolean;
   has_session?: boolean;
@@ -52,10 +52,16 @@ type PortalRow = {
 
 function isSyncInFlight(portal: PortalRow, optimisticId?: string | null): boolean {
   if (optimisticId && portal.id === optimisticId) return true;
-  if (!portal.sync_started_at) return false;
-  const started = new Date(portal.sync_started_at).getTime();
-  if (Number.isNaN(started)) return false;
-  return Date.now() - started < SYNC_STALE_MS;
+  const started = parseApiDate(portal.sync_started_at);
+  if (!started) return false;
+  return Date.now() - started.valueOf() < SYNC_STALE_MS;
+}
+
+function roughlySame(a?: string | null, b?: string | null): boolean {
+  const pa = parseApiDate(a);
+  const pb = parseApiDate(b);
+  if (!pa || !pb) return false;
+  return Math.abs(pa.valueOf() - pb.valueOf()) < 5000;
 }
 
 function loginState(portal: PortalRow): {
@@ -73,14 +79,14 @@ function loginState(portal: PortalRow): {
   }
   if (portal.status === 'error') {
     return {
-      label: 'Error',
+      label: 'Login failed',
       color: 'error',
       detail: portal.health?.last_error || 'Last sync failed',
     };
   }
   if (portal.has_session) {
     const when = portal.session_updated_at
-      ? dayjs(portal.session_updated_at).fromNow()
+      ? fromNowLocal(portal.session_updated_at)
       : null;
     return {
       label: 'Logged in',
@@ -102,6 +108,14 @@ function loginState(portal: PortalRow): {
   };
 }
 
+function stepColor(level?: string): 'success' | 'warning' | 'error' | 'info' | 'default' {
+  if (level === 'success') return 'success';
+  if (level === 'warning') return 'warning';
+  if (level === 'error') return 'error';
+  if (level === 'info') return 'info';
+  return 'default';
+}
+
 export default function PortalsPage() {
   const [open, setOpen] = useState(false);
   const [reauthOpen, setReauthOpen] = useState<null | PortalRow>(null);
@@ -112,14 +126,24 @@ export default function PortalsPage() {
   const [reauthId, setReauthId] = useState<string | null>(null);
   const [pollUntil, setPollUntil] = useState(0);
   const queryClient = useQueryClient();
+  const timeZone = useUserTimeZone();
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['portals'],
     queryFn: async () => (await portalsApi.list()).data as PortalRow[],
     refetchInterval: Date.now() < pollUntil ? 2000 : false,
   });
+  const { data: logsData } = useQuery({
+    queryKey: ['automation-logs'],
+    queryFn: async () => (await automationApi.logs({ page_size: 80 })).data,
+    refetchInterval: Date.now() < pollUntil ? 2000 : false,
+  });
 
   const rows = useMemo(() => (Array.isArray(data) ? data : []), [data]);
+  const logItems = useMemo<AutomationLogItem[]>(
+    () => (Array.isArray(logsData?.items) ? logsData.items : []),
+    [logsData],
+  );
   const anySyncing = useMemo(
     () => rows.some((p) => isSyncInFlight(p, syncingId)),
     [rows, syncingId],
@@ -230,15 +254,15 @@ export default function PortalsPage() {
       {
         field: 'sync',
         headerName: 'Sync',
-        flex: 1.1,
-        minWidth: 170,
+        flex: 1.3,
+        minWidth: 200,
         sortable: false,
         renderCell: (params) => {
           const syncing = isSyncInFlight(params.row, syncingId);
-          const last = params.row.last_sync_at
-            ? dayjs(params.row.last_sync_at).fromNow()
-            : 'Never';
+          const lastTry = params.row.last_attempt_at;
+          const lastOk = params.row.last_sync_at;
           const score = Math.round(params.row.health?.score ?? 100);
+          const same = roughlySame(lastTry, lastOk);
           return (
             <Stack spacing={0.5} justifyContent="center" sx={{ py: 0.5, width: '100%' }}>
               {syncing ? (
@@ -246,8 +270,19 @@ export default function PortalsPage() {
                   <Chip size="small" color="info" label="Syncing live…" sx={{ width: 'fit-content' }} />
                   <LinearProgress sx={{ height: 3, borderRadius: 1 }} />
                 </>
+              ) : same || (!lastTry && lastOk) ? (
+                <Typography variant="body2">
+                  Last sync · {lastOk ? formatWhen(lastOk, timeZone) : 'Never'}
+                </Typography>
               ) : (
-                <Typography variant="body2">Last sync · {last}</Typography>
+                <>
+                  <Typography variant="body2">
+                    Last try · {lastTry ? formatWhen(lastTry, timeZone) : 'Never'}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Last success · {lastOk ? fromNowLocal(lastOk) : 'Never'}
+                  </Typography>
+                </>
               )}
               <Typography variant="caption" color="text.secondary">
                 Health {score}
@@ -311,7 +346,7 @@ export default function PortalsPage() {
         },
       },
     ],
-    [syncingId, syncMutation, reauthId, removeMutation],
+    [syncingId, syncMutation, reauthId, removeMutation, timeZone],
   );
 
   return (
@@ -346,7 +381,8 @@ export default function PortalsPage() {
         <strong>Sync flow:</strong> credentials are saved on Connect (that is not a full login).
         Sync queues a background fetch — the worker logs into the portal, pulls jobs, then saves
         the session. While it runs you&apos;ll see <em>Syncing live…</em>; when login works the
-        Login column flips to <em>Logged in</em>.
+        Login column flips to <em>Logged in</em>. Times use your device timezone
+        ({timeZone}).
       </Alert>
 
       {anySyncing && (
@@ -362,7 +398,7 @@ export default function PortalsPage() {
 
       <DataGrid
         autoHeight
-        getRowHeight={() => 72}
+        getRowHeight={() => 88}
         rows={rows}
         columns={columns}
         loading={isFetching && !rows.length}
@@ -372,6 +408,46 @@ export default function PortalsPage() {
         sx={{ bgcolor: 'background.paper', borderRadius: 3, width: '100%' }}
         localeText={{ noRowsLabel: 'No portals yet — connect LinkedIn, Naukri, or Indeed to start.' }}
       />
+
+      {rows.map((portal) => {
+        const steps = lastPortalRun(logItems, portal.name);
+        if (!steps.length) return null;
+        const stamp = steps[steps.length - 1]?.created_at;
+        return (
+          <Stack
+            key={`${portal.id}-story`}
+            spacing={1}
+            sx={{ bgcolor: 'background.paper', borderRadius: 3, p: 2, border: '1px solid', borderColor: 'divider' }}
+          >
+            <Typography variant="subtitle1" fontWeight={700} sx={{ textTransform: 'capitalize' }}>
+              Last {portal.name} login
+              {stamp ? ` · ${formatWhen(stamp, timeZone)}` : ''}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Each line is one browser step: page opened → email → password → submit → what loaded next.
+            </Typography>
+            <Stack spacing={0.75}>
+              {steps.map((step, idx) => (
+                <Stack key={step.id} direction="row" spacing={1} alignItems="flex-start">
+                  <Chip
+                    size="small"
+                    label={idx + 1}
+                    color={stepColor(step.level)}
+                    sx={{ minWidth: 36 }}
+                  />
+                  <Stack spacing={0}>
+                    <Typography variant="body2">{step.message || step.action}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {formatWhen(step.created_at, timeZone)}
+                      {step.action === 'fetch.login' ? '' : ` · ${step.action}`}
+                    </Typography>
+                  </Stack>
+                </Stack>
+              ))}
+            </Stack>
+          </Stack>
+        );
+      })}
 
       <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>Connect portal</DialogTitle>

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from typing import Any
 from urllib.parse import urlparse
 
@@ -17,6 +18,37 @@ CAPTCHA = "CAPTCHA"
 OTP_REQUIRED = "OTP_REQUIRED"
 NOT_LOGGED_IN = "NOT_LOGGED_IN"
 LOGIN_FAILED = "LOGIN_FAILED"
+
+
+async def describe_page(page: BasePage) -> dict[str, str]:
+    """Best-effort URL + title after a login step, for step-by-step logs."""
+    url = ""
+    title = ""
+    try:
+        url = str(page.page.url or "")[:400]
+    except Exception:  # noqa: BLE001
+        url = ""
+    try:
+        getter = getattr(page.page, "title", None)
+        maybe = getter() if callable(getter) else getter
+        # iscoroutine: real Playwright titles. MagicMock has __await__ but is not a coroutine.
+        if inspect.iscoroutine(maybe):
+            maybe = await maybe
+        title = str(maybe or "")[:160]
+        if "MagicMock" in title or "AsyncMock" in title:
+            title = ""
+    except Exception:  # noqa: BLE001
+        title = ""
+    return {"url": url, "title": title}
+
+
+def format_landed(snap: dict[str, str] | None) -> str:
+    snap = snap or {}
+    url = (snap.get("url") or "").strip()
+    title = (snap.get("title") or "").strip()
+    if title and url:
+        return f"{title} · {url}"
+    return title or url or "(unknown page)"
 
 
 def _url_looks_like_checkpoint(url: str) -> bool:
@@ -51,25 +83,29 @@ async def detect_auth_failure(
     """Inspect page for wrong-password / checkpoint / captcha / OTP interstitials."""
     pack = get_selector_pack(portal, selector_version)
     url = page.page.url or ""
+    snap = await describe_page(page)
+    landed = format_landed(snap)
 
     if await any_visible(page, pack.all("login_error")):
         return PortalAuthError(
-            "Wrong email or password — check credentials and try again",
+            f"Wrong email or password — check credentials and try again (landed on {landed})",
             code=WRONG_PASSWORD,
         )
     if await any_visible(page, pack.all("checkpoint")) or _url_looks_like_checkpoint(url):
         return PortalAuthError(
-            "Portal security checkpoint / challenge required — complete it in a browser, then re-auth",
+            "Security checkpoint / challenge required — complete it in a real browser, then Re-auth "
+            f"(landed on {landed})",
             code=CHECKPOINT,
         )
     if await any_visible(page, pack.all("captcha")):
         return PortalAuthError(
-            "CAPTCHA challenge blocking login — solve it or re-auth with a fresh session",
+            f"CAPTCHA challenge blocking login — solve it or re-auth with a fresh session (landed on {landed})",
             code=CAPTCHA,
         )
     if await any_visible(page, pack.all("otp")):
         return PortalAuthError(
-            "OTP / 2FA required — add a TOTP secret or enter a one-time code, then re-auth",
+            "OTP / 2FA required — add a TOTP secret or enter a one-time code, then re-auth "
+            f"(landed on {landed})",
             code=OTP_REQUIRED,
         )
     return None
@@ -109,13 +145,14 @@ async def ensure_logged_in(
             page,
             pack.all("login_user") + pack.all("login_pass") + ["#username", "input[type='password']"],
         )
+        landed = format_landed(await describe_page(page))
         if still_on_login:
             raise PortalAuthError(
-                "Login rejected — still on sign-in page (wrong password or blocked)",
+                f"Login rejected — still on sign-in page (wrong password or blocked) (landed on {landed})",
                 code=WRONG_PASSWORD,
             )
         raise PortalAuthError(
-            f"Not logged in to {portal} — missing authenticated session cookie",
+            f"Not logged in to {portal} — missing authenticated session cookie (landed on {landed})",
             code=NOT_LOGGED_IN,
         )
 

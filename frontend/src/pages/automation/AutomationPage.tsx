@@ -7,14 +7,12 @@ import {
 } from '@mui/material';
 import { DataGrid, GridColDef } from '@mui/x-data-grid';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import dayjs from 'dayjs';
-import relativeTime from 'dayjs/plugin/relativeTime';
 import { useMemo, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { automationApi } from '../../api';
 import PageShell from '../../components/common/PageShell';
-
-dayjs.extend(relativeTime);
+import { useUserTimeZone } from '../../hooks/useUserTimeZone';
+import { formatWhen, formatWhenLong } from '../../utils/datetime';
 
 type LogRow = {
   id: string;
@@ -36,6 +34,7 @@ function levelColor(level?: string): 'default' | 'success' | 'warning' | 'error'
 export default function AutomationPage() {
   const queryClient = useQueryClient();
   const [pollUntil, setPollUntil] = useState(0);
+  const timeZone = useUserTimeZone();
 
   const { data: status, isLoading: statusLoading, isFetching: statusFetching } = useQuery({
     queryKey: ['automation-status'],
@@ -80,8 +79,7 @@ export default function AutomationPage() {
         headerName: 'Time',
         flex: 0.9,
         minWidth: 150,
-        valueFormatter: (value: string) =>
-          value ? dayjs(value).format('MMM D, h:mm:ss A') : '—',
+        valueFormatter: (value: string) => formatWhenLong(value, timeZone),
       },
       {
         field: 'portal',
@@ -109,7 +107,7 @@ export default function AutomationPage() {
         minWidth: 220,
       },
     ],
-    [],
+    [timeZone],
   );
 
   return (
@@ -155,7 +153,7 @@ export default function AutomationPage() {
           </Typography>
           {status.recent.map((item: LogRow) => (
             <Typography key={item.id} variant="body2" color="text.secondary">
-              {dayjs(item.created_at).fromNow()} — {item.message || item.action}
+              {formatWhen(item.created_at, timeZone)} — {item.message || item.action}
             </Typography>
           ))}
         </Stack>

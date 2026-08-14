@@ -13,11 +13,8 @@ import {
   Typography,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
-import dayjs from 'dayjs';
-import relativeTime from 'dayjs/plugin/relativeTime';
 import { memo, useCallback, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
-
-dayjs.extend(relativeTime);
+import { formatLocal, fromNowLocal } from '../../utils/datetime';
 
 export type ActivityChange = {
   field: string;
@@ -305,7 +302,7 @@ function ActivityDetails({ item }: { item: ActivityItem }) {
 
       <DetailBlock label="Event info">
         <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
-          <Chip size="small" variant="outlined" label={`When: ${dayjs(item.created_at).format('MMM D, YYYY h:mm A')}`} />
+          <Chip size="small" variant="outlined" label={`When: ${formatLocal(item.created_at)}`} />
           <Chip size="small" variant="outlined" label={`Action: ${item.action}`} />
           {item.resource_type && (
             <Chip size="small" variant="outlined" label={`Resource: ${item.resource_type}`} />
@@ -455,7 +452,7 @@ function ActivityTimelineComponent({
                     color="text.secondary"
                     sx={{ whiteSpace: 'nowrap' }}
                   >
-                    {dayjs(item.created_at).fromNow()}
+                    {fromNowLocal(item.created_at)}
                   </Typography>
                 </Stack>
               </Box>

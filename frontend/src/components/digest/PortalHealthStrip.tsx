@@ -1,6 +1,7 @@
 import { Box, Button, Chip, Stack, Typography } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import { memo } from 'react';
+import { fromNowLocal } from '../../utils/datetime';
 
 export type PortalHealthItem = {
   id: string;
@@ -9,6 +10,7 @@ export type PortalHealthItem = {
   has_session?: boolean;
   session_updated_at?: string | null;
   last_sync_at?: string | null;
+  last_attempt_at?: string | null;
   sync_started_at?: string | null;
   health?: {
     score?: number;
@@ -48,7 +50,7 @@ function PortalHealthStrip({
         const paused = Boolean(p.health?.auto_paused);
         const syncing = Boolean(p.sync_started_at);
         const color = syncing ? 'info' : tone(score, paused);
-        const last = p.session_updated_at || p.last_sync_at;
+        const last = p.last_attempt_at || p.session_updated_at || p.last_sync_at;
         return (
           <Box
             key={p.id}
@@ -72,7 +74,7 @@ function PortalHealthStrip({
                 : paused
                   ? 'Paused'
                   : p.has_session
-                    ? `Logged in${last ? ` · ${new Date(last).toLocaleDateString()}` : ''}`
+                    ? `Logged in${last ? ` · ${fromNowLocal(last)}` : ''}`
                     : 'Needs login'}
             </Typography>
             {!syncing && (paused || color !== 'success' || !p.has_session) && (

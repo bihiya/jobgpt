@@ -55,6 +55,7 @@ def _fake_page(*, url: str = "https://www.linkedin.com/feed/", visible: set[str]
 
     page.page.query_selector = AsyncMock(side_effect=query_selector)
     page.page.context.cookies = AsyncMock(return_value=[])
+    page.page.title = MagicMock(return_value="LinkedIn")
     return page
 
 
@@ -179,3 +180,83 @@ def test_portal_service_has_session_requires_auth_cookies():
     portal.session_blob = encrypt_blob(portal.cookies["cookies"])
     assert PortalService._has_auth_session(portal) is True
     _ = vault
+
+
+@pytest.mark.asyncio
+async def test_describe_page_and_format_landed():
+    from app.automation.auth import describe_page, format_landed
+
+    page = _fake_page(url="https://www.linkedin.com/checkpoint/challenge/abc")
+    page.page.title = MagicMock(return_value="Security Verification")
+    snap = await describe_page(page)
+    assert snap["url"].endswith("/checkpoint/challenge/abc")
+    assert snap["title"] == "Security Verification"
+    assert "Security Verification" in format_landed(snap)
+    assert "checkpoint" in format_landed(snap)
+
+
+@pytest.mark.asyncio
+async def test_describe_page_ignores_magicmock_title():
+    from app.automation.auth import describe_page
+
+    page = _fake_page(url="https://www.linkedin.com/login")
+    page.page.title = MagicMock()  # return_value is another MagicMock
+    snap = await describe_page(page)
+    assert snap["url"].endswith("/login")
+    assert snap["title"] == ""
+
+
+@pytest.mark.asyncio
+async def test_detect_checkpoint_includes_landed_url():
+    from app.automation.auth import CHECKPOINT
+
+    page = _fake_page(url="https://www.linkedin.com/checkpoint/challenge/xyz")
+    err = await detect_auth_failure(page, "linkedin")
+    assert err is not None
+    assert err.code == CHECKPOINT
+    assert "checkpoint/challenge/xyz" in err.message
+
+
+def test_portal_response_timestamps_are_utc_z():
+    from datetime import datetime
+
+    from app.models.enums import PortalName, PortalStatus
+    from app.services.portal_service import PortalService
+    from app.services.session_vault import SessionVault, encrypt_blob, normalize_cookies
+
+    created = datetime(2026, 8, 14, 8, 0, 0)
+    portal = SimpleNamespace(
+        id="p1",
+        name=PortalName.LINKEDIN,
+        status=PortalStatus.ERROR,
+        last_sync_at=datetime(2026, 8, 9, 8, 0, 0),
+        sync_started_at=None,
+        created_at=created,
+        updated_at=datetime(2026, 8, 14, 13, 52, 0),
+        credentials=SimpleNamespace(username="u"),
+        cookies={
+            "cookies": normalize_cookies([{"name": "bcookie", "value": "x", "domain": ".linkedin.com"}])
+        },
+        session_blob="",
+        totp_secret_encrypted="",
+        session_updated_at=None,
+        selector_version=1,
+        health=SimpleNamespace(
+            model_dump=lambda: {
+                "score": 48,
+                "success_count": 0,
+                "failure_count": 1,
+                "consecutive_failures": 1,
+                "last_error": "[CHECKPOINT] challenge",
+                "auto_paused": False,
+                "paused_reason": "",
+            }
+        ),
+    )
+    portal.session_blob = encrypt_blob(portal.cookies["cookies"])
+    resp = PortalService()._to_response(portal)
+    assert resp.last_sync_at == "2026-08-09T08:00:00Z"
+    assert resp.last_attempt_at == "2026-08-14T13:52:00Z"
+    assert resp.created_at.endswith("Z")
+    _ = SessionVault
+

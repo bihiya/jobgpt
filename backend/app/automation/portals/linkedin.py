@@ -1,6 +1,6 @@
 """LinkedIn portal adapter with session persistence + verified apply."""
 
-from app.automation.auth import LOGIN_FAILED, ensure_logged_in
+from app.automation.auth import LOGIN_FAILED, describe_page, ensure_logged_in, format_landed
 from app.automation.base.page import BasePage
 from app.automation.base.portal import ApplyResult, BasePortal, ExtractedJob
 from app.automation.errors import PortalAuthError
@@ -21,6 +21,8 @@ class LinkedInPortal(BasePortal):
     async def login(self, page: BasePage) -> None:
         pack = self._pack()
         await page.goto("https://www.linkedin.com/feed/")
+        snap = await describe_page(page)
+        self.recorder.add("login", "Opened LinkedIn (checking existing session)", detail=snap.get("url", ""))
         if await any_visible(page, pack.all("logged_in")):
             try:
                 await ensure_logged_in(
@@ -28,17 +30,33 @@ class LinkedInPortal(BasePortal):
                     portal=self.name,
                     selector_version=self.selector_version,
                 )
-                self.recorder.add("login", "Session cookies accepted — already logged in")
+                self.recorder.add("login", "Already logged in — session cookies accepted")
                 return
-            except PortalAuthError:
+            except PortalAuthError as exc:
                 # Stale / anonymous cookies looked logged-in; fall through to credential login.
                 self.recorder.add(
                     "login",
-                    "Session looked active but auth cookie missing — signing in",
+                    f"Session check failed — signing in with saved email/password ({exc})",
                     status="warn",
+                    detail=snap.get("url", ""),
                 )
 
         await page.goto("https://www.linkedin.com/login")
+        snap = await describe_page(page)
+        login_open = await any_visible(
+            page,
+            pack.all("login_user") + ["#username", "input[name='session_key']"],
+        )
+        if login_open:
+            self.recorder.add("login", "Login page opened", detail=snap.get("url", "") or "https://www.linkedin.com/login")
+        else:
+            self.recorder.add(
+                "login",
+                f"Login page may not have opened — landed on {format_landed(snap)}",
+                status="warn",
+                detail=snap.get("url", ""),
+            )
+
         if not self.credentials.get("username"):
             self.recorder.add("login", "No credentials — continuing with cookies only", status="warn")
             # Cookie-only: accept only a real auth session, else allow guest (authwall may yield []).
@@ -51,25 +69,51 @@ class LinkedInPortal(BasePortal):
             return
 
         user_sel = await fill_first(page, pack.all("login_user"), self.credentials["username"])
+        if user_sel:
+            self.recorder.add("login", "Filled email / username")
+        else:
+            self.recorder.add("login", "Could not find the email field on the login page", status="error")
+            raise PortalAuthError(
+                "Could not fill LinkedIn login form — selectors missed username/password fields",
+                code=LOGIN_FAILED,
+            )
         pass_sel = await fill_first(page, pack.all("login_pass"), self.credentials.get("password", ""))
-        if not user_sel or not pass_sel:
+        if pass_sel:
+            self.recorder.add("login", "Filled password")
+        else:
+            self.recorder.add("login", "Could not find the password field on the login page", status="error")
             raise PortalAuthError(
                 "Could not fill LinkedIn login form — selectors missed username/password fields",
                 code=LOGIN_FAILED,
             )
         submitted = await click_first(page, pack.all("login_submit"))
-        if not submitted:
+        if submitted:
+            self.recorder.add("login", "Clicked Sign in / submit")
+        else:
+            self.recorder.add("login", "Could not click Sign in", status="error")
             raise PortalAuthError("Could not submit LinkedIn login form", code=LOGIN_FAILED)
         try:
             await page.page.wait_for_load_state("networkidle", timeout=15000)
         except Exception as exc:  # noqa: BLE001
             logger.warning("linkedin_login_networkidle_timeout", error=str(exc)[:200])
-        self.recorder.add("login", "Submitted LinkedIn login form")
-        await ensure_logged_in(
-            page,
-            portal=self.name,
-            selector_version=self.selector_version,
-        )
+            self.recorder.add("login", "Page still loading after submit (timeout) — checking result anyway", status="warn")
+        snap = await describe_page(page)
+        self.recorder.add("login", f"After submit — {format_landed(snap)}", detail=snap.get("url", ""))
+        try:
+            await ensure_logged_in(
+                page,
+                portal=self.name,
+                selector_version=self.selector_version,
+            )
+        except PortalAuthError as exc:
+            snap = await describe_page(page)
+            self.recorder.add(
+                "login",
+                f"Login blocked: {exc}",
+                status="error",
+                detail=snap.get("url", ""),
+            )
+            raise
         self.recorder.add("login", "LinkedIn login verified")
 
     async def search(self, page: BasePage, query: str, location: str = "") -> None:

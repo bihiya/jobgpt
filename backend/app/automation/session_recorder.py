@@ -7,6 +7,8 @@ from datetime import datetime
 from typing import Any
 from uuid import uuid4
 
+from app.core.times import iso_utc
+
 
 @dataclass
 class SessionStep:
@@ -14,7 +16,7 @@ class SessionStep:
     label: str
     status: str = "ok"  # ok|warn|error|pending|skipped
     detail: str = ""
-    at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    at: str = field(default_factory=lambda: iso_utc(datetime.utcnow()) or "")
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:

@@ -1,6 +1,6 @@
 """Indeed portal adapter with login persistence + verified apply."""
 
-from app.automation.auth import LOGIN_FAILED, ensure_logged_in
+from app.automation.auth import LOGIN_FAILED, describe_page, ensure_logged_in, format_landed
 from app.automation.base.page import BasePage
 from app.automation.base.portal import ApplyResult, BasePortal, ExtractedJob
 from app.automation.errors import PortalAuthError
@@ -21,6 +21,8 @@ class IndeedPortal(BasePortal):
     async def login(self, page: BasePage) -> None:
         pack = self._pack()
         await page.goto("https://www.indeed.com/")
+        snap = await describe_page(page)
+        self.recorder.add("login", "Opened Indeed (checking existing session)", detail=snap.get("url", ""))
         if await any_visible(page, pack.all("logged_in")):
             try:
                 await ensure_logged_in(
@@ -28,12 +30,12 @@ class IndeedPortal(BasePortal):
                     portal=self.name,
                     selector_version=self.selector_version,
                 )
-                self.recorder.add("login", "Session cookies accepted — already logged in")
+                self.recorder.add("login", "Already logged in — session cookies accepted")
                 return
-            except PortalAuthError:
+            except PortalAuthError as exc:
                 self.recorder.add(
                     "login",
-                    "Session looked active but auth cookie missing — signing in",
+                    f"Session check failed — signing in with saved email/password ({exc})",
                     status="warn",
                 )
 
@@ -48,33 +50,52 @@ class IndeedPortal(BasePortal):
             return
 
         await page.goto("https://secure.indeed.com/account/login")
+        snap = await describe_page(page)
+        self.recorder.add("login", "Login page opened", detail=snap.get("url", "") or "https://secure.indeed.com/account/login")
         user_sel = await fill_first(page, pack.all("login_user"), self.credentials["username"])
-        if not user_sel:
+        if user_sel:
+            self.recorder.add("login", "Filled email / username")
+        else:
+            self.recorder.add("login", "Could not find the email field on the login page", status="error")
             raise PortalAuthError(
                 "Could not fill Indeed email field — login selectors missed",
                 code=LOGIN_FAILED,
             )
         await click_first(page, pack.all("login_submit"), timeout=4000)
+        self.recorder.add("login", "Clicked continue / next after email")
         if self.credentials.get("password"):
             pass_sel = await fill_first(page, pack.all("login_pass"), self.credentials["password"])
-            if not pass_sel:
+            if pass_sel:
+                self.recorder.add("login", "Filled password")
+            else:
+                self.recorder.add("login", "Could not find the password field", status="error")
                 raise PortalAuthError(
                     "Could not fill Indeed password field — login selectors missed",
                     code=LOGIN_FAILED,
                 )
             submitted = await click_first(page, pack.all("login_submit"), timeout=4000)
-            if not submitted:
+            if submitted:
+                self.recorder.add("login", "Clicked Sign in / submit")
+            else:
+                self.recorder.add("login", "Could not click Sign in", status="error")
                 raise PortalAuthError("Could not submit Indeed login form", code=LOGIN_FAILED)
         try:
             await page.page.wait_for_load_state("networkidle", timeout=15000)
         except Exception as exc:  # noqa: BLE001
             logger.warning("indeed_login_networkidle_timeout", error=str(exc)[:200])
-        self.recorder.add("login", "Submitted Indeed login form")
-        await ensure_logged_in(
-            page,
-            portal=self.name,
-            selector_version=self.selector_version,
-        )
+            self.recorder.add("login", "Page still loading after submit (timeout) — checking result anyway", status="warn")
+        snap = await describe_page(page)
+        self.recorder.add("login", f"After submit — {format_landed(snap)}", detail=snap.get("url", ""))
+        try:
+            await ensure_logged_in(
+                page,
+                portal=self.name,
+                selector_version=self.selector_version,
+            )
+        except PortalAuthError as exc:
+            snap = await describe_page(page)
+            self.recorder.add("login", f"Login blocked: {exc}", status="error", detail=snap.get("url", ""))
+            raise
         self.recorder.add("login", "Indeed login verified")
 
     async def search(self, page: BasePage, query: str, location: str = "") -> None:
