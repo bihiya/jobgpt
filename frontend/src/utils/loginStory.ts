@@ -23,7 +23,3 @@ export function lastPortalRun(logs: AutomationLogItem[], portal: string): Automa
       : mine.filter((l) => l.action === 'fetch.login').slice(0, 16);
   return [...slice].reverse();
 }
-
-export function loginStepLabel(item: AutomationLogItem): string {
-  return (item.message || item.action || '').trim();
-}
