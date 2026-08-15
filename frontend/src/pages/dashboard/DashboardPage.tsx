@@ -210,7 +210,7 @@ export default function DashboardPage() {
             Digest
           </Typography>
           <Typography color="text.secondary">
-            Ranked matches, live applies, and blockers — decide in under five minutes.
+            Matches to apply, live applies, and anything that needs you.
           </Typography>
         </Box>
         <Stack direction="row" spacing={1}>
@@ -256,7 +256,7 @@ export default function DashboardPage() {
                     if (!job.approval_id) return;
                     decide.mutate(
                       { id: job.approval_id, approve: true },
-                      { onSuccess: () => success('Approved — applying') },
+                      { onSuccess: () => success('Applying…') },
                     );
                   }}
                   onSkip={() => {

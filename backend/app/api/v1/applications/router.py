@@ -8,12 +8,12 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from app.core.exceptions import NotFoundError
-from app.core.kafka import publish
 from app.dependencies.auth import get_current_user
 from app.dependencies.services import get_application_service
 from app.models.application import Application
 from app.models.enums import ApplicationStatus
 from app.models.user import User
+from app.producers.events import publish_job_apply
 from app.repository.job_repository import JobRepository
 from app.repository.portal_repository import PortalRepository
 from app.schemas.application import ApplicationCreate, ApplicationResponse
@@ -110,20 +110,16 @@ async def submit_otp(
             "label": "User provided OTP",
             "status": "ok",
             "detail": "queued",
-            "metadata": {"code_len": len(payload.code)},
+            "metadata": {"code_len": len(payload.code), "otp_code": payload.code},
         }
     ]
     await app.save()
 
-    await publish(
-        "job.apply",
-        {
-            "user_id": str(user.id),
-            "job_id": app.job_id,
-            "application_id": str(app.id),
-            "otp_code": payload.code,
-            "resumed_from": "otp",
-        },
-        key=str(user.id),
+    await publish_job_apply(
+        str(user.id),
+        app.job_id,
+        application_id=str(app.id),
+        otp_code=payload.code,
+        resumed_from="otp",
     )
     return {"application_id": str(app.id), "status": "queued"}

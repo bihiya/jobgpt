@@ -6,15 +6,15 @@ from datetime import datetime
 from math import ceil
 
 from app.core.exceptions import NotFoundError
-from app.core.kafka import publish
 from app.events.realtime import emit_realtime
-from app.services.audit_service import audit_event
 from app.models.application import Application
 from app.models.enums import ApplicationStatus, JobStatus
+from app.producers.events import publish_job_apply
 from app.repository.application_repository import ApplicationRepository
 from app.repository.job_repository import JobRepository
 from app.schemas.application import ApplicationCreate, ApplicationResponse
 from app.schemas.common import PaginatedResponse
+from app.services.audit_service import audit_event
 
 
 class ApplicationService:
@@ -80,15 +80,11 @@ class ApplicationService:
                 await job.save()
             if existing.status == ApplicationStatus.PENDING:
                 await existing.save()
-                await publish(
-                    "job.apply",
-                    {
-                        "user_id": user_id,
-                        "job_id": str(job.id),
-                        "application_id": str(existing.id),
-                        "resume_id": existing.resume_id,
-                    },
-                    key=user_id,
+                await publish_job_apply(
+                    user_id,
+                    str(job.id),
+                    application_id=str(existing.id),
+                    resume_id=existing.resume_id,
                 )
             else:
                 await existing.save()
@@ -106,15 +102,11 @@ class ApplicationService:
         job.updated_at = datetime.utcnow()
         await job.save()
 
-        await publish(
-            "job.apply",
-            {
-                "user_id": user_id,
-                "job_id": str(job.id),
-                "application_id": str(app.id),
-                "resume_id": payload.resume_id,
-            },
-            key=user_id,
+        await publish_job_apply(
+            user_id,
+            str(job.id),
+            application_id=str(app.id),
+            resume_id=payload.resume_id,
         )
         await emit_realtime(
             user_id,
@@ -142,16 +134,12 @@ class ApplicationService:
         app.attempts += 1
         app.updated_at = datetime.utcnow()
         await app.save()
-        await publish(
-            "job.apply",
-            {
-                "user_id": user_id,
-                "job_id": app.job_id,
-                "application_id": str(app.id),
-                "resume_id": app.resume_id,
-                "attempt": app.attempts,
-            },
-            key=user_id,
+        await publish_job_apply(
+            user_id,
+            app.job_id,
+            application_id=str(app.id),
+            resume_id=app.resume_id,
+            attempt=app.attempts,
         )
         await emit_realtime(
             user_id,

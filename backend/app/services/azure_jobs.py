@@ -29,6 +29,14 @@ def azure_jobs_configured() -> bool:
     )
 
 
+def azure_job_available(job_type: str) -> bool:
+    """True when this job type can be started on Azure Container Apps."""
+    if not azure_jobs_configured():
+        return False
+    name_factory = _JOB_NAME_MAP.get(job_type)
+    return bool(name_factory and name_factory())
+
+
 async def _access_token() -> str:
     try:
         from azure.identity.aio import DefaultAzureCredential
@@ -108,6 +116,7 @@ async def start_container_app_job(
     *,
     user_id: str,
     job_id: str | None = None,
+    application_id: str | None = None,
     portal: str | None = None,
 ) -> dict[str, Any]:
     """Start a manual ACA job execution with per-run env overrides."""
@@ -131,6 +140,8 @@ async def start_container_app_job(
     ]
     if job_id:
         env_overrides.append({"name": "JOB_ID", "value": job_id})
+    if application_id:
+        env_overrides.append({"name": "JOB_APPLICATION_ID", "value": application_id})
     if portal:
         env_overrides.append({"name": "JOB_PORTAL", "value": portal})
 

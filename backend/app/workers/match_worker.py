@@ -3,9 +3,9 @@
 from typing import Any
 
 from app.core.config import settings
-from app.core.kafka import publish
 from app.core.logging import get_logger
 from app.events.realtime import emit_realtime
+from app.producers.events import publish_job_apply
 from app.models.enums import JobStatus
 from app.repository.job_repository import JobRepository
 from app.repository.settings_repository import SettingsRepository
@@ -70,11 +70,7 @@ class MatchWorker(BaseWorker):
         if auto_apply:
             job.status = JobStatus.APPLYING
             await job.save()
-            await publish(
-                "job.apply",
-                {"user_id": user_id, "job_id": job_id, "auto": True},
-                key=user_id,
-            )
+            await publish_job_apply(user_id, job_id, auto=True)
 
 
 if __name__ == "__main__":

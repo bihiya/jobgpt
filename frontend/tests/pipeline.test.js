@@ -16,6 +16,13 @@ describe('pipeline columns', () => {
       'interview',
       'shortlisted',
     ]);
+    expect(PIPELINE_COLUMNS.map((c) => c.label)).toEqual([
+      'Fetched',
+      'Applying',
+      'Applied',
+      'Interview',
+      'Shortlisted',
+    ]);
   });
 
   it('maps job statuses onto the five stages', () => {

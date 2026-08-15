@@ -80,7 +80,7 @@ function DigestCard({ job, onApprove, onSkip, onOpen, busy }: Props) {
 
       <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
         <Button size="small" variant="contained" disabled={busy} onClick={onApprove}>
-          Approve
+          Apply
         </Button>
         <Button size="small" color="inherit" disabled={busy} onClick={onSkip}>
           Skip

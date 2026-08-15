@@ -28,6 +28,23 @@ from app.workers.base import BaseWorker
 logger = get_logger(__name__)
 
 
+def _otp_code_from_payload(payload: dict[str, Any], app: Application) -> str:
+    """Read a one-shot OTP from the event payload or a prior session step."""
+    code = str(payload.get("otp_code") or "")
+    if code:
+        return code
+    for step in reversed(app.session_steps or []):
+        if step.get("key") != "otp_provided":
+            continue
+        meta = step.get("metadata") or {}
+        code = str(meta.get("otp_code") or "")
+        if code:
+            meta.pop("otp_code", None)
+            step["metadata"] = meta
+        return code
+    return ""
+
+
 class ApplyWorker(BaseWorker):
     topics = ["job.apply"]
     group_id = "jobpilot-apply"
@@ -59,6 +76,10 @@ class ApplyWorker(BaseWorker):
         app = None
         if application_id:
             app = await Application.get(application_id)
+        if not app:
+            from app.repository.application_repository import ApplicationRepository
+
+            app = await ApplicationRepository().find_active_for_job(user_id, job_id)
         if not app:
             app = Application(user_id=user_id, job_id=job_id, status=ApplicationStatus.IN_PROGRESS)
             await app.insert()
@@ -123,7 +144,7 @@ class ApplyWorker(BaseWorker):
             proxy=proxy,
             headless=headless,
             totp_secret=totp_secret,
-            otp_code=str(payload.get("otp_code") or ""),
+            otp_code=_otp_code_from_payload(payload, app),
             selector_version=selector_version,
         )
 

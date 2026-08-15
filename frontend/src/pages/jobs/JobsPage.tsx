@@ -1,22 +1,9 @@
-import {
-  Button,
-  FormControlLabel,
-  Stack,
-  Switch,
-  TextField,
-  Typography,
-} from '@mui/material';
+import { Button, Stack, TextField, Typography } from '@mui/material';
 import { DataGrid, GridColDef } from '@mui/x-data-grid';
-import {
-  useInfiniteQuery,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { memo, useCallback, useMemo, useState } from 'react';
 import { applicationsApi, jobsApi } from '../../api';
 import PageShell from '../../components/common/PageShell';
-import VirtualizedJobList from '../../components/jobs/VirtualizedJobList';
 import JobDetailDrawer, { type JobDetail } from '../../components/jobs/JobDetailDrawer';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { useToast } from '../../hooks/useToast';
@@ -39,102 +26,52 @@ const titleMap = {
 
 type ActionCellProps = {
   id: string;
-  onTrack: (id: string) => void;
+  showApply: boolean;
   onApply: (id: string) => void;
   onDetails: (id: string) => void;
 };
 
-const ActionCell = memo(function ActionCell({ id, onTrack, onApply, onDetails }: ActionCellProps) {
-  const handleTrack = useCallback(() => onTrack(id), [id, onTrack]);
-  const handleApply = useCallback(() => onApply(id), [id, onApply]);
-  const handleDetails = useCallback(() => onDetails(id), [id, onDetails]);
+const ActionCell = memo(function ActionCell({ id, showApply, onApply, onDetails }: ActionCellProps) {
   return (
     <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-      <Button size="small" onClick={handleDetails}>
-        Why
+      <Button size="small" onClick={() => onDetails(id)}>
+        Details
       </Button>
-      <Button size="small" onClick={handleTrack}>
-        Track
-      </Button>
-      <Button size="small" variant="contained" onClick={handleApply}>
-        Apply
-      </Button>
+      {showApply && (
+        <Button size="small" variant="contained" onClick={() => onApply(id)}>
+          Apply
+        </Button>
+      )}
     </Stack>
   );
 });
 
 function JobsPage({ mode = 'all' }: { mode?: Mode }) {
   const [q, setQ] = useState('');
-  const [virtualized, setVirtualized] = useState(false);
   const [drawerJob, setDrawerJob] = useState<JobDetail | null>(null);
   const debouncedQ = useDebouncedValue(q, 350);
   const queryClient = useQueryClient();
   const { apiError } = useToast();
+  const showApply = mode === 'all' || mode === 'tracked';
 
   const listQuery = useQuery({
     queryKey: ['jobs', mode, debouncedQ],
     queryFn: async () =>
       (await fetchers[mode]({ q: debouncedQ || undefined, page_size: 50 })).data,
     staleTime: 30_000,
-    enabled: !virtualized,
-  });
-
-  const infiniteQuery = useInfiniteQuery({
-    queryKey: ['jobs-infinite', mode, debouncedQ],
-    queryFn: async ({ pageParam }) =>
-      (
-        await fetchers[mode]({
-          q: debouncedQ || undefined,
-          page: pageParam,
-          page_size: 25,
-        })
-      ).data,
-    initialPageParam: 1,
-    getNextPageParam: (last) =>
-      last.page < last.pages ? last.page + 1 : undefined,
-    enabled: virtualized,
-    staleTime: 30_000,
-  });
-
-  const trackMutation = useMutation({
-    mutationFn: (id: string) => jobsApi.track(id),
-    meta: { successMessage: 'Job tracked', errorMessage: 'Could not track job' },
-    onMutate: async (id) => {
-      await queryClient.cancelQueries({ queryKey: ['jobs', mode, debouncedQ] });
-      const previous = queryClient.getQueryData(['jobs', mode, debouncedQ]);
-      queryClient.setQueryData(['jobs', mode, debouncedQ], (old: any) => {
-        if (!old?.items) return old;
-        return {
-          ...old,
-          items: old.items.map((job: any) =>
-            job.id === id ? { ...job, status: 'tracked' } : job,
-          ),
-        };
-      });
-      return { previous };
-    },
-    onError: (_err, _id, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(['jobs', mode, debouncedQ], context.previous);
-      }
-    },
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: ['jobs'] });
-      void queryClient.invalidateQueries({ queryKey: ['jobs-infinite'] });
-    },
   });
 
   const applyMutation = useMutation({
     mutationFn: (id: string) => applicationsApi.create({ job_id: id }),
-    meta: { successMessage: 'Application queued', errorMessage: 'Could not apply' },
+    meta: { successMessage: 'Applying…', errorMessage: 'Could not apply' },
     onMutate: async (id) => {
       await queryClient.cancelQueries({ queryKey: ['jobs', mode, debouncedQ] });
       const previous = queryClient.getQueryData(['jobs', mode, debouncedQ]);
-      queryClient.setQueryData(['jobs', mode, debouncedQ], (old: any) => {
+      queryClient.setQueryData(['jobs', mode, debouncedQ], (old: { items?: Array<{ id: string; status: string }> } | undefined) => {
         if (!old?.items) return old;
         return {
           ...old,
-          items: old.items.map((job: any) =>
+          items: old.items.map((job) =>
             job.id === id ? { ...job, status: 'applying' } : job,
           ),
         };
@@ -148,10 +85,11 @@ function JobsPage({ mode = 'all' }: { mode?: Mode }) {
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      void queryClient.invalidateQueries({ queryKey: ['pipeline'] });
+      void queryClient.invalidateQueries({ queryKey: ['applications'] });
     },
   });
 
-  const onTrack = useCallback((id: string) => trackMutation.mutate(id), [trackMutation]);
   const onApply = useCallback((id: string) => applyMutation.mutate(id), [applyMutation]);
   const openDetails = useCallback(async (id: string) => {
     try {
@@ -161,21 +99,10 @@ function JobsPage({ mode = 'all' }: { mode?: Mode }) {
       apiError(err, 'Could not load job details');
     }
   }, [apiError]);
-  const onSelect = useCallback((id: string) => {
-    void openDetails(id);
-  }, [openDetails]);
   const closeDrawer = useCallback(() => setDrawerJob(null), []);
   const onSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setQ(e.target.value);
   }, []);
-  const onToggleVirtual = useCallback((_: unknown, checked: boolean) => {
-    setVirtualized(checked);
-  }, []);
-  const loadMore = useCallback(() => {
-    if (infiniteQuery.hasNextPage && !infiniteQuery.isFetchingNextPage) {
-      void infiniteQuery.fetchNextPage();
-    }
-  }, [infiniteQuery]);
 
   const columns: GridColDef[] = useMemo(
     () => [
@@ -192,74 +119,58 @@ function JobsPage({ mode = 'all' }: { mode?: Mode }) {
       { field: 'status', headerName: 'Status', width: 120 },
       {
         field: 'actions',
-        headerName: 'Actions',
-        width: 260,
+        headerName: '',
+        width: 180,
         sortable: false,
         renderCell: (params) => (
           <ActionCell
             id={params.row.id}
-            onTrack={onTrack}
+            showApply={showApply}
             onApply={onApply}
             onDetails={openDetails}
           />
         ),
       },
     ],
-    [onTrack, onApply, openDetails],
+    [onApply, openDetails, showApply],
   );
-
-  const virtualJobs = useMemo(
-    () => infiniteQuery.data?.pages.flatMap((p) => p.items) ?? [],
-    [infiniteQuery.data],
-  );
-
-  const loading =
-    (!virtualized && listQuery.isLoading) || (virtualized && infiniteQuery.isLoading);
-  const fetching =
-    !loading &&
-    ((!virtualized && listQuery.isFetching) ||
-      (virtualized && (infiniteQuery.isFetching || infiniteQuery.isFetchingNextPage)));
 
   return (
-    <PageShell loading={loading} fetching={fetching}>
+    <PageShell loading={listQuery.isLoading} fetching={!listQuery.isLoading && listQuery.isFetching}>
       <Typography variant="h4">{titleMap[mode]}</Typography>
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }}>
-        <TextField
-          size="small"
-          placeholder="Search title, company, description"
-          value={q}
-          onChange={onSearchChange}
-          sx={{ maxWidth: { sm: 420 }, flex: 1, width: '100%' }}
-        />
-        <FormControlLabel
-          control={<Switch checked={virtualized} onChange={onToggleVirtual} />}
-          label="Virtualized infinite list"
-        />
-      </Stack>
+      <TextField
+        size="small"
+        placeholder="Search title, company, description"
+        value={q}
+        onChange={onSearchChange}
+        sx={{ maxWidth: { sm: 420 }, width: '100%' }}
+      />
 
-      {virtualized ? (
-        <>
-          <VirtualizedJobList jobs={virtualJobs} onSelect={onSelect} />
-          {infiniteQuery.hasNextPage && (
-            <Button onClick={loadMore} disabled={infiniteQuery.isFetchingNextPage}>
-              {infiniteQuery.isFetchingNextPage ? 'Loading…' : 'Load more'}
-            </Button>
-          )}
-        </>
-      ) : (
-        <DataGrid
-          autoHeight
-          rows={listQuery.data?.items || []}
-          columns={columns}
-          loading={listQuery.isFetching}
-          getRowId={(row) => row.id}
-          pageSizeOptions={[10, 25, 50]}
-          initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
-          disableRowSelectionOnClick
-          sx={{ bgcolor: 'background.paper', borderRadius: 3, width: '100%' }}
-        />
-      )}
-      <JobDetailDrawer open={!!drawerJob} job={drawerJob} onClose={closeDrawer} />
+      <DataGrid
+        autoHeight
+        rows={listQuery.data?.items || []}
+        columns={columns}
+        loading={listQuery.isFetching}
+        getRowId={(row) => row.id}
+        pageSizeOptions={[10, 25, 50]}
+        initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
+        disableRowSelectionOnClick
+        sx={{ bgcolor: 'background.paper', borderRadius: 3, width: '100%' }}
+      />
+      <JobDetailDrawer
+        open={!!drawerJob}
+        job={drawerJob}
+        onClose={closeDrawer}
+        applyBusy={applyMutation.isPending}
+        onApply={
+          showApply
+            ? (id) => {
+                onApply(id);
+                closeDrawer();
+              }
+            : undefined
+        }
+      />
     </PageShell>
   );
 }

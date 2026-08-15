@@ -97,7 +97,7 @@ export default function SettingsPage() {
             onChange={(e) => setForm({ ...form, require_approval: e.target.checked })}
           />
         }
-        label="Require approval before apply (human-in-the-loop)"
+        label="Review matches before applying"
       />
       <FormControlLabel
         control={
@@ -106,7 +106,7 @@ export default function SettingsPage() {
             onChange={(e) => setForm({ ...form, auto_apply: e.target.checked })}
           />
         }
-        label="Auto apply when approval is not required"
+        label="Apply automatically when review is off"
       />
       <FormControlLabel
         control={

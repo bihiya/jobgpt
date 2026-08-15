@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { applicationsApi, jobsApi } from '../../api';
 import PageShell from '../../components/common/PageShell';
-import LiveApplyTray, { type LiveApplication } from '../../components/digest/LiveApplyTray';
+import { type LiveApplication } from '../../components/digest/LiveApplyTray';
 import JobDetailDrawer, { type JobDetail } from '../../components/jobs/JobDetailDrawer';
 import { useRequireAuth } from '../../hooks/useRequireAuth';
 import { useToast } from '../../hooks/useToast';
@@ -81,7 +81,7 @@ function PipelinePage() {
     },
     onSuccess: (res) => {
       if (res.data?.queued) {
-        success('Queued — auto-apply started');
+        success('Applying…');
       } else {
         success('Stage updated');
       }
@@ -106,13 +106,20 @@ function PipelinePage() {
   const requestMove = useCallback(
     (job: PipeJob, from: PipelineColumnKey, to: PipelineColumnKey) => {
       if (from === to) return;
-      if (!requireAuth(to === 'queued' ? 'Sign in to queue auto-apply' : 'Sign in to move pipeline stages')) {
+      if (!requireAuth(to === 'queued' ? 'Sign in to apply' : 'Sign in to move pipeline stages')) {
         return;
       }
       move.mutate({ id: job.id, column: to, from });
     },
     [move, requireAuth],
   );
+
+  const applyFromDrawer = useMutation({
+    mutationFn: (id: string) => applicationsApi.create({ job_id: id }),
+    meta: { successMessage: 'Applying…', errorMessage: 'Could not apply' },
+    onSuccess: () => setDrawerJob(null),
+    onSettled: invalidate,
+  });
 
   const openJob = useCallback(
     async (id: string) => {
@@ -133,8 +140,7 @@ function PipelinePage() {
           Pipeline
         </Typography>
         <Typography color="text.secondary">
-          Fetched → Queued → Applied → Interview → Shortlisted. Drag a fetched job onto Queued to start
-          auto-applying.
+          Click Apply on a fetched job. Drag to change stages.
         </Typography>
       </Box>
 
@@ -198,12 +204,15 @@ function PipelinePage() {
                 <Chip size="small" color={accent} label={counts[col.key] ?? jobs.length} />
               </Stack>
               <Typography variant="caption" color="text.secondary" sx={{ mb: 1.25, display: 'block' }}>
-                {isOver ? (willAutoApply ? 'Drop to start auto-apply' : col.dropHint) : col.hint}
+                {isOver ? (willAutoApply ? 'Drop to apply' : col.dropHint) : col.hint}
               </Typography>
               <Stack spacing={1} sx={{ flex: 1 }}>
                 {jobs.map((job) => {
                   const live = liveByJob.get(job.id);
-                  const applying = job.status === 'applying' || ['pending', 'in_progress', 'retrying'].includes(live?.status || '');
+                  const applying =
+                    job.status === 'applying' ||
+                    ['pending', 'in_progress', 'retrying'].includes(live?.status || '');
+                  const latest = live?.session_steps?.[live.session_steps.length - 1];
                   return (
                     <Box
                       key={job.id}
@@ -249,13 +258,19 @@ function PipelinePage() {
                             {job.company}
                             {job.portal ? ` · ${job.portal}` : ''}
                           </Typography>
+                          {latest && col.key === 'queued' && (
+                            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                              {latest.label}
+                              {latest.detail ? ` — ${latest.detail}` : ''}
+                            </Typography>
+                          )}
                           <Stack direction="row" spacing={0.75} sx={{ mt: 0.75 }} alignItems="center" flexWrap="wrap" useFlexGap>
                             <Chip size="small" label={`${Math.round((job.match_score || 0) * 100)}%`} />
                             {applying && (
                               <Chip
                                 size="small"
                                 color="warning"
-                                label="Auto-applying"
+                                label="Applying"
                                 sx={{ animation: 'jp-pulse-soft 2.2s ease infinite' }}
                               />
                             )}
@@ -268,7 +283,21 @@ function PipelinePage() {
                                   requestMove(job, 'fetched', 'queued');
                                 }}
                               >
-                                Queue apply
+                                Apply
+                              </Button>
+                            )}
+                            {col.key === 'queued' && live && (
+                              <Button
+                                size="small"
+                                color="inherit"
+                                disabled={cancel.isPending && cancel.variables === live.id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!requireAuth('Sign in to cancel an apply')) return;
+                                  cancel.mutate(live.id);
+                                }}
+                              >
+                                Cancel
                               </Button>
                             )}
                           </Stack>
@@ -279,7 +308,7 @@ function PipelinePage() {
                 })}
                 {jobs.length === 0 && (
                   <Typography variant="body2" color="text.secondary">
-                    {col.key === 'queued' ? 'Drop a fetched job here to auto-apply' : 'Empty'}
+                    {col.key === 'queued' ? 'Apply a fetched job to start' : 'Empty'}
                   </Typography>
                 )}
               </Stack>
@@ -288,31 +317,16 @@ function PipelinePage() {
         })}
       </Box>
 
-      <Box>
-        <Typography variant="h6" sx={{ mb: 1 }}>
-          Live auto-apply
-        </Typography>
-        <LiveApplyTray
-          applications={(appsQ.data?.items || []).map((app: LiveApplication & { title?: string }) => {
-            const job = Object.values(columns)
-              .flat()
-              .find((item) => item.id === app.job_id);
-            return {
-              ...app,
-              title: job?.title,
-              company: job?.company,
-              portal: job?.portal,
-            };
-          })}
-          onCancel={(id) => {
-            if (!requireAuth('Sign in to cancel an apply')) return;
-            cancel.mutate(id);
-          }}
-          busyId={cancel.isPending ? cancel.variables || null : null}
-        />
-      </Box>
-
-      <JobDetailDrawer open={!!drawerJob} job={drawerJob} onClose={() => setDrawerJob(null)} />
+      <JobDetailDrawer
+        open={!!drawerJob}
+        job={drawerJob}
+        onClose={() => setDrawerJob(null)}
+        applyBusy={applyFromDrawer.isPending}
+        onApply={(id) => {
+          if (!requireAuth('Sign in to apply')) return;
+          applyFromDrawer.mutate(id);
+        }}
+      />
     </PageShell>
   );
 }

@@ -1,33 +1,33 @@
 export const PIPELINE_COLUMNS = [
   {
     key: 'fetched',
-    label: 'Fetched jobs',
-    hint: 'New matches land here. Drag onto Queued to auto-apply.',
-    dropHint: 'Drop to keep in fetched',
+    label: 'Fetched',
+    hint: 'New matches. Queue one to auto-apply.',
+    dropHint: 'Keep in fetched',
   },
   {
     key: 'queued',
-    label: 'Queued jobs',
-    hint: 'Drop a fetched job here to start auto-applying.',
-    dropHint: 'Drop to queue auto-apply',
+    label: 'Applying',
+    hint: 'Auto-apply runs here.',
+    dropHint: 'Drop to auto-apply',
   },
   {
     key: 'applied',
-    label: 'Applied jobs',
-    hint: 'Submitted applications.',
-    dropHint: 'Drop to mark applied',
+    label: 'Applied',
+    hint: 'Submitted.',
+    dropHint: 'Mark applied',
   },
   {
     key: 'interview',
     label: 'Interview',
-    hint: 'Recruiter / interview stage.',
-    dropHint: 'Drop to mark interview',
+    hint: 'Recruiter stage.',
+    dropHint: 'Mark interview',
   },
   {
     key: 'shortlisted',
     label: 'Shortlisted',
-    hint: 'Shortlist or offer.',
-    dropHint: 'Drop to shortlist',
+    hint: 'Offer / shortlist.',
+    dropHint: 'Shortlist',
   },
 ] as const;
 
