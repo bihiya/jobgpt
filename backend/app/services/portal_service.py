@@ -11,7 +11,7 @@ from app.models.enums import PortalStatus
 from app.models.portal import Portal, PortalCredentials
 from app.producers.events import publish_job_fetch
 from app.repository.portal_repository import PortalRepository
-from app.schemas.portal import PortalCreate, PortalResponse, PortalUpdate
+from app.schemas.portal import PortalCreate, PortalResponse, PortalUpdate, SessionIdentitySchema
 
 
 class PortalService:
@@ -46,10 +46,33 @@ class PortalService:
             getattr(portal, "credentials", None), "username", ""
         ):
             SessionVault().save_cookies(portal, cookies)
+            SessionVault.clear_identity(portal)
             return
         raise ValidationAppError(
             f"That paste is missing the {portal_name} login cookie "
             "(LinkedIn needs li_at)."
+        )
+
+    @staticmethod
+    def _identity_schema(portal: Portal) -> SessionIdentitySchema:
+        ident = getattr(portal, "session_identity", None)
+        if ident is None:
+            return SessionIdentitySchema()
+        data = ident.model_dump() if hasattr(ident, "model_dump") else dict(ident)
+        captured = data.get("captured_at")
+        if isinstance(captured, datetime):
+            captured_at = iso_utc(captured)
+        elif captured:
+            captured_at = str(captured)
+        else:
+            captured_at = None
+        return SessionIdentitySchema(
+            display_name=str(data.get("display_name") or "").strip(),
+            headline=str(data.get("headline") or "").strip(),
+            location=str(data.get("location") or "").strip(),
+            profile_url=str(data.get("profile_url") or "").strip(),
+            public_id=str(data.get("public_id") or "").strip(),
+            captured_at=captured_at,
         )
 
     def _to_response(self, portal: Portal) -> PortalResponse:
@@ -70,6 +93,7 @@ class PortalService:
             has_session=self._has_auth_session(portal),
             has_totp=bool(getattr(portal, "totp_secret_encrypted", "")),
             session_updated_at=iso_utc(getattr(portal, "session_updated_at", None)),
+            session_identity=self._identity_schema(portal),
             selector_version=int(getattr(portal, "selector_version", 1) or 1),
             health=PortalHealthSchema(**health),
         )

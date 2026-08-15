@@ -32,6 +32,17 @@ class PortalHealth(BaseModel):
     paused_reason: str = ""
 
 
+class PortalSessionIdentity(BaseModel):
+    """Who the saved portal session belongs to (scraped after a successful login)."""
+
+    display_name: str = ""
+    headline: str = ""
+    location: str = ""
+    profile_url: str = ""
+    public_id: str = ""
+    captured_at: datetime | None = None
+
+
 class Portal(Document):
     user_id: Annotated[str, Indexed()]
     name: PortalName
@@ -40,6 +51,7 @@ class Portal(Document):
     cookies: dict[str, Any] = Field(default_factory=dict)
     session_blob: str = ""  # Fernet-encrypted Playwright cookie list
     session_updated_at: datetime | None = None
+    session_identity: PortalSessionIdentity = Field(default_factory=PortalSessionIdentity)
     totp_secret: str = ""  # transient plaintext on write; cleared after vault encrypt
     totp_secret_encrypted: str = ""
     selector_version: int = 1

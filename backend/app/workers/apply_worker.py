@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from app.automation.portals.registry import get_portal_adapter
+from app.automation.session_identity import apply_identity_to_portal
 from app.core.kafka import publish
 from app.core.logging import get_logger
 from app.events.realtime import emit_realtime
@@ -216,9 +217,11 @@ class ApplyWorker(BaseWorker):
 
         result = await adapter.apply_with_retry(extracted, resume.file_path, answers)
 
-        # Persist refreshed session cookies
-        if portal_doc and result.cookies:
-            self.vault.save_cookies(portal_doc, result.cookies)
+        # Persist refreshed session cookies + who this session belongs to
+        if portal_doc:
+            apply_identity_to_portal(portal_doc, getattr(adapter, "session_identity", None))
+            if result.cookies:
+                self.vault.save_cookies(portal_doc, result.cookies)
             portal_doc.updated_at = datetime.utcnow()
             await portal_doc.save()
 

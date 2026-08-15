@@ -111,6 +111,7 @@ class LinkedInPortal(BasePortal):
                 selector_version=self.selector_version,
             )
             self.recorder.add("login", "Already logged in — session cookies accepted")
+            await self._remember_logged_in_account(page)
             return
         if await any_visible(page, pack.all("logged_in")):
             try:
@@ -120,6 +121,7 @@ class LinkedInPortal(BasePortal):
                     selector_version=self.selector_version,
                 )
                 self.recorder.add("login", "Already logged in — session cookies accepted")
+                await self._remember_logged_in_account(page)
                 return
             except PortalAuthError as exc:
                 # Stale / anonymous cookies looked logged-in; fall through to credential login.
@@ -328,6 +330,15 @@ class LinkedInPortal(BasePortal):
             )
             raise
         self.recorder.add("login", "LinkedIn login verified")
+        await self._remember_logged_in_account(page)
+
+    async def _remember_logged_in_account(self, page: BasePage) -> None:
+        from app.automation.session_identity import capture_linkedin_identity, format_identity_line
+
+        ident = await capture_linkedin_identity(page)
+        if ident.get("display_name") or ident.get("location"):
+            self.session_identity = ident
+        self.recorder.add("login", format_identity_line(ident or self.session_identity))
 
     async def search(self, page: BasePage, query: str, location: str = "") -> None:
         url = f"https://www.linkedin.com/jobs/search/?keywords={query}"
