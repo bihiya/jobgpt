@@ -23,6 +23,7 @@ var abbr = {
   cae: 'cae'
   ca: 'ca'
   job: 'job'
+  st: 'st'
 }
 
 var acrName = toLower('${abbr.acr}jobpilot${resourceSuffix}')
@@ -35,6 +36,8 @@ var webName = '${abbr.ca}-jobpilot-web-${resourceSuffix}'
 var fetchJobName = '${abbr.job}-jobpilot-fetch-${resourceSuffix}'
 var matchJobName = '${abbr.job}-jobpilot-match-${resourceSuffix}'
 var applyJobName = '${abbr.job}-jobpilot-apply-${resourceSuffix}'
+var storageName = toLower(take('${abbr.st}jobpilot${resourceSuffix}', 24))
+var blobContainerName = 'uploads'
 
 module logAnalytics 'modules/log-analytics.bicep' = {
   name: 'logAnalytics'
@@ -73,6 +76,16 @@ module keyVault 'modules/key-vault.bicep' = {
     mongodbUrl: mongodbUrl
     redisUrl: redisUrl
     secretKey: secretKey
+  }
+}
+
+module storage 'modules/storage-account.bicep' = {
+  name: 'storage'
+  params: {
+    name: storageName
+    location: location
+    tags: tags
+    containerName: blobContainerName
   }
 }
 
@@ -127,6 +140,8 @@ var sharedEnv = [
   { name: 'MONGODB_URL', secretRef: 'mongodb-url' }
   { name: 'REDIS_URL', secretRef: 'redis-url' }
   { name: 'SECRET_KEY', secretRef: 'secret-key' }
+  { name: 'AZURE_STORAGE_ACCOUNT', value: storage.outputs.name }
+  { name: 'AZURE_STORAGE_CONTAINER', value: storage.outputs.containerName }
 ]
 
 module api 'modules/container-app-api.bicep' = {
@@ -241,6 +256,38 @@ module kvAccessApi 'modules/key-vault-access.bicep' = {
   }
 }
 
+module blobApi 'modules/blob-data-role.bicep' = {
+  name: 'blobApi'
+  params: {
+    storageAccountName: storage.outputs.name
+    principalId: api.outputs.principalId
+  }
+}
+
+module blobFetch 'modules/blob-data-role.bicep' = {
+  name: 'blobFetch'
+  params: {
+    storageAccountName: storage.outputs.name
+    principalId: fetchJob.outputs.principalId
+  }
+}
+
+module blobMatch 'modules/blob-data-role.bicep' = {
+  name: 'blobMatch'
+  params: {
+    storageAccountName: storage.outputs.name
+    principalId: matchJob.outputs.principalId
+  }
+}
+
+module blobApply 'modules/blob-data-role.bicep' = {
+  name: 'blobApply'
+  params: {
+    storageAccountName: storage.outputs.name
+    principalId: applyJob.outputs.principalId
+  }
+}
+
 module startFetch 'modules/job-starter-role.bicep' = {
   name: 'startFetch'
   params: {
@@ -275,3 +322,5 @@ output fetchJobName string = fetchJob.outputs.name
 output matchJobName string = matchJob.outputs.name
 output applyJobName string = applyJob.outputs.name
 output appInsightsConnectionString string = appInsights.outputs.connectionString
+output storageAccountName string = storage.outputs.name
+output storageContainerName string = storage.outputs.containerName

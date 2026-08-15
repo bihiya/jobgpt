@@ -215,7 +215,13 @@ class ApplyWorker(BaseWorker):
             severity="info",
         )
 
-        result = await adapter.apply_with_retry(extracted, resume.file_path, answers)
+        result = None
+        resume_local = None
+        try:
+            resume_local = await self.storage.as_local_file(resume.file_path)
+            result = await adapter.apply_with_retry(extracted, resume_local, answers)
+        finally:
+            await self.storage.cleanup_temp(resume_local, original=resume.file_path)
 
         # Persist refreshed session cookies + who this session belongs to
         if portal_doc:
@@ -323,7 +329,9 @@ class ApplyWorker(BaseWorker):
         app.unknown_questions = list(result.unknown_questions or [])
         app.error_message = result.message or "Answer unknown questions to resume"
         if result.screenshot_path:
-            app.screenshot_path = result.screenshot_path
+            stored = await self._store_screenshot(app.user_id, result.screenshot_path)
+            app.screenshot_path = stored["path"]
+            app.screenshot_url = stored["url"]
         await app.save()
         job.status = JobStatus.APPLYING
         await job.save()
@@ -370,7 +378,9 @@ class ApplyWorker(BaseWorker):
         app.blocker_type = "otp"
         app.error_message = result.message or "Enter portal OTP to continue"
         if result.screenshot_path:
-            app.screenshot_path = result.screenshot_path
+            stored = await self._store_screenshot(app.user_id, result.screenshot_path)
+            app.screenshot_path = stored["path"]
+            app.screenshot_url = stored["url"]
         await app.save()
         job.status = JobStatus.APPLYING
         await job.save()
@@ -407,11 +417,26 @@ class ApplyWorker(BaseWorker):
             severity="warning",
         )
 
+    async def _store_screenshot(self, user_id: str, local_path: str) -> dict[str, str]:
+        if not local_path:
+            return {"path": "", "url": ""}
+        try:
+            return await self.storage.save_file(
+                local_path,
+                folder=f"screenshots/{user_id}",
+                content_type="image/png",
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("screenshot_store_failed", error=str(exc), path=local_path)
+            return {"path": local_path, "url": ""}
+
     async def _fail(self, app: Application, job, message: str, screenshot: str = "") -> None:
         app.status = ApplicationStatus.FAILED
         app.error_message = message
         if screenshot:
-            app.screenshot_path = screenshot
+            stored = await self._store_screenshot(app.user_id, screenshot)
+            app.screenshot_path = stored["path"]
+            app.screenshot_url = stored.get("url") or ""
         delay = min(2 ** app.attempts * 60, 3600)
         app.next_retry_at = datetime.utcnow() + timedelta(seconds=delay)
         app.updated_at = datetime.utcnow()

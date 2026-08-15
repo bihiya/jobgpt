@@ -1,15 +1,15 @@
 """Reports and analytics endpoints."""
 
-from pathlib import Path
+from io import BytesIO
 
 from fastapi import APIRouter, Depends, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import StreamingResponse
 
 from app.dependencies.auth import get_current_user
+from app.dependencies.services import get_report_service
 from app.models.user import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.report import AnalyticsResponse, ReportCreate, ReportResponse, WeeklyStoryResponse
-from app.dependencies.services import get_report_service
 from app.services.report_service import ReportService
 
 router = APIRouter(prefix="/reports", tags=["reports"])
@@ -56,5 +56,9 @@ async def download_report(
     user: User = Depends(get_current_user),
     service: ReportService = Depends(get_report_service),
 ):
-    path = await service.get_download_path(str(user.id), report_id)
-    return FileResponse(path, filename=Path(path).name)
+    data, filename = await service.get_download_bytes(str(user.id), report_id)
+    return StreamingResponse(
+        BytesIO(data),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

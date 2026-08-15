@@ -8,6 +8,11 @@ from beanie import Document
 from beanie.odm.operators.find.comparison import Eq, In
 from pydantic import BaseModel
 
+from app.core.logging import get_logger
+from app.db.mongodb import is_order_by_index_error, sort_documents
+
+logger = get_logger(__name__)
+
 T = TypeVar("T", bound=Document)
 
 
@@ -43,7 +48,25 @@ class BaseRepository(Generic[T]):
     ) -> list[T]:
         query = self.model.find(filters or {})
         if sort:
-            query = query.sort(sort)
+            try:
+                return await query.sort(sort).skip(skip).limit(limit).to_list()
+            except Exception as exc:  # noqa: BLE001
+                # Cosmos DB Mongo API rejects ORDER BY unless a composite index
+                # covers the filter + sort paths ("order-by item is excluded").
+                if not is_order_by_index_error(exc):
+                    raise
+                logger.warning(
+                    "mongo_sort_index_fallback",
+                    collection=getattr(
+                        getattr(self.model, "Settings", None),
+                        "name",
+                        self.model.__name__,
+                    ),
+                    error=str(exc)[:240],
+                )
+                items = await self.model.find(filters or {}).to_list()
+                items = sort_documents(items, sort)
+                return items[skip : skip + limit]
         return await query.skip(skip).limit(limit).to_list()
 
     async def count(self, filters: dict[str, Any] | None = None) -> int:

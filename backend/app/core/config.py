@@ -91,6 +91,11 @@ class Settings(BaseSettings):
     s3_endpoint_url: str = ""
     s3_public_base_url: str = ""
 
+    # Azure Blob Storage (managed identity in Container Apps)
+    azure_storage_account: str = ""
+    azure_storage_container: str = "uploads"
+    azure_storage_connection_string: str = ""
+
     # Captcha / 2FA
     captcha_provider: str = "noop"
     captcha_api_key: str = ""

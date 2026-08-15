@@ -90,10 +90,7 @@ export const usersApi = {
   me: () => api.get('/users/me'),
   update: (payload: Record<string, unknown>) => api.patch('/users/me', payload),
   resumes: () => api.get('/users/me/resumes'),
-  uploadResume: (form: FormData) =>
-    api.post('/users/me/resumes', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    }),
+  uploadResume: (form: FormData) => api.post('/users/me/resumes', form),
   activity: (params?: Record<string, unknown>) => api.get('/users/me/activity', { params }),
 };
 

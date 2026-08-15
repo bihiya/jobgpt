@@ -4,6 +4,7 @@ import { logout, setAccessToken, setCredentials } from '../store/slices/authSlic
 import { openLoginGate } from '../store/slices/uiSlice';
 import { toastFromStore } from '../hooks/useToast';
 import { resolveDemoData } from '../lib/demoData';
+import { dropFormDataContentType } from './formData';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
 
@@ -123,6 +124,7 @@ export async function restoreSession(): Promise<boolean> {
 }
 
 api.interceptors.request.use(async (config) => {
+  dropFormDataContentType(config);
   let token: string | null = store.getState().auth.accessToken;
   if (!token && !isAuthPublicPath(config.url || '')) {
     token = await ensureAccessToken();

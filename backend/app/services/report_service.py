@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 from datetime import datetime, timedelta
+from io import StringIO
 from math import ceil
 from pathlib import Path
 from uuid import uuid4
@@ -21,6 +22,7 @@ from app.schemas.common import PaginatedResponse
 from app.models.approval import Approval
 from app.models.enums import ApprovalStatus
 from app.schemas.report import AnalyticsResponse, ReportCreate, ReportResponse, WeeklyStoryResponse
+from app.services.storage_service import StorageService
 
 
 class ReportService:
@@ -33,6 +35,7 @@ class ReportService:
         self.reports = reports or ReportRepository()
         self.jobs = jobs or JobRepository()
         self.applications = applications or ApplicationRepository()
+        self.storage = StorageService()
 
     def _to_response(self, report: Report) -> ReportResponse:
         return ReportResponse(
@@ -76,18 +79,21 @@ class ReportService:
         return self._to_response(report)
 
     async def generate_csv(self, user_id: str, report: Report) -> Report:
-        root = Path(settings.report_dir) / user_id
-        root.mkdir(parents=True, exist_ok=True)
-        path = root / f"{report.id or uuid4().hex}.csv"
         apps, _ = await self.applications.list_for_user(user_id, page=1, page_size=1000)
-        with path.open("w", newline="", encoding="utf-8") as fh:
-            writer = csv.writer(fh)
-            writer.writerow(["application_id", "job_id", "status", "attempts", "created_at"])
-            for app in apps:
-                writer.writerow(
-                    [str(app.id), app.job_id, app.status.value, app.attempts, app.created_at.isoformat()]
-                )
-        report.file_path = str(path)
+        buffer = StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(["application_id", "job_id", "status", "attempts", "created_at"])
+        for app in apps:
+            writer.writerow(
+                [str(app.id), app.job_id, app.status.value, app.attempts, app.created_at.isoformat()]
+            )
+        stored = await self.storage.save_bytes(
+            buffer.getvalue().encode("utf-8"),
+            folder=f"reports/{user_id}",
+            filename=f"{report.id or uuid4().hex}.csv",
+            content_type="text/csv",
+        )
+        report.file_path = stored["path"]
         report.status = ReportStatus.READY
         await report.save()
         await emit_realtime(
@@ -107,6 +113,11 @@ class ReportService:
         if report.status != ReportStatus.READY or not report.file_path:
             raise NotFoundError("Report not ready")
         return report.file_path
+
+    async def get_download_bytes(self, user_id: str, report_id: str) -> tuple[bytes, str]:
+        path = await self.get_download_path(user_id, report_id)
+        data = await self.storage.read_bytes(path)
+        return data, Path(self.storage.key_from_path(path)).name
 
     async def analytics(self, user_id: str) -> AnalyticsResponse:
         # Hot data caching (cache aside + sliding TTL warm path)

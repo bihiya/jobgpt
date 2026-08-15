@@ -119,6 +119,7 @@ Automation logs should show `automation.azure_job` (not `playwright` missing).
 - Azure Container Registry (Basic)
 - Key Vault (secrets)
 - Log Analytics + Application Insights
+- **Azure Blob Storage** (`stjobpilot…`, private `uploads` container) for resumes, reports, and screenshots. API + Jobs use **managed identity** (`Storage Blob Data Contributor`). Set `AZURE_STORAGE_ACCOUNT` / `AZURE_STORAGE_CONTAINER`.
 
 Workers run:
 
