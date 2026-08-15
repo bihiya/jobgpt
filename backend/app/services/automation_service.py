@@ -11,6 +11,7 @@ from app.core.kafka import publish
 from app.core.logging import get_logger
 from app.core.times import iso_utc
 from app.events.realtime import emit_realtime
+from app.producers.events import can_use_worker_fallback
 from app.repository.report_repository import AutomationLogRepository
 from app.schemas.common import PaginatedResponse
 
@@ -210,13 +211,13 @@ class AutomationService:
             await publish(topic, {"user_id": user_id, "source": "manual"}, key=user_id)
         except ServiceUnavailableError as exc:
             # Prefer Azure Container Apps Jobs (pay-per-use), then local inline.
-            can_fallback = settings.app_env in {"development", "test"} or not settings.kafka_enabled
+            can_fallback = can_use_worker_fallback()
             if not can_fallback:
                 raise
 
-            from app.services.azure_jobs import azure_jobs_configured, start_container_app_job
+            from app.services.azure_jobs import azure_job_available, start_container_app_job
 
-            if azure_jobs_configured() and job_type in {"fetch", "match", "apply"}:
+            if azure_job_available(job_type):
                 mode = "azure-job"
                 warning = str(exc.message)
                 try:

@@ -161,7 +161,7 @@ function ApprovalsPage() {
                 decide.mutate({ id: params.row.id, approve: true });
               }}
             >
-              {decide.isPending ? '…' : 'Approve'}
+              {decide.isPending ? '…' : 'Apply'}
             </Button>
             <Button
               size="small"
@@ -197,7 +197,7 @@ function ApprovalsPage() {
         <div>
           <Typography variant="h4">Approvals</Typography>
           <Typography color="text.secondary">
-            Approve to apply. Batch Easy Apply with daily caps. Fix OTP / unknown questions here.
+            Apply a match, or answer OTP / questions that blocked an apply.
           </Typography>
         </div>
         <Button

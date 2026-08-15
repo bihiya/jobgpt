@@ -7,11 +7,11 @@ from uuid import uuid4
 from app.automation.errors import PortalAuthError
 from app.automation.portals.registry import get_portal_adapter
 from app.automation.session_recorder import compact_sync_steps
-from app.core.kafka import publish
 from app.core.logging import get_logger
 from app.events.realtime import emit_realtime
 from app.models.enums import JobStatus, PortalStatus
 from app.models.job import Job
+from app.producers.events import publish_job_fetch, publish_job_match
 from app.repository.portal_repository import PortalRepository
 from app.repository.user_repository import UserRepository
 from app.services.audit_service import audit_event
@@ -139,7 +139,7 @@ class FetchWorker(BaseWorker):
         if not user_id:
             users = await self.users.find_many(limit=100)
             for user in users:
-                await publish("job.fetch", {"user_id": str(user.id), "source": "fanout"}, key=str(user.id))
+                await publish_job_fetch(str(user.id), source="fanout")
             return
 
         try:
@@ -372,13 +372,8 @@ class FetchWorker(BaseWorker):
                     inserted += 1
                     total_inserted += 1
                     try:
-                        await publish(
-                            "job.match",
-                            {"user_id": user_id, "job_id": str(job.id)},
-                            key=user_id,
-                        )
+                        await publish_job_match(user_id, str(job.id), wait=True)
                     except Exception as pub_exc:  # noqa: BLE001
-                        # Kafka may be down in local/dev — match can be triggered manually.
                         logger.warning("match_publish_skipped", error=str(pub_exc))
                     await emit_realtime(
                         user_id,

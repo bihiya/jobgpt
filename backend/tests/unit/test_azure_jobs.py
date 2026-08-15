@@ -7,6 +7,7 @@ import pytest
 from app.core.exceptions import ServiceUnavailableError
 from app.services.azure_jobs import (
     _merge_env,
+    azure_job_available,
     azure_jobs_configured,
     start_container_app_job,
 )
@@ -27,7 +28,11 @@ def test_azure_jobs_configured_true_when_set():
         settings.azure_subscription_id = "sub"
         settings.azure_resource_group = "rg"
         settings.azure_job_fetch = "job-fetch"
+        settings.azure_job_apply = "job-apply"
         assert azure_jobs_configured() is True
+        assert azure_job_available("apply") is True
+        settings.azure_job_apply = ""
+        assert azure_job_available("apply") is False
 
 
 def test_merge_env_preserves_secret_refs_and_overrides():
@@ -116,6 +121,37 @@ async def test_start_container_app_job_posts_arm():
         assert env["MONGODB_URL"]["secretRef"] == "mongodb-url"
         assert env["JOB_USER_ID"]["value"] == "u1"
         assert env["JOB_PORTAL"]["value"] == "linkedin"
+
+
+@pytest.mark.asyncio
+async def test_start_apply_job_passes_application_id():
+    mock_client = _mock_client()
+
+    with (
+        patch("app.services.azure_jobs.settings") as settings,
+        patch("app.services.azure_jobs._access_token", new=AsyncMock(return_value="tok")),
+        patch("app.services.azure_jobs.httpx.AsyncClient", return_value=mock_client),
+    ):
+        settings.azure_jobs_enabled = True
+        settings.azure_subscription_id = "sub"
+        settings.azure_resource_group = "rg"
+        settings.azure_job_fetch = "job-fetch"
+        settings.azure_job_match = "job-match"
+        settings.azure_job_apply = "job-apply"
+
+        result = await start_container_app_job(
+            "apply",
+            user_id="u1",
+            job_id="j1",
+            application_id="a1",
+        )
+        assert result["job_name"] == "job-apply"
+        args, kwargs = mock_client.post.call_args
+        assert "jobs/job-apply/start" in args[0]
+        env = {item["name"]: item for item in kwargs["json"]["containers"][0]["env"]}
+        assert env["JOB_TYPE"]["value"] == "apply"
+        assert env["JOB_ID"]["value"] == "j1"
+        assert env["JOB_APPLICATION_ID"]["value"] == "a1"
 
 
 @pytest.mark.asyncio

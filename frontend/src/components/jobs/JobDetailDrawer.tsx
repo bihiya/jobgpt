@@ -1,5 +1,6 @@
 import {
   Box,
+  Button,
   Chip,
   Divider,
   Drawer,
@@ -39,10 +40,21 @@ export type JobDetail = {
   };
 };
 
+const APPLYABLE = new Set([
+  'new',
+  'matched',
+  'awaiting_approval',
+  'tracked',
+  'failed',
+  'approved',
+]);
+
 type Props = {
   open: boolean;
   job: JobDetail | null;
   onClose: () => void;
+  onApply?: (jobId: string) => void;
+  applyBusy?: boolean;
 };
 
 function ScoreBar({ label, value }: { label: string; value: number }) {
@@ -58,7 +70,7 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
   );
 }
 
-function JobDetailDrawerComponent({ open, job, onClose }: Props) {
+function JobDetailDrawerComponent({ open, job, onClose, onApply, applyBusy }: Props) {
   const breakdown = job?.match_breakdown;
   const reasons = useMemo(() => breakdown?.reasons || [], [breakdown]);
   const { data: activity } = useQuery({
@@ -66,6 +78,7 @@ function JobDetailDrawerComponent({ open, job, onClose }: Props) {
     queryFn: async () => (await activityApi.forJob(job!.id, { page_size: 50 })).data,
     enabled: open && !!job?.id,
   });
+  const canApply = Boolean(onApply && job && APPLYABLE.has(job.status));
 
   return (
     <Drawer anchor="right" open={open} onClose={onClose} PaperProps={{ sx: { width: { xs: '100%', sm: 440 } } }}>
@@ -82,6 +95,18 @@ function JobDetailDrawerComponent({ open, job, onClose }: Props) {
             <Chip label={job.status} size="small" color="primary" variant="outlined" />
             <Chip label={`${Math.round((job.match_score || 0) * 100)}% match`} size="small" color="success" />
           </Stack>
+
+          {canApply && (
+            <Button
+              variant="contained"
+              fullWidth
+              sx={{ mb: 2 }}
+              disabled={applyBusy}
+              onClick={() => onApply?.(job.id)}
+            >
+              Apply
+            </Button>
+          )}
 
           <Typography variant="h6" sx={{ mb: 1 }}>
             Why this score
@@ -122,15 +147,12 @@ function JobDetailDrawerComponent({ open, job, onClose }: Props) {
 
           <Divider sx={{ my: 2 }} />
           <Typography variant="h6" sx={{ mb: 1 }}>
-            Job audit log
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-            Full trail for this role — fetch, match, approval, apply, and outcomes.
+            Activity
           </Typography>
           <ActivityTimeline
             dense
             items={activity?.items || []}
-            emptyText="No audit events for this job yet."
+            emptyText="No activity for this job yet."
           />
         </Box>
       )}

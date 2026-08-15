@@ -1,10 +1,11 @@
 """One-shot Azure Container Apps Job entrypoint (no Kafka).
 
 Env:
-  JOB_TYPE      fetch | match | apply
-  JOB_USER_ID   required user id
-  JOB_ID        required for apply; optional for match (matches all NEW if omitted)
-  JOB_PORTAL    optional portal filter for fetch
+  JOB_TYPE            fetch | match | apply
+  JOB_USER_ID         required user id
+  JOB_ID              required for apply; optional for match (matches all NEW if omitted)
+  JOB_APPLICATION_ID  optional existing application for apply
+  JOB_PORTAL          optional portal filter for fetch
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ async def _run_once() -> None:
     job_type = (os.getenv("JOB_TYPE") or "").strip().lower()
     user_id = (os.getenv("JOB_USER_ID") or "").strip()
     job_id = (os.getenv("JOB_ID") or "").strip()
+    application_id = (os.getenv("JOB_APPLICATION_ID") or "").strip()
     portal = (os.getenv("JOB_PORTAL") or "").strip()
 
     if not job_type or not user_id:
@@ -52,7 +54,10 @@ async def _run_once() -> None:
             raise SystemExit("JOB_ID is required for apply jobs")
         from app.workers.apply_worker import ApplyWorker
 
-        await ApplyWorker().handle("job.apply", {"user_id": user_id, "job_id": job_id})
+        payload = {"user_id": user_id, "job_id": job_id, "source": "azure-job"}
+        if application_id:
+            payload["application_id"] = application_id
+        await ApplyWorker().handle("job.apply", payload)
     else:
         raise SystemExit(f"Unsupported JOB_TYPE: {job_type}")
 

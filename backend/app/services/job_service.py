@@ -7,10 +7,9 @@ from math import ceil
 from typing import TYPE_CHECKING
 
 from app.core.exceptions import NotFoundError, ValidationAppError
-from app.core.kafka import publish
 from app.models.enums import JobStatus
-from app.producers.events import publish_job_fetch
 from app.models.job import Job
+from app.producers.events import publish_job_fetch, publish_job_match
 from app.repository.job_repository import JobRepository
 from app.schemas.application import ApplicationCreate
 from app.schemas.common import PaginatedResponse
@@ -350,7 +349,7 @@ class JobService:
             }
         )
         await dedupe.remember(user_id, fingerprint)
-        await publish("job.match", {"user_id": user_id, "job_id": str(job.id)}, key=user_id)
+        await publish_job_match(user_id, str(job.id))
         from app.services.audit_service import audit_event
 
         await audit_event(

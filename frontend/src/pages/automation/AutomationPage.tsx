@@ -105,7 +105,7 @@ export default function AutomationPage() {
     <PageShell loading={loading} busy={runMutation.isPending} stagger={false}>
       <Typography variant="h4">Automation</Typography>
       <Typography color="text.secondary">
-        Total logs: {status?.total_logs ?? 0}. Trigger workers manually when needed.
+        Fetch new jobs, rematch, or build a report. Apply from Pipeline.
       </Typography>
 
       {!playwrightAvailable && playwrightMessage ? (
@@ -121,8 +121,8 @@ export default function AutomationPage() {
       )}
 
       <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-        {['fetch', 'match', 'apply', 'report'].map((job) => {
-          const needsBrowser = job === 'fetch' || job === 'apply';
+        {['fetch', 'match', 'report'].map((job) => {
+          const needsBrowser = job === 'fetch';
           const disabled = runMutation.isPending || (needsBrowser && !playwrightAvailable);
           return (
             <Button

@@ -6,11 +6,11 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from app.core.exceptions import NotFoundError
-from app.core.kafka import publish
 from app.dependencies.auth import get_current_user
 from app.models.application import Application
 from app.models.enums import ApplicationStatus
 from app.models.user import User
+from app.producers.events import publish_job_apply
 from app.schemas.common import MessageResponse
 from app.services.question_bank_service import QuestionBankService
 
@@ -81,16 +81,12 @@ async def answer_and_resume(payload: AnswerAndResume, user: User = Depends(get_c
     app.error_message = ""
     await app.save()
 
-    await publish(
-        "job.apply",
-        {
-            "user_id": str(user.id),
-            "job_id": app.job_id,
-            "application_id": str(app.id),
-            "resume_id": app.resume_id,
-            "resumed_from": "question_bank",
-        },
-        key=str(user.id),
+    await publish_job_apply(
+        str(user.id),
+        app.job_id,
+        application_id=str(app.id),
+        resume_id=app.resume_id,
+        resumed_from="question_bank",
     )
     return {
         "application_id": str(app.id),

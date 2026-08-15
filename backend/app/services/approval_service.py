@@ -6,13 +6,13 @@ from datetime import datetime, timedelta
 from math import ceil
 
 from app.core.exceptions import NotFoundError, RateLimitError
-from app.core.kafka import publish
 from app.core.times import iso_utc
 from app.events.realtime import emit_realtime
 from app.models.application import Application
 from app.models.approval import Approval
 from app.models.enums import ApplicationStatus, ApprovalStatus, JobStatus
 from app.models.job import Job
+from app.producers.events import publish_job_apply
 from app.repository.settings_repository import SettingsRepository
 from app.schemas.common import PaginatedResponse
 from app.services.apply_rate_limit import ApplyRateLimiter
@@ -225,15 +225,11 @@ class ApprovalService:
             if approve:
                 job.status = JobStatus.APPROVED
                 await job.save()
-                await publish(
-                    "job.apply",
-                    {
-                        "user_id": user_id,
-                        "job_id": str(job.id),
-                        "approval_id": str(approval.id),
-                        "auto": False,
-                    },
-                    key=user_id,
+                await publish_job_apply(
+                    user_id,
+                    str(job.id),
+                    approval_id=str(approval.id),
+                    auto=False,
                 )
             else:
                 job.status = JobStatus.REJECTED
