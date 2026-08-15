@@ -319,8 +319,7 @@ class ApplyWorker(BaseWorker):
         else:
             if portal_doc:
                 await self.health.record_failure(portal_doc, result.message)
-            app.fail_proof_html = (result.fail_proof_html or "")[:120_000]
-            app.fail_proof_path = result.fail_proof_path or ""
+            await self._store_fail_proof(app, result)
             await self._fail(app, job, result.message, screenshot=result.screenshot_path)
 
     async def _pause_for_input(self, app: Application, job, result) -> None:
@@ -332,6 +331,7 @@ class ApplyWorker(BaseWorker):
             stored = await self._store_screenshot(app.user_id, result.screenshot_path)
             app.screenshot_path = stored["path"]
             app.screenshot_url = stored["url"]
+        await self._store_fail_proof(app, result)
         await app.save()
         job.status = JobStatus.APPLYING
         await job.save()
@@ -381,6 +381,7 @@ class ApplyWorker(BaseWorker):
             stored = await self._store_screenshot(app.user_id, result.screenshot_path)
             app.screenshot_path = stored["path"]
             app.screenshot_url = stored["url"]
+        await self._store_fail_proof(app, result)
         await app.save()
         job.status = JobStatus.APPLYING
         await job.save()
@@ -428,7 +429,31 @@ class ApplyWorker(BaseWorker):
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("screenshot_store_failed", error=str(exc), path=local_path)
+            if self.storage.use_blob or self.storage.use_s3:
+                raise
             return {"path": local_path, "url": ""}
+
+    async def _store_fail_proof(self, app: Application, result) -> None:
+        html = (getattr(result, "fail_proof_html", None) or "")[:120_000]
+        if html:
+            app.fail_proof_html = html
+            stored = await self.storage.save_bytes(
+                html.encode("utf-8"),
+                folder=f"proofs/{app.user_id}",
+                filename=f"{app.id}.html",
+                content_type="text/html; charset=utf-8",
+            )
+            app.fail_proof_path = stored["path"]
+            return
+        local_path = getattr(result, "fail_proof_path", "") or ""
+        if not local_path:
+            return
+        stored = await self.storage.save_file(
+            local_path,
+            folder=f"proofs/{app.user_id}",
+            content_type="text/html; charset=utf-8",
+        )
+        app.fail_proof_path = stored["path"]
 
     async def _fail(self, app: Application, job, message: str, screenshot: str = "") -> None:
         app.status = ApplicationStatus.FAILED

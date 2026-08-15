@@ -104,6 +104,9 @@ var sharedSecrets = [
   { name: 'mongodb-url', value: mongodbUrl }
   { name: 'redis-url', value: redisUrl }
   { name: 'secret-key', value: secretKey }
+  // Connection string is the live auth path: the GitHub OIDC principal cannot
+  // assign Storage Blob Data Contributor, so managed identity alone is not enough.
+  { name: 'azure-storage-connection-string', value: storage.outputs.connectionString }
 ]
 
 module web 'modules/container-app-web.bicep' = {
@@ -142,6 +145,7 @@ var sharedEnv = [
   { name: 'SECRET_KEY', secretRef: 'secret-key' }
   { name: 'AZURE_STORAGE_ACCOUNT', value: storage.outputs.name }
   { name: 'AZURE_STORAGE_CONTAINER', value: storage.outputs.containerName }
+  { name: 'AZURE_STORAGE_CONNECTION_STRING', secretRef: 'azure-storage-connection-string' }
 ]
 
 module api 'modules/container-app-api.bicep' = {

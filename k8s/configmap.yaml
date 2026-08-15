@@ -10,6 +10,8 @@ data:
   LOG_LEVEL: INFO
   PLAYWRIGHT_HEADLESS: "true"
   PROMETHEUS_ENABLED: "true"
+  AZURE_STORAGE_ACCOUNT: ""
+  AZURE_STORAGE_CONTAINER: uploads
 ---
 apiVersion: v1
 kind: Secret
@@ -22,3 +24,4 @@ stringData:
   MONGODB_URL: mongodb://mongodb:27017
   REDIS_URL: redis://redis:6379/0
   KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  AZURE_STORAGE_CONNECTION_STRING: ""
