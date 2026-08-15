@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import uuid4
 
-from app.core.exceptions import ConflictError, NotFoundError
+from app.core.exceptions import ConflictError, NotFoundError, ValidationAppError
 from app.core.times import iso_utc
 from app.models.enums import PortalStatus
 from app.models.portal import Portal, PortalCredentials
@@ -24,6 +24,33 @@ class PortalService:
         from app.services.session_vault import portal_has_auth_session
 
         return portal_has_auth_session(portal)
+
+    @staticmethod
+    def _save_pasted_cookies(portal: Portal, cookies_raw: object) -> None:
+        """Persist a cookie paste, or raise if the user sent text we cannot read."""
+        from app.services.session_vault import SessionVault, has_auth_cookies, parse_cookie_paste
+
+        portal_name = str(getattr(portal.name, "value", portal.name))
+        if cookies_raw is None or cookies_raw == "" or cookies_raw == {} or cookies_raw == []:
+            return
+        cookies = parse_cookie_paste(cookies_raw, portal=portal_name)
+        if not cookies:
+            if isinstance(cookies_raw, str) and cookies_raw.strip():
+                raise ValidationAppError(
+                    "Could not read that session cookie. Paste the li_at value from "
+                    "Chrome → F12 → Application → Cookies → linkedin.com "
+                    "(or li_at=… / Cookie-Editor JSON)."
+                )
+            return
+        if has_auth_cookies(portal_name, cookies) or not getattr(
+            getattr(portal, "credentials", None), "username", ""
+        ):
+            SessionVault().save_cookies(portal, cookies)
+            return
+        raise ValidationAppError(
+            f"That paste is missing the {portal_name} login cookie "
+            "(LinkedIn needs li_at)."
+        )
 
     def _to_response(self, portal: Portal) -> PortalResponse:
         from app.schemas.portal import PortalHealthSchema
@@ -55,7 +82,7 @@ class PortalService:
         existing = await self.portals.get_by_name(user_id, payload.name)
         if existing:
             raise ConflictError("Portal already connected")
-        from app.services.session_vault import SessionVault, parse_cookie_paste
+        from app.services.session_vault import SessionVault
 
         vault = SessionVault()
         portal = await self.portals.create(
@@ -70,14 +97,7 @@ class PortalService:
                 "status": PortalStatus.CONNECTED,
             }
         )
-        name = getattr(payload.name, "value", payload.name)
-        cookies = parse_cookie_paste(payload.cookies, portal=str(name))
-        if cookies:
-            # Only persist cookies that prove auth for portals that require it.
-            from app.services.session_vault import has_auth_cookies
-
-            if has_auth_cookies(str(name), cookies) or not portal.credentials.username:
-                vault.save_cookies(portal, cookies)
+        self._save_pasted_cookies(portal, payload.cookies)
         if payload.totp_secret:
             vault.save_totp_secret(portal, payload.totp_secret)
         await portal.save()
@@ -115,7 +135,7 @@ class PortalService:
 
     async def update(self, user_id: str, portal_id: str, payload: PortalUpdate) -> PortalResponse:
         portal = await self._owned(user_id, portal_id)
-        from app.services.session_vault import SessionVault, parse_cookie_paste
+        from app.services.session_vault import SessionVault
 
         vault = SessionVault()
         data = payload.model_dump(exclude_unset=True)
@@ -136,12 +156,11 @@ class PortalService:
             )
 
         portal = await self.portals.update(portal, data)
-        if creds_changed:
+        if creds_changed and cookies_raw is None:
             # Stale cookies would skip a fresh login with the new email/password.
             vault.clear_session(portal)
         if cookies_raw is not None:
-            portal_name = getattr(portal.name, "value", portal.name)
-            vault.save_cookies(portal, parse_cookie_paste(cookies_raw, portal=str(portal_name)))
+            self._save_pasted_cookies(portal, cookies_raw)
         if totp is not None:
             vault.save_totp_secret(portal, totp)
         await portal.save()
@@ -160,6 +179,11 @@ class PortalService:
         # Mark in-progress only — last_sync_at is written by FetchWorker on success.
         portal.sync_started_at = datetime.utcnow()
         portal.updated_at = datetime.utcnow()
+        # Drop the previous login-failed chip so a new run is not confused with the last one.
+        if getattr(portal, "health", None):
+            portal.health.last_error = ""
+        if portal.status == PortalStatus.ERROR:
+            portal.status = PortalStatus.CONNECTED
         await portal.save()
         from app.services.automation_log_service import write_automation_log
 

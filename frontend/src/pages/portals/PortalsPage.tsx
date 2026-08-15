@@ -103,7 +103,9 @@ function loginState(portal: PortalRow): {
         lastError ||
         (checkpoint
           ? 'LinkedIn captcha — sign in on your laptop, then paste the li_at cookie (Save & sync)'
-          : 'Last sync failed — check email/password or security checks'),
+          : portal.name === 'linkedin'
+            ? 'Paste a fresh li_at cookie (Paste session). Cloud email/password login does not work.'
+            : 'Last sync failed — check email/password or security checks'),
     };
   }
   if (portal.has_session) {
@@ -248,7 +250,7 @@ export default function PortalsPage() {
       portalsApi.create({
         name,
         credentials: { username, password },
-        ...(parsedCookies.length ? { cookies: parsedCookies } : {}),
+        ...(sessionPaste.trim() ? { cookies: sessionPaste.trim() } : {}),
       }),
     meta: { successMessage: 'Portal connected', errorMessage: 'Could not connect portal' },
     onSuccess: () => {
@@ -261,7 +263,7 @@ export default function PortalsPage() {
     mutationFn: ({ id, user, pass }: { id: string; user: string; pass: string }) =>
       portalsApi.update(id, {
         credentials: { username: user, password: pass },
-        ...(parsedCookies.length ? { cookies: parsedCookies } : {}),
+        ...(sessionPaste.trim() ? { cookies: sessionPaste.trim() } : {}),
       }),
     meta: { successMessage: 'Credentials saved', errorMessage: 'Could not save credentials' },
     onSuccess: () => {
@@ -290,7 +292,7 @@ export default function PortalsPage() {
     mutationFn: ({ id, user, pass }: { id: string; user: string; pass: string }) =>
       portalsApi.reauth(id, {
         credentials: { username: user, password: pass },
-        ...(parsedCookies.length ? { cookies: parsedCookies } : {}),
+        ...(sessionPaste.trim() ? { cookies: sessionPaste.trim() } : {}),
       }),
     meta: { successMessage: 'Saved — sync started', errorMessage: 'Re-auth failed' },
     onMutate: ({ id }) => {
@@ -326,6 +328,10 @@ export default function PortalsPage() {
   });
 
   const startSync = (portal: PortalRow) => {
+    if (portal.name === 'linkedin' && !portal.has_session) {
+      openReauth(portal);
+      return;
+    }
     const syncId = newSyncId();
     pinLive(portal, syncId);
     if (!isAuthenticated) {
@@ -344,11 +350,14 @@ export default function PortalsPage() {
   const saveNeedsPassword =
     !cookieReady &&
     (dialog?.mode === 'connect' || (dialog?.mode === 'reauth' && !editingPortal?.has_password));
-  const canSubmit = cookieReady || (
-    Boolean(username.trim()) &&
-    (saveNeedsPassword ? Boolean(password) : true) &&
-    (dialog?.mode !== 'connect' || Boolean(password))
-  );
+  const linkedinNeedsCookie = dialogPortalName === 'linkedin';
+  const canSubmit = linkedinNeedsCookie
+    ? cookieReady
+    : cookieReady || (
+      Boolean(username.trim()) &&
+      (saveNeedsPassword ? Boolean(password) : true) &&
+      (dialog?.mode !== 'connect' || Boolean(password))
+    );
 
   return (
     <PageShell loading={isLoading} busy={dialogBusy || clearMutation.isPending} stagger={false}>
@@ -361,7 +370,7 @@ export default function PortalsPage() {
         <Stack spacing={0.25}>
           <Typography variant="h4">Job portals</Typography>
           <Typography color="text.secondary" variant="body2">
-            Press Sync — this page opens that run and streams every step into it.
+            For LinkedIn, paste li_at (Paste session) — then this page streams every sync step.
           </Typography>
         </Stack>
         <Button variant="contained" onClick={openConnect}>
@@ -428,7 +437,7 @@ export default function PortalsPage() {
                   disabled={syncing || syncMutation.isPending}
                   onClick={() => startSync(portal)}
                 >
-                  {syncing ? 'Syncing…' : 'Sync'}
+                  {syncing ? 'Syncing…' : portal.name === 'linkedin' && !portal.has_session ? 'Paste session' : 'Sync'}
                 </Button>
                 <IconButton
                   size="small"
@@ -463,7 +472,7 @@ export default function PortalsPage() {
             <MenuItem onClick={() => openEdit(menu.portal)}>
               <EditOutlined fontSize="small" sx={{ mr: 1 }} /> Edit credentials
             </MenuItem>
-            <MenuItem onClick={() => openReauth(menu.portal)}>Save & sync</MenuItem>
+            <MenuItem onClick={() => openReauth(menu.portal)}>Paste session / Save & sync</MenuItem>
             <MenuItem
               disabled={!menu.portal.has_credentials && !menu.portal.has_password}
               onClick={() => {
@@ -553,7 +562,11 @@ export default function PortalsPage() {
               helperText={
                 cookieReady
                   ? 'Session cookie detected — cloud will reuse this login'
-                  : 'Optional if you only want email/password (LinkedIn cloud login usually fails captcha)'
+                  : sessionPaste.trim()
+                    ? 'Could not read that paste. Copy the li_at value only, or li_at=… / Cookie-Editor JSON'
+                    : dialogPortalName === 'linkedin'
+                      ? 'Required for LinkedIn. Cloud email/password hits a captcha — paste li_at instead'
+                      : 'Optional if you only want email/password'
               }
             />
           </Stack>

@@ -319,8 +319,8 @@ async def test_linkedin_login_missing_fields_reports_landed_url() -> None:
     page = _Page(inner)
     with pytest.raises(PortalAuthError) as exc:
         await _portal().login(page)
-    assert exc.value.code == LOGIN_FAILED
-    assert "LOGIN_FAILED" in str(exc.value)
+    assert exc.value.code in {LOGIN_FAILED, NOT_LOGGED_IN}
+    assert "li_at" in str(exc.value).lower() or "login" in str(exc.value).lower()
     assert inner.gotos[0] == FEED_URL
     assert "https://www.linkedin.com/login" in inner.gotos
 

@@ -266,10 +266,18 @@ class FetchWorker(BaseWorker):
                 continue
 
             vault = SessionVault()
+            session_cookies = vault.load_cookies(portal)
+            logger.info(
+                "portal_session_loaded",
+                portal=portal.name.value,
+                cookie_count=len(session_cookies),
+                cookie_names=[c.get("name") for c in session_cookies if isinstance(c, dict)][:12],
+                has_auth=has_auth_cookies(portal.name.value, session_cookies),
+            )
             adapter = get_portal_adapter(
                 portal.name,
                 credentials=portal.credentials.model_dump(),
-                cookies=vault.load_cookies(portal),
+                cookies=session_cookies,
                 proxy=portal.proxy.model_dump() if portal.proxy.server else None,
                 totp_secret=vault.load_totp_secret(portal),
                 selector_version=getattr(portal, "selector_version", 1) or 1,
@@ -289,6 +297,14 @@ class FetchWorker(BaseWorker):
                 correlation_id=correlation_id,
             )
             try:
+                if portal.name.value == "linkedin" and not has_auth_cookies(
+                    portal.name.value, session_cookies
+                ):
+                    raise PortalAuthError(
+                        "No LinkedIn session cookie saved. Open Job portals → Paste session "
+                        "and paste li_at from Chrome → F12 → Application → Cookies.",
+                        code="NOT_LOGGED_IN",
+                    )
                 extracted = await adapter.fetch_jobs(query, location)
                 await self._log_recorder_steps(user_id, portal.name.value, adapter, correlation_id)
 

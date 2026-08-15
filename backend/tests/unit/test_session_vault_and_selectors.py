@@ -31,7 +31,22 @@ def test_parse_cookie_paste_accepts_header_json_and_bare_token():
     assert listed[0]["value"] == "abc"
     bare = parse_cookie_paste("AQED" + "x" * 24, portal="linkedin")
     assert bare[0]["name"] == "li_at"
+    wrapped = parse_cookie_paste("AQED" + "x" * 12 + "\n" + "y" * 12, portal="linkedin")
+    assert wrapped[0]["name"] == "li_at"
+    assert wrapped[0]["value"] == "AQED" + "x" * 12 + "y" * 12
+    labeled = parse_cookie_paste("li_at\n" + "AQED" + "z" * 24, portal="linkedin")
+    assert labeled[0]["value"].startswith("AQED")
+    padded = parse_cookie_paste("AQED" + "x" * 24 + "==", portal="linkedin")
+    assert padded[0]["name"] == "li_at"
+    assert padded[0]["value"].endswith("==")
+    tsv = parse_cookie_paste("li_at\t" + "AQED" + "t" * 24 + "\t.linkedin.com\t/", portal="linkedin")
+    assert tsv[0]["name"] == "li_at"
+    assert tsv[0]["value"] == "AQED" + "t" * 24
+    named = parse_cookie_paste("Name: li_at\nValue: " + "AQED" + "n" * 24, portal="linkedin")
+    assert named[0]["value"] == "AQED" + "n" * 24
     assert parse_cookie_paste("") == []
+    assert parse_cookie_paste("not-a-cookie") == []
+    assert parse_cookie_paste("Login failed selectors missed") == []
 
 
 def test_vault_roundtrip():
