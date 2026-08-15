@@ -133,6 +133,11 @@ class _InnerPage:
     async def goto(self, url: str, **_kwargs: object) -> None:
         self.gotos.append(url)
         if "linkedin.com/feed" in url:
+            if getattr(self, "session_ok", False):
+                self.url = FEED_URL
+                self._title = "Feed | LinkedIn"
+                self.visible.update({"#global-nav", "button:has-text('Start a post')"})
+                return
             self.url = UAS_LOGIN
             return
         self.url = url
@@ -396,3 +401,15 @@ async def test_linkedin_skips_password_when_stale_li_at_present() -> None:
     assert exc.value.code == NOT_LOGGED_IN
     assert "li_at" in str(exc.value).lower()
     assert inner.filled == {}
+
+
+@pytest.mark.asyncio
+async def test_linkedin_accepts_li_at_on_feed_without_password() -> None:
+    inner = _InnerPage(FEED_URL)
+    inner.session_ok = True
+    inner.cookies = [{"name": "li_at", "value": "live"}]
+    page = _Page(inner)
+    await LinkedInPortal(credentials={}).login(page)
+    assert inner.gotos == [FEED_URL]
+    assert inner.filled == {}
+    assert inner.url == FEED_URL

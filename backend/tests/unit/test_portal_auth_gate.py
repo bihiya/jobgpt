@@ -34,6 +34,7 @@ def test_indeed_requires_account_cookies():
 def test_logged_in_selectors_are_tight():
     li = get_selector_pack("linkedin")
     assert "a[href*='/feed']" not in li.all("logged_in")
+    assert "Start a post" in " ".join(li.all("logged_in"))
     assert li.all("login_error")
     assert li.all("checkpoint")
     assert li.all("captcha")
