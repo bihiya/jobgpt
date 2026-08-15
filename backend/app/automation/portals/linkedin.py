@@ -35,6 +35,13 @@ class LinkedInPortal(BasePortal):
         return get_selector_pack(self.name, self.selector_version)
 
     @staticmethod
+    async def _page_cookies(page: BasePage) -> list:
+        try:
+            return await page.page.context.cookies()
+        except Exception:  # noqa: BLE001
+            return []
+
+    @staticmethod
     def _is_login_url(url: str) -> bool:
         hay = (url or "").lower()
         return any(
@@ -94,6 +101,17 @@ class LinkedInPortal(BasePortal):
         await pause(page, 700, 1600)
         snap = await describe_page(page)
         self.recorder.add("login", "Opened LinkedIn (checking existing session)", detail=snap.get("url", ""))
+        injected = await self._page_cookies(page)
+        on_login = self._is_login_url(snap.get("url", "") or page.page.url or "")
+        # li_at + /feed is enough even when 2026 nav class names change.
+        if has_auth_cookies(self.name, injected) and not on_login:
+            await ensure_logged_in(
+                page,
+                portal=self.name,
+                selector_version=self.selector_version,
+            )
+            self.recorder.add("login", "Already logged in — session cookies accepted")
+            return
         if await any_visible(page, pack.all("logged_in")):
             try:
                 await ensure_logged_in(
@@ -133,12 +151,12 @@ class LinkedInPortal(BasePortal):
             await page.goto("https://www.linkedin.com/login")
             login_field = await self._wait_for_login_fields(page, timeout=12000)
 
-        injected: list = []
-        try:
-            injected = await page.page.context.cookies()
-        except Exception:  # noqa: BLE001
-            injected = []
-        if has_auth_cookies(self.name, injected) and not await any_visible(page, pack.all("logged_in")):
+        injected = await self._page_cookies(page)
+        if (
+            has_auth_cookies(self.name, injected)
+            and self._is_login_url(page.page.url or "")
+            and not await any_visible(page, pack.all("logged_in"))
+        ):
             self.recorder.add(
                 "login",
                 "Saved li_at was rejected — paste a fresh session cookie from your laptop",

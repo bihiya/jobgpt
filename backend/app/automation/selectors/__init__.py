@@ -73,6 +73,12 @@ LINKEDIN_V1 = SelectorPack(
             ".global-nav__me",
             "button.global-nav__primary-link-me-menu-trigger",
             "[data-global-nav-link='me']",
+            "#global-nav",
+            "nav.global-nav",
+            ".feed-identity-module",
+            "button:has-text('Start a post')",
+            "a[href*='/mynetwork/']",
+            "a[href*='/notifications/?']",
         ],
         "login_error": [
             "#error-for-password",
