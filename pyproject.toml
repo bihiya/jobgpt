@@ -29,7 +29,8 @@ dependencies = [
   "tenacity>=9.0.0",
   "python-dotenv>=1.0.1",
   "aiosmtplib>=3.0.2",
-  "pyotp>=2.9.0",
+  "azure-identity>=1.19.0",
+  "azure-storage-blob>=12.24.0",
 ]
 
 # Vercel discovers FastAPI under backend/app/main.py (not a default root entrypoint).

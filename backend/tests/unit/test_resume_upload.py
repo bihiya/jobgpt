@@ -10,10 +10,7 @@ from app.services.user_service import UserService
 
 
 @pytest.mark.asyncio
-async def test_upload_resume_sets_default_without_sorted_list(tmp_path, monkeypatch):
-    from app.core.config import settings
-
-    monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
+async def test_upload_resume_sets_default_without_sorted_list():
     created = SimpleNamespace(
         id="r1",
         name="cv.pdf",
@@ -27,7 +24,16 @@ async def test_upload_resume_sets_default_without_sorted_list(tmp_path, monkeypa
         bulk_update=AsyncMock(return_value=1),
         create=AsyncMock(return_value=created),
     )
-    service = UserService(users=SimpleNamespace(), resumes=resumes)
+    storage = SimpleNamespace(
+        save_bytes=AsyncMock(
+            return_value={
+                "path": "blob://resumes/u1/cv.pdf",
+                "url": "https://blob/cv.pdf",
+                "backend": "azure-blob",
+            }
+        )
+    )
+    service = UserService(users=SimpleNamespace(), resumes=resumes, storage=storage)
     upload = MagicMock()
     upload.filename = "cv.pdf"
     upload.read = AsyncMock(return_value=b"%PDF-1.4")
@@ -43,15 +49,12 @@ async def test_upload_resume_sets_default_without_sorted_list(tmp_path, monkeypa
     payload = resumes.create.await_args.args[0]
     assert payload["is_default"] is True
     assert payload["file_type"] == "pdf"
+    assert payload["file_path"] == "blob://resumes/u1/cv.pdf"
     assert result is created
-    assert (tmp_path / "u1").is_dir()
 
 
 @pytest.mark.asyncio
-async def test_first_resume_becomes_default(tmp_path, monkeypatch):
-    from app.core.config import settings
-
-    monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
+async def test_first_resume_becomes_default():
     created = SimpleNamespace(
         id="r2",
         name="cv.pdf",
@@ -64,7 +67,16 @@ async def test_first_resume_becomes_default(tmp_path, monkeypatch):
         bulk_update=AsyncMock(return_value=0),
         create=AsyncMock(return_value=created),
     )
-    service = UserService(users=SimpleNamespace(), resumes=resumes)
+    storage = SimpleNamespace(
+        save_bytes=AsyncMock(
+            return_value={
+                "path": "blob://resumes/u1/cv.pdf",
+                "url": "https://blob/cv.pdf",
+                "backend": "azure-blob",
+            }
+        )
+    )
+    service = UserService(users=SimpleNamespace(), resumes=resumes, storage=storage)
     upload = MagicMock()
     upload.filename = "cv.pdf"
     upload.read = AsyncMock(return_value=b"%PDF-1.4")
@@ -75,3 +87,4 @@ async def test_first_resume_becomes_default(tmp_path, monkeypatch):
     resumes.bulk_update.assert_not_awaited()
     payload = resumes.create.await_args.args[0]
     assert payload["is_default"] is True
+    storage.save_bytes.assert_awaited_once()

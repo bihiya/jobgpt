@@ -2,21 +2,29 @@
 
 from __future__ import annotations
 
-import os
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
-import aiofiles
 from fastapi import UploadFile
 
-from app.core.config import settings
 from app.core.exceptions import NotFoundError
 from app.models.resume import Resume
 from app.models.user import User
 from app.repository.resume_repository import ResumeRepository
 from app.repository.user_repository import UserRepository
 from app.schemas.user import UserUpdateRequest
+from app.services.storage_service import StorageService
+
+_RESUME_TYPES = {
+    ".pdf": "application/pdf",
+    ".doc": "application/msword",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
+
+
+def _resume_content_type(ext: str) -> str:
+    return _RESUME_TYPES.get(ext.lower(), "application/octet-stream")
 
 
 class UserService:
@@ -24,9 +32,11 @@ class UserService:
         self,
         users: UserRepository | None = None,
         resumes: ResumeRepository | None = None,
+        storage: StorageService | None = None,
     ) -> None:
         self.users = users or UserRepository()
         self.resumes = resumes or ResumeRepository()
+        self.storage = storage or StorageService()
 
     async def get_profile(self, user_id: str) -> User:
         user = await self.users.get_by_id(user_id)
@@ -84,15 +94,15 @@ class UserService:
         name: str | None = None,
         is_default: bool = False,
     ) -> Resume:
-        upload_root = Path(settings.upload_dir) / user_id
-        upload_root.mkdir(parents=True, exist_ok=True)
         ext = Path(file.filename or "resume.pdf").suffix.lower() or ".pdf"
         filename = f"{uuid4().hex}{ext}"
-        path = upload_root / filename
-
-        async with aiofiles.open(path, "wb") as out:
-            content = await file.read()
-            await out.write(content)
+        content = await file.read()
+        stored = await self.storage.save_bytes(
+            content,
+            folder=f"resumes/{user_id}",
+            filename=filename,
+            content_type=_resume_content_type(ext),
+        )
 
         if is_default:
             await self.resumes.bulk_update(
@@ -104,7 +114,7 @@ class UserService:
             {
                 "user_id": user_id,
                 "name": name or file.filename or filename,
-                "file_path": str(path),
+                "file_path": stored["path"],
                 "file_type": ext.lstrip("."),
                 "is_default": is_default or existing_count == 0,
             }
@@ -129,8 +139,7 @@ class UserService:
         resume = await self.resumes.get_by_id(resume_id)
         if not resume or resume.user_id != user_id:
             raise NotFoundError("Resume not found")
-        if resume.file_path and os.path.exists(resume.file_path):
-            os.remove(resume.file_path)
+        await self.storage.delete(resume.file_path)
         await self.resumes.delete(resume)
         from app.services.audit_service import audit_event
 
