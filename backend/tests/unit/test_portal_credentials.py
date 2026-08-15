@@ -74,6 +74,52 @@ def test_response_shows_username_not_password():
     assert "super-secret" not in str(dumped)
     assert resp.correlation_id == ""
     assert resp.model_copy(update={"correlation_id": "sync-1"}).correlation_id == "sync-1"
+    assert resp.session_identity.display_name == ""
+    assert resp.session_identity.location == ""
+
+
+def test_response_includes_session_identity():
+    from datetime import datetime
+
+    from app.models.enums import PortalName, PortalStatus
+    from app.models.portal import PortalSessionIdentity
+    from app.services.portal_service import PortalService
+    from app.services.session_vault import encrypt_blob, normalize_cookies
+
+    portal = SimpleNamespace(
+        id="p1",
+        name=PortalName.LINKEDIN,
+        status=PortalStatus.CONNECTED,
+        last_sync_at=None,
+        sync_started_at=None,
+        created_at=datetime(2026, 8, 14, 8, 0, 0),
+        updated_at=datetime(2026, 8, 14, 8, 0, 0),
+        credentials=SimpleNamespace(username="", password=""),
+        cookies={
+            "cookies": normalize_cookies(
+                [{"name": "li_at", "value": "tok", "domain": ".linkedin.com"}]
+            )
+        },
+        session_blob="",
+        totp_secret_encrypted="",
+        session_updated_at=datetime(2026, 8, 15, 5, 0, 0),
+        session_identity=PortalSessionIdentity(
+            display_name="Ada Lovelace",
+            headline="Software Engineer",
+            location="Bengaluru, Karnataka, India",
+            profile_url="https://www.linkedin.com/in/ada-lovelace/",
+            public_id="ada-lovelace",
+            captured_at=datetime(2026, 8, 15, 5, 1, 0),
+        ),
+        selector_version=1,
+        health=SimpleNamespace(model_dump=lambda: {}),
+    )
+    portal.session_blob = encrypt_blob(portal.cookies["cookies"])
+    resp = PortalService()._to_response(portal)
+    assert resp.session_identity.display_name == "Ada Lovelace"
+    assert resp.session_identity.location == "Bengaluru, Karnataka, India"
+    assert resp.session_identity.captured_at == "2026-08-15T05:01:00Z"
+    assert resp.has_session is True
 
 
 def test_save_pasted_cookies_accepts_li_at_and_rejects_garbage():

@@ -324,6 +324,14 @@ export const demoPortals = [
     username: 'you@linkedin.example',
     has_session: true,
     session_updated_at: now,
+    session_identity: {
+      display_name: 'Ada Lovelace',
+      headline: 'Software Engineer',
+      location: 'Bengaluru, Karnataka, India',
+      profile_url: 'https://www.linkedin.com/in/ada-lovelace/',
+      public_id: 'ada-lovelace',
+      captured_at: now,
+    },
     health: { score: 92, auto_paused: false, last_error: '', consecutive_failures: 0 },
   },
   {

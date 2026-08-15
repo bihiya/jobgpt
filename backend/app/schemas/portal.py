@@ -75,6 +75,15 @@ class PortalUpdate(BaseModel):
         return value
 
 
+class SessionIdentitySchema(BaseModel):
+    display_name: str = ""
+    headline: str = ""
+    location: str = ""
+    profile_url: str = ""
+    public_id: str = ""
+    captured_at: str | None = None
+
+
 class PortalResponse(BaseModel):
     id: str
     name: PortalName
@@ -89,6 +98,7 @@ class PortalResponse(BaseModel):
     has_session: bool = False
     has_totp: bool = False
     session_updated_at: str | None = None
+    session_identity: SessionIdentitySchema = Field(default_factory=SessionIdentitySchema)
     selector_version: int = 1
     health: PortalHealthSchema = Field(default_factory=PortalHealthSchema)
     # Set on POST /sync so the UI can pin live updates to this run.

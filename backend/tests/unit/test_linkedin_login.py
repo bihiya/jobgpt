@@ -413,3 +413,39 @@ async def test_linkedin_accepts_li_at_on_feed_without_password() -> None:
     assert inner.gotos == [FEED_URL]
     assert inner.filled == {}
     assert inner.url == FEED_URL
+
+
+@pytest.mark.asyncio
+async def test_linkedin_login_captures_account_name_and_location() -> None:
+    inner = _InnerPage(FEED_URL)
+    inner.session_ok = True
+    inner.cookies = [{"name": "li_at", "value": "live"}]
+
+    async def evaluate(script: str):
+        if "JSESSIONID" in script:
+            return [
+                {
+                    "miniProfile": {
+                        "firstName": "Ada",
+                        "lastName": "Lovelace",
+                        "occupation": "Software Engineer",
+                        "publicIdentifier": "ada-lovelace",
+                        "geoLocationName": "Bengaluru, Karnataka, India",
+                    }
+                }
+            ]
+        return {
+            "display_name": "Ada Lovelace",
+            "headline": "",
+            "location": "",
+            "profile_url": "https://www.linkedin.com/in/ada-lovelace/",
+            "public_id": "ada-lovelace",
+        }
+
+    inner.evaluate = evaluate
+    portal = LinkedInPortal(credentials={})
+    await portal.login(_Page(inner))
+    assert portal.session_identity["display_name"] == "Ada Lovelace"
+    assert portal.session_identity["location"] == "Bengaluru, Karnataka, India"
+    labels = [step["label"] for step in portal.recorder.to_list()]
+    assert any("Ada Lovelace" in label and "Bengaluru" in label for label in labels)

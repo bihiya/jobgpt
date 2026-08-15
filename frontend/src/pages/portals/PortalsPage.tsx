@@ -20,6 +20,7 @@ import { portalsApi } from '../../api';
 import PageShell from '../../components/common/PageShell';
 import { useRequireAuth } from '../../hooks/useRequireAuth';
 import { fromNowLocal } from '../../utils/datetime';
+import { accountFromPortal, compactProfileUrl } from '../../utils/portalIdentity';
 import { hasAuthCookie, parseCookiePaste } from '../../utils/sessionCookies';
 
 const PORTALS = [
@@ -40,6 +41,14 @@ type PortalRow = {
   has_password?: boolean;
   has_session?: boolean;
   session_updated_at?: string | null;
+  session_identity?: {
+    display_name?: string;
+    headline?: string;
+    location?: string;
+    profile_url?: string;
+    public_id?: string;
+    captured_at?: string | null;
+  };
   health?: {
     auto_paused?: boolean;
     last_error?: string;
@@ -58,6 +67,66 @@ function portalChip(portal: PortalRow): { label: string; color: 'success' | 'war
   if (portal.name === 'linkedin') return { label: 'Needs session', color: 'warning' };
   if (portal.has_credentials) return { label: 'Saved', color: 'default' };
   return { label: 'Needs login', color: 'warning' };
+}
+
+function PortalAccountDetails({ portal }: { portal: PortalRow }) {
+  const account = accountFromPortal(portal);
+  const waiting =
+    portal.name === 'linkedin' && Boolean(portal.has_session) && !account.name && !account.location;
+  const when = [
+    portal.session_updated_at ? `Logged in ${fromNowLocal(portal.session_updated_at)}` : '',
+    portal.last_sync_at ? `Last synced ${fromNowLocal(portal.last_sync_at)}` : '',
+  ].filter(Boolean);
+  const error = (portal.health?.last_error || '').trim();
+  return (
+    <Stack spacing={0.25} sx={{ mt: 1 }}>
+      {account.name ? (
+        <Typography sx={{ fontWeight: 700 }}>{account.name}</Typography>
+      ) : null}
+      {account.location ? (
+        <Typography variant="body2" color="text.secondary">
+          {account.location}
+        </Typography>
+      ) : null}
+      {account.headline ? (
+        <Typography variant="body2" color="text.secondary">
+          {account.headline}
+        </Typography>
+      ) : null}
+      {account.email ? (
+        <Typography variant="body2" color="text.secondary">
+          {account.email}
+        </Typography>
+      ) : null}
+      {account.profileUrl ? (
+        <Typography
+          variant="body2"
+          component="a"
+          href={account.profileUrl}
+          target="_blank"
+          rel="noreferrer"
+          sx={{ color: 'primary.main', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
+        >
+          {compactProfileUrl(account.profileUrl)}
+        </Typography>
+      ) : null}
+      {waiting ? (
+        <Typography variant="body2" color="text.secondary">
+          Name and location appear after the next successful sync.
+        </Typography>
+      ) : null}
+      {when.length ? (
+        <Typography variant="caption" color="text.secondary">
+          {when.join(' · ')}
+        </Typography>
+      ) : null}
+      {error ? (
+        <Typography variant="caption" color="error">
+          {error}
+        </Typography>
+      ) : null}
+    </Stack>
+  );
 }
 
 export default function PortalsPage() {
@@ -199,6 +268,7 @@ export default function PortalsPage() {
                   <MoreHoriz />
                 </IconButton>
               </Stack>
+              <PortalAccountDetails portal={portal} />
               <TextField
                 label="Session key"
                 value={cardPaste}
@@ -228,11 +298,6 @@ export default function PortalsPage() {
                   >
                     {syncing ? 'Syncing…' : 'Sync'}
                   </Button>
-                )}
-                {portal.last_sync_at && (
-                  <Typography variant="caption" color="text.secondary">
-                    Last synced {fromNowLocal(portal.last_sync_at)}
-                  </Typography>
                 )}
               </Stack>
             </Box>
@@ -275,6 +340,7 @@ export default function PortalsPage() {
                 </IconButton>
               </Stack>
             </Stack>
+            <PortalAccountDetails portal={portal} />
           </Box>
         );
       })}

@@ -61,11 +61,17 @@ def test_clear_session_wipes_cookies():
 
     from app.services.session_vault import SessionVault
 
-    portal = SimpleNamespace(cookies={"cookies": [{"name": "li_at", "value": "x"}]}, session_blob="abc", session_updated_at="now")
+    portal = SimpleNamespace(
+        cookies={"cookies": [{"name": "li_at", "value": "x"}]},
+        session_blob="abc",
+        session_updated_at="now",
+        session_identity=SimpleNamespace(display_name="Ada"),
+    )
     SessionVault().clear_session(portal)
     assert portal.cookies == {}
     assert portal.session_blob == ""
     assert portal.session_updated_at is None
+    assert portal.session_identity.display_name == ""
 
 
 def test_selector_packs_versioned():

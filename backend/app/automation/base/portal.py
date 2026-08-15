@@ -79,6 +79,7 @@ class BasePortal(ABC):
         self.captcha_hook = captcha_hook
         self.browser = BaseBrowser(headless=headless, proxy=proxy, cookies=cookies)
         self.recorder = ApplySessionRecorder()
+        self.session_identity: dict[str, str] = {}
 
     @abstractmethod
     async def login(self, page: BasePage) -> None: ...

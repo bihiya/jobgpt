@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from app.automation.errors import PortalAuthError
 from app.automation.portals.registry import get_portal_adapter
+from app.automation.session_identity import apply_identity_to_portal
 from app.automation.session_recorder import compact_sync_steps
 from app.core.logging import get_logger
 from app.events.realtime import emit_realtime
@@ -307,6 +308,7 @@ class FetchWorker(BaseWorker):
                     )
                 extracted = await adapter.fetch_jobs(query, location)
                 await self._log_recorder_steps(user_id, portal.name.value, adapter, correlation_id)
+                apply_identity_to_portal(portal, getattr(adapter, "session_identity", None))
 
                 # Persist cookies only when they prove an authenticated session
                 # (or when the portal has no auth-cookie requirement).
@@ -441,6 +443,7 @@ class FetchWorker(BaseWorker):
                 )
             except Exception as exc:  # noqa: BLE001
                 await self._log_recorder_steps(user_id, portal.name.value, adapter, correlation_id)
+                apply_identity_to_portal(portal, getattr(adapter, "session_identity", None))
                 portal.sync_started_at = None
                 await self.health.record_failure(portal, str(exc))
                 if isinstance(exc, PortalAuthError):

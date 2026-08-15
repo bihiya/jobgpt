@@ -291,6 +291,13 @@ class SessionVault:
         portal.cookies = {}
         portal.session_blob = ""
         portal.session_updated_at = None
+        self.clear_identity(portal)
+
+    @staticmethod
+    def clear_identity(portal: Portal) -> None:
+        from app.models.portal import PortalSessionIdentity
+
+        portal.session_identity = PortalSessionIdentity()
 
     def load_totp_secret(self, portal: Portal) -> str:
         enc = getattr(portal, "totp_secret_encrypted", "") or ""
