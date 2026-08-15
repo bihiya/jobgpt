@@ -95,18 +95,18 @@ class UserService:
             await out.write(content)
 
         if is_default:
-            for existing in await self.resumes.list_for_user(user_id):
-                if existing.is_default:
-                    existing.is_default = False
-                    await existing.save()
-
+            await self.resumes.bulk_update(
+                {"user_id": user_id, "is_default": True},
+                {"is_default": False},
+            )
+        existing_count = await self.resumes.count({"user_id": user_id})
         resume = await self.resumes.create(
             {
                 "user_id": user_id,
                 "name": name or file.filename or filename,
                 "file_path": str(path),
                 "file_type": ext.lstrip("."),
-                "is_default": is_default or not await self.resumes.list_for_user(user_id),
+                "is_default": is_default or existing_count == 0,
             }
         )
         from app.services.audit_service import audit_event

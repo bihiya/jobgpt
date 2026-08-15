@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from beanie import init_beanie
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
@@ -14,16 +16,49 @@ logger = get_logger(__name__)
 _client: AsyncIOMotorClient | None = None
 
 
+def is_cosmos_mongo_url(url: str) -> bool:
+    """True when the Mongo connection string points at Azure Cosmos DB's API."""
+    lowered = url.lower()
+    return "cosmos.azure.com" in lowered or "cosmosdb" in lowered
+
+
+def is_order_by_index_error(exc: BaseException) -> bool:
+    """True for Cosmos Mongo API failures caused by ORDER BY without a composite index."""
+    message = str(exc).lower()
+    return "order-by" in message or "specified order-by item is excluded" in message
+
+
+def sort_documents(items: list[Any], sort: list[tuple[str, int]]) -> list[Any]:
+    """Stable in-memory sort matching Mongo ``[(field, 1|-1), ...]`` order.
+
+    Null/missing values sort first on ascending and last on descending, like MongoDB.
+    """
+    result = list(items)
+    for field, direction in reversed(sort):
+        reverse = int(direction) < 0
+
+        def _value(doc: Any, attr: str = field) -> Any:
+            value = getattr(doc, attr, None)
+            if value is None and isinstance(doc, dict):
+                value = doc.get(attr)
+            return value
+
+        defined = [doc for doc in result if _value(doc) is not None]
+        missing = [doc for doc in result if _value(doc) is None]
+        defined.sort(key=_value, reverse=reverse)
+        result = missing + defined if not reverse else defined + missing
+    return result
+
+
 def _mongo_retry_writes(url: str) -> bool:
     """Return whether retryable writes should be enabled for this Mongo URL.
 
     Azure Cosmos DB's Mongo API rejects retryable writes; forcing retryWrites=True
     breaks inserts (e.g. user registration) even when the URI has retrywrites=false.
     """
-    lowered = url.lower()
-    if "cosmos.azure.com" in lowered or "cosmosdb" in lowered:
+    if is_cosmos_mongo_url(url):
         return False
-    if "retrywrites=false" in lowered:
+    if "retrywrites=false" in url.lower():
         return False
     return True
 

@@ -26,13 +26,12 @@ class AuditLogRepository(BaseRepository[AuditLog]):
             filters["action"] = action
         if resource_type:
             filters["resource_type"] = resource_type
-        total = await AuditLog.find(filters).count()
-        items = (
-            await AuditLog.find(filters)
-            .sort([("created_at", -1)])
-            .skip((page - 1) * page_size)
-            .limit(page_size)
-            .to_list()
+        total = await self.count(filters)
+        items = await self.find_many(
+            filters,
+            skip=(page - 1) * page_size,
+            limit=page_size,
+            sort=[("created_at", -1)],
         )
         return items, total
 
@@ -45,12 +44,11 @@ class AuditLogRepository(BaseRepository[AuditLog]):
         page_size: int = 50,
     ) -> tuple[list[AuditLog], int]:
         filters = {"user_id": user_id, "job_id": job_id}
-        total = await AuditLog.find(filters).count()
-        items = (
-            await AuditLog.find(filters)
-            .sort([("created_at", -1)])
-            .skip((page - 1) * page_size)
-            .limit(page_size)
-            .to_list()
+        total = await self.count(filters)
+        items = await self.find_many(
+            filters,
+            skip=(page - 1) * page_size,
+            limit=page_size,
+            sort=[("created_at", -1)],
         )
         return items, total
