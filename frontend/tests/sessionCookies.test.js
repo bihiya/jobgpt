@@ -30,6 +30,7 @@ describe('parseCookiePaste', () => {
   it('returns empty for blank paste', () => {
     expect(parseCookiePaste('')).toEqual([]);
     expect(hasAuthCookie([], 'linkedin')).toBe(false);
+    expect(parseCookiePaste('Login failed selectors missed')).toEqual([]);
   });
 
   it('accepts a wrapped li_at token', () => {

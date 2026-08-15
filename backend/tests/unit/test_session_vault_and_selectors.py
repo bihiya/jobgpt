@@ -46,6 +46,7 @@ def test_parse_cookie_paste_accepts_header_json_and_bare_token():
     assert named[0]["value"] == "AQED" + "n" * 24
     assert parse_cookie_paste("") == []
     assert parse_cookie_paste("not-a-cookie") == []
+    assert parse_cookie_paste("Login failed selectors missed") == []
 
 
 def test_vault_roundtrip():

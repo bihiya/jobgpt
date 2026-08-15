@@ -138,8 +138,14 @@ export function parseCookiePaste(raw: string, portal = 'linkedin'): PortalCookie
   if (table.length) return table;
 
   const compact = text.replace(/\s+/g, '');
-  if (LI_AT_TOKEN.test(compact)) return asLiAt(compact);
+  if (isBareLiAt(compact)) return asLiAt(compact);
   return [];
+}
+
+function isBareLiAt(compact: string): boolean {
+  if (!LI_AT_TOKEN.test(compact)) return false;
+  if (compact.startsWith('AQED') && compact.length >= 20) return true;
+  return compact.length >= 80;
 }
 
 export function hasAuthCookie(cookies: PortalCookie[], portal = 'linkedin'): boolean {

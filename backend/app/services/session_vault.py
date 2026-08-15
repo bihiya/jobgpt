@@ -215,9 +215,18 @@ def parse_cookie_paste(raw: Any, *, portal: str = "linkedin") -> list[dict[str, 
     if table:
         return table
     compact = re.sub(r"\s+", "", text)
-    if _LI_AT_TOKEN.fullmatch(compact):
+    if _is_bare_li_at(compact):
         return _as_li_at(compact)
     return []
+
+
+def _is_bare_li_at(compact: str) -> bool:
+    """Accept AQED… tokens or long base64 blobs — not English error text."""
+    if not _LI_AT_TOKEN.fullmatch(compact):
+        return False
+    if compact.startswith("AQED") and len(compact) >= 20:
+        return True
+    return len(compact) >= 80
 
 
 DEFAULT_DOMAINS = {
