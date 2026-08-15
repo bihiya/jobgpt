@@ -37,10 +37,9 @@ describe('guest demo data', () => {
     expect(pipeline.columns.applied.length).toBeGreaterThan(0);
   });
 
-  it('returns email inbox demo data', () => {
-    const accounts = resolveDemoData('/api/v1/email/accounts', 'get');
-    expect(accounts.length).toBeGreaterThan(0);
-    const messages = resolveDemoData('/api/v1/email/messages', 'get');
-    expect(messages.items[0].event_type).toBe('interview_schedule');
+  it('returns resume versions for the profile page', () => {
+    const data = resolveDemoData('/api/v1/users/me/resumes', 'get');
+    expect(data[0].name).toBe('Guest_Explorer_Resume.pdf');
+    expect(data[0].is_default).toBe(true);
   });
 });

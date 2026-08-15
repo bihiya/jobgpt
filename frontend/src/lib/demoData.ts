@@ -462,6 +462,16 @@ export const demoProfile = {
   },
 };
 
+export const demoResumes = [
+  {
+    id: 'demo-resume-1',
+    name: 'Guest_Explorer_Resume.pdf',
+    file_type: 'pdf',
+    is_default: true,
+    created_at: now,
+  },
+];
+
 export const demoAutomationStatus = {
   user_id: 'demo-user',
   total_logs: 12,
@@ -621,7 +631,7 @@ export function resolveDemoData(url = '', method = 'get'): unknown | undefined {
   if (path.includes('/companies')) return demoCompanies;
   if (path.includes('/settings')) return demoSettings;
   if (path.endsWith('/users/me') || path.includes('/users/me?')) return demoProfile;
-  if (path.includes('/users/me/resumes')) return [];
+  if (path.includes('/users/me/resumes') && !path.includes('/download')) return demoResumes;
   if (path.includes('/automation/status')) return demoAutomationStatus;
   if (path.includes('/automation/logs')) return demoAutomationLogs;
   if (

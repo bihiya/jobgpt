@@ -113,7 +113,7 @@ function OnboardingPage() {
 
       {data.step === 'resume' && (
         <Stack spacing={2}>
-          <Alert severity="info">Upload at least one resume (PDF/DOCX).</Alert>
+          <Alert severity="info">Upload at least one resume (PDF/DOCX). You can keep up to 5 versions.</Alert>
           <Button variant="contained" onClick={() => navigate('/profile')} sx={{ alignSelf: 'flex-start' }}>
             Upload resume
           </Button>

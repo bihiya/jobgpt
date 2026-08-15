@@ -2,17 +2,32 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from io import BytesIO
+
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi.responses import StreamingResponse
 
 from app.dependencies.auth import get_current_user
+from app.dependencies.services import get_user_service
+from app.models.resume import Resume
 from app.models.user import User
 from app.schemas.auth import UserResponse
 from app.schemas.common import MessageResponse
 from app.schemas.user import ResumeResponse, UserProfileSchema, UserUpdateRequest
-from app.dependencies.services import get_user_service
-from app.services.user_service import UserService
+from app.services.user_service import UserService, resume_content_disposition
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+def _resume_payload(resume: Resume) -> ResumeResponse:
+    created = resume.created_at.isoformat() if resume.created_at else ""
+    return ResumeResponse(
+        id=str(resume.id),
+        name=resume.name,
+        file_type=resume.file_type,
+        is_default=resume.is_default,
+        created_at=created,
+    )
 
 
 @router.get("/me", response_model=UserResponse)
@@ -54,16 +69,7 @@ async def list_resumes(
     service: UserService = Depends(get_user_service),
 ):
     resumes = await service.list_resumes(str(user.id))
-    return [
-        ResumeResponse(
-            id=str(r.id),
-            name=r.name,
-            file_type=r.file_type,
-            is_default=r.is_default,
-            created_at=r.created_at.isoformat(),
-        )
-        for r in resumes
-    ]
+    return [_resume_payload(r) for r in resumes]
 
 
 @router.post("/me/resumes", response_model=ResumeResponse, status_code=201)
@@ -75,12 +81,21 @@ async def upload_resume(
     service: UserService = Depends(get_user_service),
 ):
     resume = await service.upload_resume(str(user.id), file, name=name, is_default=is_default)
-    return ResumeResponse(
-        id=str(resume.id),
-        name=resume.name,
-        file_type=resume.file_type,
-        is_default=resume.is_default,
-        created_at=resume.created_at.isoformat(),
+    return _resume_payload(resume)
+
+
+@router.get("/me/resumes/{resume_id}/download")
+async def download_resume(
+    resume_id: str,
+    inline: bool = Query(default=False),
+    user: User = Depends(get_current_user),
+    service: UserService = Depends(get_user_service),
+):
+    data, filename, media_type = await service.download_resume(str(user.id), resume_id)
+    return StreamingResponse(
+        BytesIO(data),
+        media_type=media_type,
+        headers={"Content-Disposition": resume_content_disposition(filename, inline=inline)},
     )
 
 
