@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 from datetime import datetime
 from typing import Any
 
@@ -85,8 +86,83 @@ def normalize_cookies(raw: Any) -> list[dict[str, Any]]:
     return []
 
 
+# LinkedIn li_at is base64url and often includes '=' padding or %XX encoding.
+_LI_AT_TOKEN = re.compile(r"^[A-Za-z0-9_%=+-]{20,}$")
+_COOKIE_NAME = re.compile(r"^[A-Za-z0-9_.-]{1,80}$")
+
+
+def _as_li_at(value: str) -> list[dict[str, Any]]:
+    return [
+        {
+            "name": "li_at",
+            "value": value,
+            "domain": ".linkedin.com",
+            "path": "/",
+            "secure": True,
+            "httpOnly": True,
+        }
+    ]
+
+
+def _cookie(
+    name: str,
+    value: str,
+    domain: str,
+    *,
+    http_only: bool | None = None,
+) -> dict[str, Any]:
+    return {
+        "name": name,
+        "value": value,
+        "domain": domain,
+        "path": "/",
+        "secure": True,
+        "httpOnly": name in {"li_at", "li_a", "JSESSIONID"} if http_only is None else http_only,
+    }
+
+
+def _from_name_value_labels(text: str, domain: str) -> list[dict[str, Any]]:
+    name_m = re.search(r"(?im)^(?:name|cookie)\s*:\s*(\S+)\s*$", text)
+    value_m = re.search(r"(?im)^value\s*:\s*(\S+)\s*$", text)
+    if name_m and value_m:
+        return [_cookie(name_m.group(1), value_m.group(1), domain)]
+    return []
+
+
+def _from_table_or_netscape(text: str, domain: str) -> list[dict[str, Any]]:
+    """DevTools TSV (`li_at<TAB>token`) or Netscape cookie file."""
+    cookies: list[dict[str, Any]] = []
+    for raw_line in text.split("\n"):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.lower().startswith("#httponly_"):
+            line = line[10:]
+        parts = re.split(r"[\t]+", line)
+        if len(parts) == 1:
+            parts = re.split(r" {2,}", line)
+        if len(parts) >= 7 and parts[5] and parts[6] and _COOKIE_NAME.match(parts[5]):
+            host = parts[0].removeprefix("#HttpOnly_")
+            cookies.append(
+                _cookie(
+                    parts[5],
+                    parts[6],
+                    host if host.startswith(".") or "linkedin" in host.lower() else domain,
+                )
+            )
+            continue
+        if (
+            len(parts) >= 2
+            and _COOKIE_NAME.match(parts[0])
+            and parts[0].lower() not in {"name", "cookie", "key", "domain"}
+            and parts[1]
+        ):
+            cookies.append(_cookie(parts[0], parts[1], domain))
+    return cookies
+
+
 def parse_cookie_paste(raw: Any, *, portal: str = "linkedin") -> list[dict[str, Any]]:
-    """Parse DevTools / Cookie-Editor / `li_at=…` paste into Playwright cookies."""
+    """Parse DevTools / Cookie-Editor / wrapped `li_at` paste into Playwright cookies."""
     domain = DEFAULT_DOMAINS.get((portal or "").lower(), ".linkedin.com")
     if raw is None or raw == "" or raw == {} or raw == []:
         return []
@@ -96,9 +172,17 @@ def parse_cookie_paste(raw: Any, *, portal: str = "linkedin") -> list[dict[str, 
             if not item.get("domain") or item.get("domain") == ".example.com":
                 item["domain"] = domain
         return cookies
-    text = str(raw).strip()
+    text = str(raw).replace("\r", "").strip().strip('"').strip("'")
     if not text:
         return []
+    labeled = _from_name_value_labels(text, domain)
+    if labeled:
+        return labeled
+    lines = [line.strip() for line in text.split("\n") if line.strip()]
+    if len(lines) >= 2 and lines[0].lower().replace(" ", "").rstrip(":") in {"li_at", "name:li_at"}:
+        text = f"li_at={''.join(lines[1:])}"
+    elif text[0] not in "{[":
+        text = "".join(lines) if "=" not in text else "\n".join(lines)
     if text[0] in "{[":
         try:
             return parse_cookie_paste(json.loads(text), portal=portal)
@@ -107,9 +191,11 @@ def parse_cookie_paste(raw: Any, *, portal: str = "linkedin") -> list[dict[str, 
     header = text
     if header.lower().startswith("cookie:"):
         header = header.split(":", 1)[1].strip()
+    if header.lower().startswith("li_at:") and "=" not in header.split(":", 1)[0]:
+        header = "li_at=" + header.split(":", 1)[1].strip()
     if "=" in header:
         cookies: list[dict[str, Any]] = []
-        for part in header.split(";"):
+        for part in header.replace("\n", "").split(";"):
             piece = part.strip()
             if "=" not in piece:
                 continue
@@ -117,29 +203,20 @@ def parse_cookie_paste(raw: Any, *, portal: str = "linkedin") -> list[dict[str, 
             name, value = name.strip(), value.strip().strip('"')
             if not name or not value:
                 continue
-            cookies.append(
-                {
-                    "name": name,
-                    "value": value,
-                    "domain": domain,
-                    "path": "/",
-                    "secure": True,
-                    "httpOnly": name in {"li_at", "li_a", "JSESSIONID"},
-                }
-            )
+            # Bare base64 tokens often end with '=' — do not treat them as name=value.
+            if value in {"=", "=="} and len(name) >= 16:
+                continue
+            if len(name) > 40 or not _COOKIE_NAME.match(name):
+                continue
+            cookies.append(_cookie(name, value, domain))
         if cookies:
             return cookies
-    if " " not in text and ";" not in text and len(text) >= 20:
-        return [
-            {
-                "name": "li_at",
-                "value": text,
-                "domain": ".linkedin.com",
-                "path": "/",
-                "secure": True,
-                "httpOnly": True,
-            }
-        ]
+    table = _from_table_or_netscape(str(raw).replace("\r", ""), domain)
+    if table:
+        return table
+    compact = re.sub(r"\s+", "", text)
+    if _LI_AT_TOKEN.fullmatch(compact):
+        return _as_li_at(compact)
     return []
 
 

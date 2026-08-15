@@ -10,10 +10,65 @@ const DEFAULT_DOMAIN: Record<string, string> = {
   indeed: '.indeed.com',
 };
 
+const LI_AT_TOKEN = /^[A-Za-z0-9_%=+-]{20,}$/;
+const COOKIE_NAME = /^[A-Za-z0-9_.-]{1,80}$/;
+
+function asLiAt(value: string): PortalCookie[] {
+  return [{ name: 'li_at', value, domain: '.linkedin.com', path: '/' }];
+}
+
+function cookie(name: string, value: string, domain: string): PortalCookie {
+  return { name, value, domain, path: '/' };
+}
+
+function fromNameValueLabels(text: string, domain: string): PortalCookie[] {
+  const name = text.match(/^(?:name|cookie)\s*:\s*(\S+)\s*$/im)?.[1];
+  const value = text.match(/^value\s*:\s*(\S+)\s*$/im)?.[1];
+  return name && value ? [cookie(name, value, domain)] : [];
+}
+
+function fromTableOrNetscape(raw: string, domain: string): PortalCookie[] {
+  const cookies: PortalCookie[] = [];
+  for (const rawLine of raw.split('\n')) {
+    let line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    if (line.toLowerCase().startsWith('#httponly_')) line = line.slice(10);
+    let parts = line.split(/\t+/);
+    if (parts.length === 1) parts = line.split(/ {2,}/);
+    if (parts.length >= 7 && parts[5] && parts[6] && COOKIE_NAME.test(parts[5])) {
+      const host = parts[0].replace(/^#HttpOnly_/, '');
+      cookies.push(
+        cookie(parts[5], parts[6], host.startsWith('.') || host.includes('linkedin') ? host : domain),
+      );
+      continue;
+    }
+    if (
+      parts.length >= 2 &&
+      COOKIE_NAME.test(parts[0]) &&
+      !['name', 'cookie', 'key', 'domain'].includes(parts[0].toLowerCase()) &&
+      parts[1]
+    ) {
+      cookies.push(cookie(parts[0], parts[1], domain));
+    }
+  }
+  return cookies;
+}
+
 export function parseCookiePaste(raw: string, portal = 'linkedin'): PortalCookie[] {
-  const text = (raw || '').trim();
+  let text = (raw || '').replace(/\r/g, '').trim().replace(/^['"]|['"]$/g, '');
   const domain = DEFAULT_DOMAIN[portal] || '.linkedin.com';
   if (!text) return [];
+
+  const labeled = fromNameValueLabels(text, domain);
+  if (labeled.length) return labeled;
+
+  const lines = text.split('\n').map((line) => line.trim()).filter(Boolean);
+  const first = (lines[0] || '').toLowerCase().replace(/\s+/g, '').replace(/:$/, '');
+  if (lines.length >= 2 && (first === 'li_at' || first === 'name:li_at')) {
+    text = `li_at=${lines.slice(1).join('')}`;
+  } else if (!text.startsWith('{') && !text.startsWith('[') && !text.includes('=')) {
+    text = lines.join('');
+  }
 
   if (text.startsWith('{') || text.startsWith('[')) {
     try {
@@ -45,7 +100,7 @@ export function parseCookiePaste(raw: string, portal = 'linkedin'): PortalCookie
           }));
       }
     } catch {
-      /* fall through to header / bare token */
+      /* fall through */
     }
   }
 
@@ -53,8 +108,12 @@ export function parseCookiePaste(raw: string, portal = 'linkedin'): PortalCookie
   if (header.toLowerCase().startsWith('cookie:')) {
     header = header.slice(header.indexOf(':') + 1).trim();
   }
+  if (header.toLowerCase().startsWith('li_at:') && !header.slice(0, 6).includes('=')) {
+    header = `li_at=${header.slice(6).trim()}`;
+  }
   if (header.includes('=')) {
-    return header
+    const cookies = header
+      .replace(/\n/g, '')
       .split(';')
       .map((part) => part.trim())
       .filter((part) => part.includes('='))
@@ -67,12 +126,19 @@ export function parseCookiePaste(raw: string, portal = 'linkedin'): PortalCookie
           path: '/',
         };
       })
-      .filter((item) => item.name && item.value);
+      .filter((item) => {
+        if (!item.name || !item.value) return false;
+        if ((item.value === '=' || item.value === '==') && item.name.length >= 16) return false;
+        return item.name.length <= 40 && COOKIE_NAME.test(item.name);
+      });
+    if (cookies.length) return cookies;
   }
 
-  if (!text.includes(' ') && !text.includes(';') && text.length >= 20) {
-    return [{ name: 'li_at', value: text, domain: '.linkedin.com', path: '/' }];
-  }
+  const table = fromTableOrNetscape(raw || '', domain);
+  if (table.length) return table;
+
+  const compact = text.replace(/\s+/g, '');
+  if (LI_AT_TOKEN.test(compact)) return asLiAt(compact);
   return [];
 }
 

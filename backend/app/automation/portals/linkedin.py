@@ -198,6 +198,20 @@ class LinkedInPortal(BasePortal):
                 )
             return
 
+        if not has_auth_cookies(self.name, await self._page_cookies(page)) and not login_field:
+            self.recorder.add(
+                "login",
+                "No li_at cookie and no login form — paste a session cookie from your laptop",
+                status="error",
+            )
+            raise PortalAuthError(
+                "No LinkedIn session cookie saved. Open Job portals → Save & sync and paste li_at "
+                "(Chrome → F12 → Application → Cookies → linkedin.com). "
+                "Do not rely on cloud email/password — LinkedIn blocks it with captcha "
+                f"(landed on {format_landed(snap)})",
+                code=NOT_LOGGED_IN,
+            )
+
         user_sel = await fill_first(page, user_selectors, self.credentials["username"], timeout=8000)
         if user_sel:
             self.recorder.add("login", "Filled email / username")
@@ -208,13 +222,13 @@ class LinkedInPortal(BasePortal):
             if "authwall" in url:
                 raise PortalAuthError(
                     "LinkedIn authwall blocked login (bot/IP check). "
-                    "Sign in once in a normal browser, then Re-auth with working credentials/cookies "
+                    "Sign in once in a normal browser, then paste li_at under Save & sync "
                     f"(landed on {format_landed(snap)})",
                     code=LOGIN_FAILED,
                 )
             raise PortalAuthError(
-                f"Could not fill LinkedIn login form — selectors missed username/password fields "
-                f"(landed on {format_landed(snap)})",
+                "Could not use email/password on this page. Paste a fresh li_at cookie "
+                f"under Job portals → Save & sync (landed on {format_landed(snap)})",
                 code=LOGIN_FAILED,
             )
 
@@ -240,8 +254,8 @@ class LinkedInPortal(BasePortal):
         else:
             self.recorder.add("login", "Could not find the password field on the login page", status="error")
             raise PortalAuthError(
-                f"Could not fill LinkedIn login form — selectors missed username/password fields "
-                f"(landed on {format_landed(snap)})",
+                "Could not finish email/password login. Paste a fresh li_at cookie "
+                f"under Job portals → Paste session (landed on {format_landed(snap)})",
                 code=LOGIN_FAILED,
             )
         # Humans click Sign in; instant Enter right after fill() is a bot tell.

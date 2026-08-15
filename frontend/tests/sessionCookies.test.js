@@ -31,4 +31,22 @@ describe('parseCookiePaste', () => {
     expect(parseCookiePaste('')).toEqual([]);
     expect(hasAuthCookie([], 'linkedin')).toBe(false);
   });
+
+  it('accepts a wrapped li_at token', () => {
+    const token = 'AQED' + 'A'.repeat(40);
+    const wrapped = `li_at\n${token.match(/.{1,20}/g).join('\n')}`;
+    const cookies = parseCookiePaste(wrapped);
+    expect(cookies).toHaveLength(1);
+    expect(cookies[0].name).toBe('li_at');
+    expect(cookies[0].value).toBe(token);
+  });
+
+  it('accepts a padded bare token and DevTools TSV', () => {
+    const padded = parseCookiePaste('AQED' + 'x'.repeat(24) + '==');
+    expect(padded[0].name).toBe('li_at');
+    expect(padded[0].value.endsWith('==')).toBe(true);
+    const tsv = parseCookiePaste('li_at\t' + 'AQED' + 't'.repeat(24) + '\t.linkedin.com\t/');
+    expect(tsv[0].name).toBe('li_at');
+    expect(hasAuthCookie(tsv, 'linkedin')).toBe(true);
+  });
 });

@@ -46,7 +46,10 @@ class PortalCreate(BaseModel):
         if value is None or value == "" or value == {} or value == []:
             return {}
         if isinstance(value, str):
-            return parse_cookie_paste(value)
+            parsed = parse_cookie_paste(value)
+            # Keep the raw paste when parse fails so the service can return 422
+            # instead of silently dropping the session cookie.
+            return parsed or value
         return value
 
 
@@ -67,7 +70,8 @@ class PortalUpdate(BaseModel):
         if value is None:
             return None
         if isinstance(value, str):
-            return parse_cookie_paste(value)
+            parsed = parse_cookie_paste(value)
+            return parsed or value
         return value
 
 

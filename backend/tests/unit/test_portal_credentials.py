@@ -74,3 +74,29 @@ def test_response_shows_username_not_password():
     assert "super-secret" not in str(dumped)
     assert resp.correlation_id == ""
     assert resp.model_copy(update={"correlation_id": "sync-1"}).correlation_id == "sync-1"
+
+
+def test_save_pasted_cookies_accepts_li_at_and_rejects_garbage():
+    from types import SimpleNamespace
+
+    from app.core.exceptions import ValidationAppError
+    from app.models.enums import PortalName
+    from app.services.session_vault import SessionVault, has_auth_cookies
+
+    portal = SimpleNamespace(
+        name=PortalName.LINKEDIN,
+        credentials=SimpleNamespace(username="test@gmail.com", password="x"),
+        cookies={},
+        session_blob="",
+        session_updated_at=None,
+    )
+    PortalService._save_pasted_cookies(portal, "AQED" + "x" * 24 + "==")
+    loaded = SessionVault().load_cookies(portal)
+    assert has_auth_cookies("linkedin", loaded)
+    assert loaded[0]["value"].endswith("==")
+
+    try:
+        PortalService._save_pasted_cookies(portal, "this is not a cookie")
+        raise AssertionError("expected ValidationAppError")
+    except ValidationAppError as exc:
+        assert "li_at" in exc.message.lower()
