@@ -9,9 +9,9 @@ from app.automation.portals.registry import get_portal_adapter
 from app.automation.session_recorder import compact_sync_steps
 from app.core.logging import get_logger
 from app.events.realtime import emit_realtime
-from app.producers.events import publish_job_fetch, publish_job_match
 from app.models.enums import JobStatus, PortalStatus
 from app.models.job import Job
+from app.producers.events import publish_job_fetch, publish_job_match
 from app.repository.portal_repository import PortalRepository
 from app.repository.user_repository import UserRepository
 from app.services.audit_service import audit_event

@@ -11,7 +11,7 @@ from app.workers.apply_worker import _otp_code_from_payload
 
 def _kafka_disabled():
     return AsyncMock(
-        side_effect=ServiceUnavailableError("Kafka is disabled (KAFKA_ENABLED=false)", code="KAFKA_DISABLED")
+        side_effect=ServiceUnavailableError("Kafka is disabled", code="KAFKA_DISABLED")
     )
 
 

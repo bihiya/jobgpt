@@ -5,8 +5,8 @@ from typing import Any
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.events.realtime import emit_realtime
-from app.producers.events import publish_job_apply
 from app.models.enums import JobStatus
+from app.producers.events import publish_job_apply
 from app.repository.job_repository import JobRepository
 from app.repository.settings_repository import SettingsRepository
 from app.services.approval_service import ApprovalService

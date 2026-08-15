@@ -104,12 +104,7 @@ async def test_start_container_app_job_posts_arm():
         settings.azure_job_match = "job-match"
         settings.azure_job_apply = "job-apply"
 
-        result = await start_container_app_job(
-            "apply",
-            user_id="u1",
-            job_id="j1",
-            application_id="a1",
-        )
+        result = await start_container_app_job("fetch", user_id="u1", portal="linkedin")
         assert result["job_name"] == "job-fetch"
         assert result["execution"] == "exec-1"
         mock_client.get.assert_called_once()
