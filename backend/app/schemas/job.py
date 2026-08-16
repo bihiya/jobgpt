@@ -33,13 +33,16 @@ class JobResponse(BaseModel):
     description: str
     skills: list[str]
     apply_url: str
+    listing_url: str = ""
     portal: str
     status: JobStatus
     match_score: float
     match_breakdown: MatchBreakdownSchema = Field(default_factory=MatchBreakdownSchema)
     source: str = "portal"
+    external_id: str = ""
     fetched_at: str
     created_at: str
+    metadata: dict = Field(default_factory=dict)
 
     model_config = {"from_attributes": True}
 

@@ -84,6 +84,8 @@ def test_selector_packs_versioned():
     assert li.all("external_apply")
     assert li.all("job_links")
     assert any("/jobs/view/" in sel for sel in li.all("job_links"))
+    assert li.all("job_detail")
+    assert "#job-details" in li.all("job_detail")
     assert li.all("login_error")
     assert "a[href*='/feed']" not in li.all("logged_in")
     assert get_selector_pack("greenhouse").all("success")

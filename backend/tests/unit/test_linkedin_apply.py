@@ -13,6 +13,7 @@ from app.automation.portals.linkedin import (
     LinkedInPortal,
     canonical_job_url,
     linkedin_job_id,
+    parse_linkedin_card,
 )
 from app.automation.selectors import get_selector_pack
 
@@ -80,6 +81,9 @@ class _Card:
 
     async def inner_text(self) -> str:
         return self._text
+
+    async def click(self, timeout: int = 0) -> None:
+        return None
 
     async def query_selector(self, selector: str):
         for sel, href in self._links:
@@ -272,8 +276,44 @@ async def test_extract_jobs_uses_job_view_not_company_logo():
     assert len(jobs) == 1
     assert jobs[0].title == "Software Engineer"
     assert jobs[0].company == "Acme"
+    assert jobs[0].location == "Remote"
     assert jobs[0].apply_url == JOB_URL
     assert jobs[0].external_id == "linkedin-4123456789"
+
+
+def test_parse_linkedin_card_captures_answerthis_listing():
+    parsed = parse_linkedin_card(
+        "Product Engineer\n"
+        "AnswerThis (YC F25)\n"
+        "San Francisco Bay Area (Remote)\n"
+        "$150K/yr - $220K/yr\n"
+        "1 week ago · 47 applicants\n"
+        "Easy Apply"
+    )
+    assert parsed["title"] == "Product Engineer"
+    assert parsed["company"] == "AnswerThis (YC F25)"
+    assert "Remote" in parsed["location"]
+    assert "$150K" in parsed["salary"]
+
+
+@pytest.mark.asyncio
+async def test_extract_jobs_keeps_full_card_and_listing_url():
+    inner = _InnerPage("https://www.linkedin.com/jobs/search/?keywords=product")
+    inner.cards = [
+        _Card(
+            "Product Engineer\nAnswerThis (YC F25)\nSan Francisco Bay Area (Remote)\n$150K/yr - $220K/yr",
+            [
+                ("a[href*='/jobs/view/']", "/jobs/view/4299000111/?trk=flagship"),
+            ],
+        )
+    ]
+    jobs = await _portal().extract_jobs(_Page(inner))
+    assert jobs[0].title == "Product Engineer"
+    assert jobs[0].company == "AnswerThis (YC F25)"
+    assert "Remote" in jobs[0].location
+    assert jobs[0].salary.startswith("$150K")
+    assert jobs[0].apply_url == "https://www.linkedin.com/jobs/view/4299000111/"
+    assert "AnswerThis" in jobs[0].description
 
 
 @pytest.mark.asyncio
