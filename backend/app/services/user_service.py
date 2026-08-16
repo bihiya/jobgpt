@@ -146,7 +146,7 @@ class UserService:
         return resume
 
     async def list_resumes(self, user_id: str) -> list[Resume]:
-        return await self.resumes.list_for_user(user_id)
+        return await self.resumes.list_for_user(user_id, limit=50)
 
     async def _evict_oldest_versions(self, user_id: str, *, keep_id: str) -> None:
         """Keep the newest MAX_RESUME_VERSIONS files; drop older ones including blobs."""

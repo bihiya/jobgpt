@@ -10,7 +10,7 @@ class ResumeRepository(BaseRepository[Resume]):
     def __init__(self) -> None:
         super().__init__(Resume)
 
-    async def list_for_user(self, user_id: str, *, limit: int = 5) -> list[Resume]:
+    async def list_for_user(self, user_id: str, *, limit: int = 50) -> list[Resume]:
         return await self.find_many({"user_id": user_id}, limit=limit, sort=[("created_at", -1)])
 
     async def get_default(self, user_id: str) -> Resume | None:

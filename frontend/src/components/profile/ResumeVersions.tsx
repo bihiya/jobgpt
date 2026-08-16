@@ -21,23 +21,29 @@ export type ResumeVersion = {
 type Props = {
   resumes: ResumeVersion[];
   uploading?: boolean;
+  loading?: boolean;
   busyId?: string | null;
   previewUrl?: string | null;
   previewName?: string;
+  selectedId?: string | null;
   onUpload: (file: File) => void;
   onDownload: (resume: ResumeVersion) => void;
   onDelete: (resume: ResumeVersion) => void;
+  onSelect?: (resume: ResumeVersion) => void;
 };
 
 export default function ResumeVersions({
   resumes,
   uploading = false,
+  loading = false,
   busyId = null,
   previewUrl = null,
   previewName = '',
+  selectedId = null,
   onUpload,
   onDownload,
   onDelete,
+  onSelect,
 }: Props) {
   return (
     <Stack spacing={1.5}>
@@ -50,8 +56,8 @@ export default function ResumeVersions({
         <Box>
           <Typography variant="h5">Resumes</Typography>
           <Typography color="text.secondary">
-            {resumes.length}/{MAX_RESUME_VERSIONS} versions — keeps the 5 newest; a new upload
-            removes the oldest.
+            All {resumes.length} resume{resumes.length === 1 ? '' : 's'} — keeps the{' '}
+            {MAX_RESUME_VERSIONS} newest; a new upload removes the oldest.
           </Typography>
         </Box>
         <Button variant="outlined" component="label" disabled={uploading}>
@@ -69,12 +75,23 @@ export default function ResumeVersions({
         </Button>
       </Stack>
 
-      {resumes.length === 0 && (
+      {loading && (
+        <Typography color="text.secondary">Loading resumes…</Typography>
+      )}
+      {!loading && resumes.length === 0 && (
         <Typography color="text.secondary">No resumes uploaded yet.</Typography>
       )}
 
       {resumes.map((resume) => (
-        <Paper key={resume.id} variant="outlined" sx={{ p: 1.5 }}>
+        <Paper
+          key={resume.id}
+          variant="outlined"
+          sx={{
+            p: 1.5,
+            borderColor: selectedId === resume.id ? 'primary.main' : 'divider',
+            bgcolor: selectedId === resume.id ? 'action.selected' : 'background.paper',
+          }}
+        >
           <Stack
             direction={{ xs: 'column', sm: 'row' }}
             spacing={1}
@@ -93,7 +110,16 @@ export default function ResumeVersions({
                 Uploaded {formatWhenLong(resume.created_at)}
               </Typography>
             </Box>
-            <Stack direction="row" spacing={1}>
+            <Stack direction="row" spacing={1} flexWrap="wrap">
+              {(resume.file_type || '').toLowerCase() === 'pdf' && onSelect && (
+                <Button
+                  size="small"
+                  disabled={busyId === resume.id}
+                  onClick={() => onSelect(resume)}
+                >
+                  View
+                </Button>
+              )}
               <Button
                 size="small"
                 disabled={busyId === resume.id}

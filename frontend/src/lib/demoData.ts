@@ -470,6 +470,20 @@ export const demoResumes = [
     is_default: true,
     created_at: now,
   },
+  {
+    id: 'demo-resume-2',
+    name: 'Guest_Explorer_Resume_v2.pdf',
+    file_type: 'pdf',
+    is_default: false,
+    created_at: now,
+  },
+  {
+    id: 'demo-resume-3',
+    name: 'Guest_Explorer_Cover_Letter.pdf',
+    file_type: 'pdf',
+    is_default: false,
+    created_at: now,
+  },
 ];
 
 export const demoAutomationStatus = {

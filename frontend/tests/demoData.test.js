@@ -39,7 +39,9 @@ describe('guest demo data', () => {
 
   it('returns resume versions for the profile page', () => {
     const data = resolveDemoData('/api/v1/users/me/resumes', 'get');
+    expect(data).toHaveLength(3);
     expect(data[0].name).toBe('Guest_Explorer_Resume.pdf');
+    expect(data[1].name).toBe('Guest_Explorer_Resume_v2.pdf');
     expect(data[0].is_default).toBe(true);
   });
 });

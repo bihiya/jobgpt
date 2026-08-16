@@ -82,10 +82,14 @@ export default function ProfilePage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
-  const previewResume = useMemo(
-    () => resumes.find((row) => row.is_default) || resumes[0] || null,
-    [resumes],
-  );
+  const [previewId, setPreviewId] = useState<string | null>(null);
+
+  const previewResume = useMemo(() => {
+    if (previewId) {
+      return resumes.find((row) => row.id === previewId) || null;
+    }
+    return resumes.find((row) => row.is_default) || resumes[0] || null;
+  }, [resumes, previewId]);
 
   useEffect(() => {
     if (!previewResume || (previewResume.file_type || '').toLowerCase() !== 'pdf') {
@@ -125,6 +129,7 @@ export default function ProfilePage() {
       body.append('file', file);
       body.append('is_default', 'true');
       await usersApi.uploadResume(body);
+      setPreviewId(null);
       apiSuccess('Resume uploaded');
       void queryClient.invalidateQueries({ queryKey: ['resumes'] });
       void queryClient.invalidateQueries({ queryKey: ['onboarding'] });
@@ -157,6 +162,7 @@ export default function ProfilePage() {
     setBusyId(resume.id);
     try {
       await usersApi.deleteResume(resume.id);
+      if (previewId === resume.id) setPreviewId(null);
       apiSuccess('Resume deleted');
       void queryClient.invalidateQueries({ queryKey: ['resumes'] });
       void queryClient.invalidateQueries({ queryKey: ['onboarding'] });
@@ -171,7 +177,7 @@ export default function ProfilePage() {
     <PageShell
       sx={{ maxWidth: 840 }}
       skeleton="form"
-      loading={isLoading || activityLoading || resumesLoading}
+      loading={isLoading}
       fetching={
         (!isLoading && isFetching) ||
         (!activityLoading && activityFetching) ||
@@ -180,6 +186,22 @@ export default function ProfilePage() {
       busy={saveMutation.isPending || uploading || Boolean(busyId)}
     >
       <Typography variant="h4">Profile</Typography>
+      <ResumeVersions
+        resumes={resumes}
+        uploading={uploading}
+        loading={resumesLoading}
+        busyId={busyId}
+        previewUrl={previewUrl}
+        previewName={previewResume?.name || ''}
+        selectedId={previewResume?.id || null}
+        onUpload={(file) => void uploadResume(file)}
+        onDownload={(resume) => void downloadResume(resume)}
+        onDelete={(resume) => void deleteResume(resume)}
+        onSelect={(resume) => setPreviewId(resume.id)}
+      />
+
+      <Divider sx={{ my: 1 }} />
+      <Typography variant="h5">Details</Typography>
       <TextField label="Full name" value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} fullWidth />
       <TextField label="Skills (comma separated)" value={form.skills} onChange={(e) => setForm({ ...form, skills: e.target.value })} fullWidth />
       <TextField label="Keywords" value={form.keywords} onChange={(e) => setForm({ ...form, keywords: e.target.value })} fullWidth />
@@ -199,18 +221,6 @@ export default function ProfilePage() {
       >
         {saveMutation.isPending ? 'Saving…' : 'Save profile'}
       </Button>
-
-      <Divider sx={{ my: 1 }} />
-      <ResumeVersions
-        resumes={resumes}
-        uploading={uploading}
-        busyId={busyId}
-        previewUrl={previewUrl}
-        previewName={previewResume?.name || ''}
-        onUpload={(file) => void uploadResume(file)}
-        onDownload={(resume) => void downloadResume(resume)}
-        onDelete={(resume) => void deleteResume(resume)}
-      />
 
       <Divider sx={{ my: 1 }} />
       <Typography variant="h5">Your activity</Typography>
