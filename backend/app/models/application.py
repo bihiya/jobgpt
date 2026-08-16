@@ -42,4 +42,5 @@ class Application(Document):
             # Cosmos Mongo requires an index on every ORDER BY path.
             [("user_id", 1), ("created_at", -1)],
             [("user_id", 1), ("updated_at", -1)],
+            [("user_id", 1), ("job_id", 1), ("updated_at", -1)],
         ]

@@ -8,7 +8,7 @@ export const PIPELINE_COLUMNS = [
   {
     key: 'queued',
     label: 'Applying',
-    hint: 'Auto-apply runs here.',
+    hint: 'Live worker steps show here. Open a card for the full log.',
     dropHint: 'Drop to auto-apply',
   },
   {
@@ -41,6 +41,24 @@ export type PipeJob = {
   status: string;
   match_score: number;
   location?: string;
+  updated_at?: string;
+  application?: {
+    id: string;
+    job_id?: string;
+    status: string;
+    session_steps?: Array<{
+      key?: string;
+      label?: string;
+      status?: string;
+      detail?: string;
+      at?: string;
+    }>;
+    error_message?: string;
+    updated_at?: string;
+    created_at?: string;
+    attempts?: number;
+    blocker_type?: string;
+  };
 };
 
 export type PipelineColumnsState = Record<string, PipeJob[]>;

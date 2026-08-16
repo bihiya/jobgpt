@@ -1,12 +1,15 @@
 """Apply jobs worker using Playwright + question bank + session vault."""
 
+import asyncio
 from datetime import datetime, timedelta
 from typing import Any
 
 from app.automation.portals.registry import get_portal_adapter
 from app.automation.session_identity import apply_identity_to_portal
+from app.automation.session_recorder import ApplySessionRecorder
 from app.core.kafka import publish
 from app.core.logging import get_logger
+from app.core.times import iso_utc
 from app.events.realtime import emit_realtime
 from app.models.application import Application
 from app.models.automation_log import AutomationLog
@@ -64,6 +67,7 @@ class ApplyWorker(BaseWorker):
         self.notifier = NotificationDispatcher()
         self.vault = SessionVault()
         self.rate_limiter = ApplyRateLimiter()
+        self._session_progress_tasks: dict[str, list[asyncio.Task]] = {}
 
     async def handle(self, topic: str, payload: dict[str, Any]) -> None:
         user_id = payload["user_id"]
@@ -91,6 +95,15 @@ class ApplyWorker(BaseWorker):
             app.status = ApplicationStatus.PENDING
             app.error_message = limit.reason
             app.next_retry_at = datetime.utcnow() + timedelta(seconds=max(limit.retry_after_seconds, 60))
+            app.session_steps = list(app.session_steps or []) + [
+                {
+                    "key": "rate_limited",
+                    "label": "Apply delayed",
+                    "status": "warn",
+                    "detail": limit.reason,
+                    "at": iso_utc(datetime.utcnow()) or "",
+                }
+            ]
             app.updated_at = datetime.utcnow()
             await app.save()
             await emit_realtime(
@@ -147,6 +160,13 @@ class ApplyWorker(BaseWorker):
             totp_secret=totp_secret,
             otp_code=_otp_code_from_payload(payload, app),
             selector_version=selector_version,
+        )
+
+        adapter.recorder.seed(list(app.session_steps or []))
+        adapter.recorder.add("started", "Worker started applying", detail=job.portal or "")
+        await self._publish_session_progress(app, adapter.recorder)
+        adapter.recorder.on_step = lambda _step: self._schedule_session_progress(
+            app, adapter.recorder
         )
 
         from app.automation.base.portal import ExtractedJob
@@ -225,6 +245,7 @@ class ApplyWorker(BaseWorker):
             crash = str(exc) or exc.__class__.__name__
             logger.exception("apply_worker_crashed", job_id=job_id, error=crash)
         finally:
+            await self._drain_session_progress(str(app.id))
             await self.storage.cleanup_temp(resume_local, original=resume.file_path)
 
         if crash or result is None:
@@ -239,7 +260,7 @@ class ApplyWorker(BaseWorker):
             portal_doc.updated_at = datetime.utcnow()
             await portal_doc.save()
 
-        app.session_steps = result.steps or []
+        app.session_steps = adapter.recorder.to_list() or result.steps or []
         app.correlation_id = result.correlation_id or ""
         app.updated_at = datetime.utcnow()
 
@@ -507,6 +528,53 @@ class ApplyWorker(BaseWorker):
             metadata={"steps": app.session_steps},
         )
         logger.warning("apply_failed", job_id=app.job_id, error=message)
+
+    def _schedule_session_progress(self, app: Application, recorder: ApplySessionRecorder) -> None:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        app_id = str(app.id)
+        task = loop.create_task(self._publish_session_progress(app, recorder))
+        self._session_progress_tasks.setdefault(app_id, []).append(task)
+
+    async def _drain_session_progress(self, application_id: str) -> None:
+        tasks = self._session_progress_tasks.pop(application_id, [])
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _publish_session_progress(
+        self, app: Application, recorder: ApplySessionRecorder
+    ) -> None:
+        try:
+            steps = recorder.to_list()
+            app.session_steps = steps
+            app.updated_at = datetime.utcnow()
+            await app.save()
+            latest = steps[-1] if steps else {}
+            await emit_realtime(
+                app.user_id,
+                "application.session",
+                {
+                    "application_id": str(app.id),
+                    "job_id": app.job_id,
+                    "status": getattr(app.status, "value", str(app.status)),
+                    "steps": steps,
+                    "updated_at": iso_utc(app.updated_at),
+                    "error_message": app.error_message or "",
+                    "attempts": app.attempts,
+                    "blocker_type": getattr(app, "blocker_type", "") or "",
+                },
+                title=str(latest.get("label") or "Applying…"),
+                body=str(latest.get("detail") or ""),
+                severity="info",
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "apply_session_progress_failed",
+                application_id=str(getattr(app, "id", "")),
+                error=str(exc),
+            )
 
 
 if __name__ == "__main__":

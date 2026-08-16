@@ -42,6 +42,7 @@ class JobResponse(BaseModel):
     external_id: str = ""
     fetched_at: str
     created_at: str
+    updated_at: str = ""
     metadata: dict = Field(default_factory=dict)
 
     model_config = {"from_attributes": True}
@@ -66,6 +67,8 @@ class JobPipelineCard(BaseModel):
     status: str
     match_score: float
     location: str = ""
+    updated_at: str = ""
+    application: dict | None = None
 
 
 class JobMoveResponse(BaseModel):

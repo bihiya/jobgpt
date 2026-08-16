@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.models.enums import JobStatus
-from app.schemas.application import ApplicationCreate
+from app.schemas.application import ApplicationCreate, ApplicationResponse
 from app.services.job_service import JobService
 from app.services.pipeline import (
     PIPELINE_COLUMN_KEYS,
@@ -67,8 +67,10 @@ def _job(**overrides):
         match_score=0.91,
         match_breakdown=None,
         source="portal",
+        external_id="li-1",
         fetched_at=datetime.utcnow(),
         created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
     )
     data.update(overrides)
     return SimpleNamespace(**data)
@@ -118,6 +120,52 @@ async def test_move_applied_to_interview_updates_status_only(monkeypatch):
     assert result.queued is False
     assert result.job.status == JobStatus.INTERVIEW
     apps.queue.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_pipeline_attaches_latest_application():
+    queued_job = SimpleNamespace(
+        id="job1",
+        title="Engineer",
+        company="Acme",
+        portal="linkedin",
+        status=JobStatus.APPLYING,
+        match_score=0.9,
+        location="Remote",
+        updated_at="2026-08-16T11:00:00Z",
+    )
+    apps = SimpleNamespace(
+        latest_by_job_ids=AsyncMock(
+            return_value={
+                "job1": ApplicationResponse(
+                    id="app1",
+                    job_id="job1",
+                    resume_id=None,
+                    status="in_progress",
+                    attempts=1,
+                    screenshot_path="",
+                    error_message="",
+                    applied_at=None,
+                    created_at="2026-08-16T10:00:00Z",
+                    updated_at="2026-08-16T11:00:00Z",
+                    session_steps=[{"key": "started", "label": "Worker started applying"}],
+                )
+            }
+        )
+    )
+    service = JobService(jobs=SimpleNamespace(), applications=apps)
+
+    async def fake_list(_user_id, statuses, page=1, page_size=40):
+        if JobStatus.APPLYING in statuses:
+            return SimpleNamespace(items=[queued_job], total=1)
+        return SimpleNamespace(items=[], total=0)
+
+    service.list_by_statuses = fake_list
+    result = await service.pipeline("u1")
+    card = result["columns"]["queued"][0]
+    assert card["application"]["id"] == "app1"
+    assert card["application"]["session_steps"][0]["key"] == "started"
+    apps.latest_by_job_ids.assert_awaited()
 
 
 def _apply_update(doc, data):

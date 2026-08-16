@@ -35,6 +35,7 @@ describe('guest demo data', () => {
     expect(pipeline.columns.fetched.length).toBeGreaterThan(0);
     expect(pipeline.columns.queued.length).toBeGreaterThan(0);
     expect(pipeline.columns.applied.length).toBeGreaterThan(0);
+    expect(pipeline.columns.queued[0].application.session_steps.length).toBeGreaterThan(2);
   });
 
   it('returns resume versions for the profile page', () => {

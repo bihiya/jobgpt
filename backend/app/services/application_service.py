@@ -6,6 +6,7 @@ from datetime import datetime
 from math import ceil
 
 from app.core.exceptions import NotFoundError
+from app.core.times import iso_utc
 from app.events.realtime import emit_realtime
 from app.models.application import Application
 from app.models.enums import ApplicationStatus, JobStatus
@@ -15,6 +16,30 @@ from app.repository.job_repository import JobRepository
 from app.schemas.application import ApplicationCreate, ApplicationResponse
 from app.schemas.common import PaginatedResponse
 from app.services.audit_service import audit_event
+
+
+def _ts(value) -> str:
+    if value is None or value == "":
+        return ""
+    if isinstance(value, str):
+        return value
+    return iso_utc(value) or value.isoformat()
+
+
+def _optional_ts(value) -> str | None:
+    if value is None or value == "":
+        return None
+    return _ts(value)
+
+
+def _session_step(key: str, label: str, *, status: str = "pending", detail: str = "") -> dict:
+    return {
+        "key": key,
+        "label": label,
+        "status": status,
+        "detail": detail,
+        "at": iso_utc(datetime.utcnow()) or "",
+    }
 
 
 class ApplicationService:
@@ -36,8 +61,9 @@ class ApplicationService:
             screenshot_path=app.screenshot_path,
             screenshot_url=getattr(app, "screenshot_url", "") or "",
             error_message=app.error_message,
-            applied_at=app.applied_at.isoformat() if app.applied_at else None,
-            created_at=app.created_at.isoformat(),
+            applied_at=_optional_ts(app.applied_at),
+            created_at=_ts(app.created_at),
+            updated_at=_ts(getattr(app, "updated_at", None) or app.created_at),
             session_steps=list(getattr(app, "session_steps", None) or []),
             unknown_questions=list(getattr(app, "unknown_questions", None) or []),
             blocker_type=getattr(app, "blocker_type", "") or "",
@@ -50,8 +76,11 @@ class ApplicationService:
         page: int = 1,
         page_size: int = 20,
         status: ApplicationStatus | None = None,
+        job_id: str | None = None,
     ) -> PaginatedResponse[ApplicationResponse]:
-        items, total = await self.applications.list_for_user(user_id, status, page, page_size)
+        items, total = await self.applications.list_for_user(
+            user_id, status, page, page_size, job_id=job_id
+        )
         pages = ceil(total / page_size) if page_size else 0
         return PaginatedResponse(
             items=[self._to_response(a) for a in items],
@@ -60,6 +89,12 @@ class ApplicationService:
             page_size=page_size,
             pages=pages,
         )
+
+    async def latest_by_job_ids(
+        self, user_id: str, job_ids: list[str]
+    ) -> dict[str, ApplicationResponse]:
+        mapping = await self.applications.latest_for_jobs(user_id, job_ids)
+        return {job_id: self._to_response(app) for job_id, app in mapping.items()}
 
     async def get(self, user_id: str, application_id: str) -> ApplicationResponse:
         app = await self._owned(user_id, application_id)
@@ -79,6 +114,14 @@ class ApplicationService:
                 job.updated_at = datetime.utcnow()
                 await job.save()
             if existing.status == ApplicationStatus.PENDING:
+                existing.session_steps = list(existing.session_steps or []) + [
+                    _session_step(
+                        "queued",
+                        "Queued for auto-apply",
+                        detail="Waiting for worker to start",
+                    )
+                ]
+                existing.updated_at = datetime.utcnow()
                 await existing.save()
                 await publish_job_apply(
                     user_id,
@@ -96,6 +139,13 @@ class ApplicationService:
                 "job_id": str(job.id),
                 "resume_id": payload.resume_id,
                 "status": ApplicationStatus.PENDING,
+                "session_steps": [
+                    _session_step(
+                        "queued",
+                        "Queued for auto-apply",
+                        detail="Waiting for worker to start",
+                    )
+                ],
             }
         )
         job.status = JobStatus.APPLYING

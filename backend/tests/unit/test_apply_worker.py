@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.automation.base.portal import ApplyResult
+from app.automation.session_recorder import ApplySessionRecorder
 from app.models.enums import ApplicationStatus, JobStatus
 from app.workers.apply_worker import ApplyWorker
 
@@ -119,6 +120,7 @@ async def test_apply_worker_marks_linkedin_success():
     app = _app()
     worker = _worker(job, app)
     adapter = MagicMock()
+    adapter.recorder = ApplySessionRecorder()
     adapter.recorder.correlation_id = "cid-1"
     adapter.session_identity = {}
     adapter.apply_with_retry = AsyncMock(
@@ -152,6 +154,7 @@ async def test_apply_worker_marks_linkedin_success():
     extracted = adapter.apply_with_retry.await_args.args[0]
     assert extracted.apply_url == job.apply_url
     assert extracted.title == "Software Engineer"
+    assert any(step["key"] == "started" for step in adapter.recorder.to_list())
 
 
 @pytest.mark.asyncio
@@ -160,6 +163,7 @@ async def test_apply_worker_already_applied_is_success():
     app = _app()
     worker = _worker(job, app)
     adapter = MagicMock()
+    adapter.recorder = ApplySessionRecorder()
     adapter.recorder.correlation_id = "cid-2"
     adapter.session_identity = {}
     adapter.apply_with_retry = AsyncMock(
@@ -192,6 +196,7 @@ async def test_apply_worker_crash_marks_failed():
     app = _app()
     worker = _worker(job, app)
     adapter = MagicMock()
+    adapter.recorder = ApplySessionRecorder()
     adapter.recorder.correlation_id = "cid-3"
     adapter.session_identity = {}
     adapter.apply_with_retry = AsyncMock(side_effect=RuntimeError("browser died"))

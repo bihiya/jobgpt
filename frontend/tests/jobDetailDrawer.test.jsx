@@ -1,12 +1,25 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import { vi } from 'vitest';
 import JobDetailDrawer from '../src/components/jobs/JobDetailDrawer';
 
+vi.mock('../src/api', () => ({
+  applicationsApi: {
+    forJob: async () => ({ data: { items: [], total: 0 } }),
+    retry: async () => ({ data: {} }),
+    cancel: async () => ({ data: {} }),
+  },
+}));
+
 function renderDrawer(job, extra = {}) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <ThemeProvider theme={createTheme()}>
-      <JobDetailDrawer open job={job} onClose={() => {}} {...extra} />
-    </ThemeProvider>,
+    <QueryClientProvider client={client}>
+      <ThemeProvider theme={createTheme()}>
+        <JobDetailDrawer open job={job} onClose={() => {}} {...extra} />
+      </ThemeProvider>
+    </QueryClientProvider>,
   );
 }
 
@@ -76,5 +89,30 @@ describe('JobDetailDrawer', () => {
   it('offers Apply when the job can be submitted', () => {
     renderDrawer(linkedinJob, { onApply: () => {} });
     expect(screen.getByRole('button', { name: 'Apply' })).toBeInTheDocument();
+  });
+
+  it('shows the apply session timeline when a live apply is in progress', async () => {
+    renderDrawer(
+      { ...linkedinJob, status: 'applying' },
+      {
+        liveApplication: {
+          id: 'app-1',
+          job_id: 'job-1',
+          status: 'in_progress',
+          attempts: 1,
+          session_steps: [
+            { key: 'started', label: 'Worker started applying', status: 'ok', detail: 'linkedin' },
+            { key: 'opened_jd', label: 'Opened job description', status: 'ok' },
+            { key: 'clicked_apply', label: 'Clicked Easy Apply / Apply', status: 'ok' },
+          ],
+          updated_at: new Date().toISOString(),
+        },
+      },
+    );
+    await waitFor(() => {
+      expect(screen.getByText('Apply session')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Now: Clicked Easy Apply/)).toBeInTheDocument();
+    expect(screen.getByText('Opened job description')).toBeInTheDocument();
   });
 });

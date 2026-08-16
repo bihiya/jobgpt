@@ -19,14 +19,35 @@ class ApplicationRepository(BaseRepository[Application]):
         status: ApplicationStatus | None = None,
         page: int = 1,
         page_size: int = 20,
+        job_id: str | None = None,
     ) -> tuple[list[Application], int]:
         filters: dict[str, Any] = {"user_id": user_id}
         if status:
             filters["status"] = status
+        if job_id:
+            filters["job_id"] = job_id
         skip = (page - 1) * page_size
         total = await self.count(filters)
-        items = await self.find_many(filters, skip=skip, limit=page_size, sort=[("created_at", -1)])
+        sort = [("updated_at", -1)] if job_id else [("created_at", -1)]
+        items = await self.find_many(filters, skip=skip, limit=page_size, sort=sort)
         return items, total
+
+    async def latest_for_jobs(self, user_id: str, job_ids: list[str]) -> dict[str, Application]:
+        """Most recently updated application per job (for pipeline live cards)."""
+        ids = [job_id for job_id in job_ids if job_id]
+        if not ids:
+            return {}
+        items = await self.find_many(
+            {"user_id": user_id, "job_id": {"$in": ids}},
+            skip=0,
+            limit=max(len(ids) * 10, 50),
+            sort=[("updated_at", -1)],
+        )
+        latest: dict[str, Application] = {}
+        for app in items:
+            if app.job_id not in latest:
+                latest[app.job_id] = app
+        return latest
 
     async def find_active_for_job(self, user_id: str, job_id: str) -> Application | None:
         active = [

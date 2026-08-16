@@ -23,6 +23,7 @@ class ApplicationResponse(BaseModel):
     error_message: str
     applied_at: str | None
     created_at: str
+    updated_at: str = ""
     session_steps: list[dict] = []
     unknown_questions: list[str] = []
     blocker_type: str = ""

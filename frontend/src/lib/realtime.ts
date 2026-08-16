@@ -67,7 +67,6 @@ export function queryKeysForEvent(event: string): string[][] {
       return [['approvals'], ['approval-blockers'], ['jobs'], ['jobs-infinite'], ['analytics'], ['weekly-story'], ['pipeline']];
     case 'application.queued':
     case 'application.started':
-    case 'application.session':
     case 'application.succeeded':
     case 'application.failed':
     case 'application.cancelled':
@@ -80,6 +79,7 @@ export function queryKeysForEvent(event: string): string[][] {
         ['jobs'],
         ['jobs-infinite'],
         ['applications'],
+        ['job-application'],
         ['approval-blockers'],
         ['approvals'],
         ['automation-logs'],
@@ -89,8 +89,9 @@ export function queryKeysForEvent(event: string): string[][] {
         ['pipeline'],
         ['calendar'],
       ];
+    case 'application.session':
     case 'automation.log':
-      // Applied in-place on the logs cache — do not HTTP-refetch every step.
+      // Applied in-place on the live caches — do not HTTP-refetch every step.
       return [];
     case 'automation.triggered':
       return [['automation-status']];
@@ -202,4 +203,107 @@ export function prependAutomationLog(
     items: [item, ...items].slice(0, 200),
     total: typeof page?.total === 'number' ? page.total + 1 : items.length + 1,
   };
+}
+
+type ApplicationPage = {
+  items?: Array<Record<string, unknown>>;
+  total?: number;
+  [key: string]: unknown;
+};
+
+function sessionStepsFromData(data: Record<string, unknown>): unknown[] | null {
+  if (Array.isArray(data.steps)) return data.steps;
+  if (Array.isArray(data.session_steps)) return data.session_steps;
+  return null;
+}
+
+/** Patch live apply steps onto an applications list page without refetching. */
+export function patchApplicationSession(
+  page: ApplicationPage | undefined,
+  data: Record<string, unknown>,
+  ts?: string,
+): ApplicationPage | undefined {
+  if (!page || !Array.isArray(page.items)) return page;
+  const appId = String(data.application_id || data.id || '').trim();
+  const jobId = String(data.job_id || '').trim();
+  const steps = sessionStepsFromData(data);
+  if (!appId && !jobId) return page;
+  let found = false;
+  const items = page.items.map((row) => {
+    const match =
+      (appId && String(row.id) === appId) || (jobId && String(row.job_id) === jobId);
+    if (!match) return row;
+    found = true;
+    return {
+      ...row,
+      ...(appId ? { id: appId } : {}),
+      ...(jobId ? { job_id: jobId } : {}),
+      status: data.status || row.status,
+      session_steps: steps ?? row.session_steps,
+      error_message: data.error_message ?? row.error_message,
+      updated_at: data.updated_at || ts || row.updated_at,
+      attempts: data.attempts ?? row.attempts,
+      blocker_type: data.blocker_type ?? row.blocker_type,
+    };
+  });
+  if (found) return { ...page, items };
+  if (appId && jobId) {
+    return {
+      ...page,
+      items: [
+        {
+          id: appId,
+          job_id: jobId,
+          status: data.status || 'in_progress',
+          session_steps: steps || [],
+          error_message: data.error_message || '',
+          updated_at: data.updated_at || ts,
+          attempts: data.attempts || 1,
+          blocker_type: data.blocker_type || '',
+        },
+        ...items,
+      ],
+      total: typeof page.total === 'number' ? page.total + 1 : items.length + 1,
+    };
+  }
+  return page;
+}
+
+type PipelineCache = {
+  columns?: Record<string, Array<Record<string, unknown>>>;
+  [key: string]: unknown;
+};
+
+/** Patch live apply steps onto pipeline kanban cards without refetching. */
+export function patchPipelineSession(
+  pipeline: PipelineCache | undefined,
+  data: Record<string, unknown>,
+  ts?: string,
+): PipelineCache | undefined {
+  if (!pipeline?.columns) return pipeline;
+  const jobId = String(data.job_id || '').trim();
+  if (!jobId) return pipeline;
+  const steps = sessionStepsFromData(data);
+  const columns: Record<string, Array<Record<string, unknown>>> = {};
+  for (const [key, jobs] of Object.entries(pipeline.columns)) {
+    columns[key] = jobs.map((job) => {
+      if (String(job.id) !== jobId) return job;
+      const prev = (job.application as Record<string, unknown> | undefined) || {};
+      return {
+        ...job,
+        application: {
+          ...prev,
+          id: data.application_id || prev.id,
+          job_id: jobId,
+          status: data.status || prev.status || 'in_progress',
+          session_steps: steps ?? prev.session_steps,
+          error_message: data.error_message ?? prev.error_message,
+          updated_at: data.updated_at || ts || prev.updated_at,
+          attempts: data.attempts ?? prev.attempts,
+          blocker_type: data.blocker_type ?? prev.blocker_type,
+        },
+      };
+    });
+  }
+  return { ...pipeline, columns };
 }

@@ -34,10 +34,11 @@ async def list_applications(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     status: ApplicationStatus | None = None,
+    job_id: str | None = Query(None),
     user: User = Depends(get_current_user),
     service: ApplicationService = Depends(get_application_service),
 ):
-    return await service.list(str(user.id), page, page_size, status)
+    return await service.list(str(user.id), page, page_size, status, job_id=job_id)
 
 
 @router.get("/{application_id}", response_model=ApplicationResponse)

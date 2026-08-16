@@ -110,6 +110,25 @@ def test_session_recorder_timeline():
     assert steps[2]["metadata"]["count"] == 3
 
 
+def test_session_recorder_seeds_and_notifies_on_step():
+    seen = []
+    rec = ApplySessionRecorder(on_step=lambda step: seen.append(step.key))
+    rec.seed(
+        [
+            {
+                "key": "queued",
+                "label": "Queued for auto-apply",
+                "status": "pending",
+                "detail": "Waiting for worker to start",
+                "at": "2026-08-16T11:00:00Z",
+            }
+        ]
+    )
+    rec.add("started", "Worker started applying", detail="linkedin")
+    assert [s["key"] for s in rec.to_list()] == ["queued", "started"]
+    assert seen == ["started"]
+
+
 def test_compact_sync_steps_trims_fields():
     from app.automation.session_recorder import compact_sync_steps
 

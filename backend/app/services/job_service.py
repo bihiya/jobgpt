@@ -65,6 +65,11 @@ class JobService:
             external_id=job.external_id,
             fetched_at=job.fetched_at.isoformat(),
             created_at=job.created_at.isoformat(),
+            updated_at=(
+                job.updated_at.isoformat()
+                if getattr(job, "updated_at", None)
+                else job.created_at.isoformat()
+            ),
             metadata=getattr(job, "metadata", {}) or {},
         )
 
@@ -169,10 +174,32 @@ class JobService:
                     "status": getattr(j.status, "value", j.status),
                     "match_score": j.match_score,
                     "location": j.location,
+                    "updated_at": getattr(j, "updated_at", "") or "",
                 }
                 for j in page.items
             ]
             counts[key] = page.total
+        job_ids = [card["id"] for cards in result.values() for card in cards]
+        snapshots: dict = {}
+        latest_fn = getattr(self.applications, "latest_by_job_ids", None)
+        if latest_fn and job_ids:
+            snapshots = await latest_fn(user_id, job_ids)
+        for cards in result.values():
+            for card in cards:
+                app = snapshots.get(card["id"])
+                if not app:
+                    continue
+                card["application"] = {
+                    "id": app.id,
+                    "job_id": card["id"],
+                    "status": getattr(app.status, "value", app.status),
+                    "session_steps": list(getattr(app, "session_steps", None) or []),
+                    "error_message": getattr(app, "error_message", "") or "",
+                    "updated_at": getattr(app, "updated_at", "") or "",
+                    "created_at": getattr(app, "created_at", "") or "",
+                    "attempts": getattr(app, "attempts", 0) or 0,
+                    "blocker_type": getattr(app, "blocker_type", "") or "",
+                }
         return {"columns": result, "counts": counts}
 
     async def move_to_column(
