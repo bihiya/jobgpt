@@ -1,11 +1,56 @@
-import { Button, Divider, Stack, TextField, Typography } from '@mui/material';
+import { Person, Work } from '@mui/icons-material';
+import { Box, Button, Divider, Paper, Stack, TextField, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from 'react';
 import { usersApi } from '../../api';
 import ActivityTimeline from '../../components/activity/ActivityTimeline';
 import PageShell from '../../components/common/PageShell';
 import ResumeVersions, { type ResumeVersion } from '../../components/profile/ResumeVersions';
 import { useToast } from '../../hooks/useToast';
+import { emptyProfileForm, profileFromApi, profileToUpdate, type ProfileForm } from './profileForm';
+
+function ProfileSection({
+  id,
+  icon,
+  title,
+  hint,
+  children,
+}: {
+  id: string;
+  icon: ReactNode;
+  title: string;
+  hint: string;
+  children: ReactNode;
+}) {
+  return (
+    <Paper
+      id={id}
+      data-testid={id}
+      variant="outlined"
+      sx={{ p: { xs: 2, sm: 2.5 }, borderRadius: 3, flex: 1, minWidth: 0 }}
+    >
+      <Stack spacing={2}>
+        <Box>
+          <Stack direction="row" spacing={1} alignItems="center">
+            {icon}
+            <Typography variant="h6">{title}</Typography>
+          </Stack>
+          <Typography color="text.secondary" variant="body2">
+            {hint}
+          </Typography>
+        </Box>
+        {children}
+      </Stack>
+    </Paper>
+  );
+}
+
+const NUMBER_FIELDS = new Set<keyof ProfileForm>([
+  'experience_years',
+  'notice_period_days',
+  'salary_min',
+  'salary_max',
+]);
 
 export default function ProfilePage() {
   const queryClient = useQueryClient();
@@ -22,48 +67,15 @@ export default function ProfilePage() {
     queryKey: ['user-activity', 'profile'],
     queryFn: async () => (await usersApi.activity({ page_size: 20 })).data,
   });
-  const [form, setForm] = useState({
-    full_name: '',
-    skills: '',
-    location: '',
-    keywords: '',
-    experience_years: 0,
-    notice_period_days: 0,
-    linkedin_url: '',
-    github_url: '',
-    portfolio_url: '',
-  });
+  const [form, setForm] = useState(emptyProfileForm);
 
   useEffect(() => {
     if (!data) return;
-    setForm({
-      full_name: data.full_name || '',
-      skills: (data.profile?.skills || []).join(', '),
-      location: data.profile?.location || '',
-      keywords: (data.profile?.keywords || []).join(', '),
-      experience_years: data.profile?.experience_years || 0,
-      notice_period_days: data.profile?.notice_period_days || 0,
-      linkedin_url: data.profile?.linkedin_url || '',
-      github_url: data.profile?.github_url || '',
-      portfolio_url: data.profile?.portfolio_url || '',
-    });
+    setForm(profileFromApi(data));
   }, [data]);
 
   const saveMutation = useMutation({
-    mutationFn: () =>
-      usersApi.update({
-        full_name: form.full_name,
-        profile: {
-          skills: form.skills.split(',').map((s) => s.trim()).filter(Boolean),
-          keywords: form.keywords.split(',').map((s) => s.trim()).filter(Boolean),
-          location: form.location,
-          experience_years: Number(form.experience_years),
-          notice_period_days: Number(form.notice_period_days),
-          linkedin_url: form.linkedin_url,
-          github_url: form.github_url,
-          portfolio_url: form.portfolio_url,
-        },
-      }),
+    mutationFn: () => usersApi.update(profileToUpdate(form)),
     meta: { successMessage: 'Profile saved', errorMessage: 'Could not save profile' },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['profile'] }),
   });
@@ -81,7 +93,6 @@ export default function ProfilePage() {
   const [uploading, setUploading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-
   const [previewId, setPreviewId] = useState<string | null>(null);
 
   const previewResume = useMemo(() => {
@@ -173,9 +184,17 @@ export default function ProfilePage() {
     }
   };
 
+  const setField = (key: keyof ProfileForm) => (event: ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value;
+    setForm((prev) => ({
+      ...prev,
+      [key]: NUMBER_FIELDS.has(key) ? Number(value) : value,
+    }));
+  };
+
   return (
     <PageShell
-      sx={{ maxWidth: 840 }}
+      sx={{ maxWidth: 1100 }}
       skeleton="form"
       loading={isLoading}
       fetching={
@@ -185,34 +204,104 @@ export default function ProfilePage() {
       }
       busy={saveMutation.isPending || uploading || Boolean(busyId)}
     >
-      <Typography variant="h4">Profile</Typography>
-      <ResumeVersions
-        resumes={resumes}
-        uploading={uploading}
-        loading={resumesLoading}
-        busyId={busyId}
-        previewUrl={previewUrl}
-        previewName={previewResume?.name || ''}
-        selectedId={previewResume?.id || null}
-        onUpload={(file) => void uploadResume(file)}
-        onDownload={(resume) => void downloadResume(resume)}
-        onDelete={(resume) => void deleteResume(resume)}
-        onSelect={(resume) => setPreviewId(resume.id)}
-      />
+      <Box>
+        <Typography variant="h4">Profile</Typography>
+        <Typography color="text.secondary">
+          Personal details and job preferences used for matching and Easy Apply.
+        </Typography>
+      </Box>
 
-      <Divider sx={{ my: 1 }} />
-      <Typography variant="h5">Details</Typography>
-      <TextField label="Full name" value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} fullWidth />
-      <TextField label="Skills (comma separated)" value={form.skills} onChange={(e) => setForm({ ...form, skills: e.target.value })} fullWidth />
-      <TextField label="Keywords" value={form.keywords} onChange={(e) => setForm({ ...form, keywords: e.target.value })} fullWidth />
-      <TextField label="Location" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} fullWidth />
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-        <TextField label="Experience (years)" type="number" value={form.experience_years} onChange={(e) => setForm({ ...form, experience_years: Number(e.target.value) })} fullWidth />
-        <TextField label="Notice period (days)" type="number" value={form.notice_period_days} onChange={(e) => setForm({ ...form, notice_period_days: Number(e.target.value) })} fullWidth />
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="stretch">
+        <ProfileSection
+          id="profile-personal"
+          icon={<Person color="primary" fontSize="small" />}
+          title="Personal"
+          hint="Who you are and how employers can find you."
+        >
+          <TextField label="Full name" value={form.full_name} onChange={setField('full_name')} fullWidth />
+          <TextField label="Email" value={form.email} fullWidth disabled helperText="Sign-in email" />
+          <TextField label="Location" value={form.location} onChange={setField('location')} fullWidth />
+          <TextField label="LinkedIn URL" value={form.linkedin_url} onChange={setField('linkedin_url')} fullWidth />
+          <TextField label="GitHub URL" value={form.github_url} onChange={setField('github_url')} fullWidth />
+          <TextField label="Portfolio URL" value={form.portfolio_url} onChange={setField('portfolio_url')} fullWidth />
+        </ProfileSection>
+
+        <ProfileSection
+          id="profile-job"
+          icon={<Work color="primary" fontSize="small" />}
+          title="Job"
+          hint="What you want to apply for — used to score matches and fill forms."
+        >
+          <TextField
+            label="Skills (comma separated)"
+            value={form.skills}
+            onChange={setField('skills')}
+            fullWidth
+          />
+          <TextField
+            label="Keywords"
+            value={form.keywords}
+            onChange={setField('keywords')}
+            fullWidth
+            helperText="Roles, stacks, or filters such as remote, frontend"
+          />
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+            <TextField
+              label="Experience (years)"
+              type="number"
+              value={form.experience_years}
+              onChange={setField('experience_years')}
+              fullWidth
+            />
+            <TextField
+              label="Notice period (days)"
+              type="number"
+              value={form.notice_period_days}
+              onChange={setField('notice_period_days')}
+              fullWidth
+            />
+          </Stack>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+            <TextField
+              label="Salary min"
+              type="number"
+              value={form.salary_min}
+              onChange={setField('salary_min')}
+              fullWidth
+            />
+            <TextField
+              label="Salary max"
+              type="number"
+              value={form.salary_max}
+              onChange={setField('salary_max')}
+              fullWidth
+            />
+            <TextField
+              label="Currency"
+              value={form.salary_currency}
+              onChange={setField('salary_currency')}
+              sx={{ minWidth: { sm: 120 } }}
+            />
+          </Stack>
+        </ProfileSection>
       </Stack>
-      <TextField label="LinkedIn URL" value={form.linkedin_url} onChange={(e) => setForm({ ...form, linkedin_url: e.target.value })} fullWidth />
-      <TextField label="GitHub URL" value={form.github_url} onChange={(e) => setForm({ ...form, github_url: e.target.value })} fullWidth />
-      <TextField label="Portfolio URL" value={form.portfolio_url} onChange={(e) => setForm({ ...form, portfolio_url: e.target.value })} fullWidth />
+
+      <Box data-testid="profile-job-resumes">
+        <ResumeVersions
+          resumes={resumes}
+          uploading={uploading}
+          loading={resumesLoading}
+          busyId={busyId}
+          previewUrl={previewUrl}
+          previewName={previewResume?.name || ''}
+          selectedId={previewResume?.id || null}
+          onUpload={(file) => void uploadResume(file)}
+          onDownload={(resume) => void downloadResume(resume)}
+          onDelete={(resume) => void deleteResume(resume)}
+          onSelect={(resume) => setPreviewId(resume.id)}
+        />
+      </Box>
+
       <Button
         variant="contained"
         onClick={() => saveMutation.mutate()}

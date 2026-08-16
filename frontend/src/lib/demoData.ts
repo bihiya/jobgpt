@@ -456,9 +456,10 @@ export const demoProfile = {
     location: 'Remote',
     experience_years: 5,
     notice_period_days: 30,
-    linkedin_url: '',
-    github_url: '',
-    portfolio_url: '',
+    linkedin_url: 'https://www.linkedin.com/in/guest-explorer/',
+    github_url: 'https://github.com/guest-explorer',
+    portfolio_url: 'https://guest.jobpilot.ai',
+    salary_expectation: { min: 120000, max: 160000, currency: 'USD' },
   },
 };
 

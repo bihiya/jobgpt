@@ -97,7 +97,9 @@ function OnboardingPage() {
 
       {data.step === 'profile' && (
         <Stack spacing={2}>
-          <Alert severity="info">Add skills, location, and keywords in your profile.</Alert>
+          <Alert severity="info">
+            Fill Personal (name, location, links) and Job (skills, keywords, resume) on your profile.
+          </Alert>
           <Button variant="contained" onClick={() => navigate('/profile')} sx={{ alignSelf: 'flex-start' }}>
             Open profile
           </Button>
