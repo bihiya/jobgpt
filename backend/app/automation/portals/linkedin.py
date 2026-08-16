@@ -1,5 +1,7 @@
 """LinkedIn portal adapter with session persistence + verified apply."""
 
+import re
+
 from app.automation.auth import (
     LOGIN_FAILED,
     NOT_LOGGED_IN,
@@ -21,11 +23,40 @@ from app.automation.selectors import (
     get_selector_pack,
     wait_any_selector,
 )
-from app.automation.verify import verify_apply_success
+from app.automation.verify import capture_fail_proof, verify_apply_success
 from app.core.logging import get_logger
 from app.services.session_vault import has_auth_cookies
 
 logger = get_logger(__name__)
+
+_JOB_ID_RE = re.compile(r"(?:/jobs/view/|currentJobId=)(\d{5,})")
+_ALREADY_APPLIED_TEXT = (
+    "you applied on",
+    "you’ve already applied",
+    "you've already applied",
+    "you have already applied",
+)
+
+
+def _absolute_linkedin_url(href: str) -> str:
+    if not href:
+        return ""
+    if href.startswith("/"):
+        return f"https://www.linkedin.com{href}"
+    return href
+
+
+def linkedin_job_id(url: str) -> str:
+    match = _JOB_ID_RE.search(url or "")
+    return match.group(1) if match else ""
+
+
+def canonical_job_url(href: str) -> str:
+    absolute = _absolute_linkedin_url(href)
+    job_id = linkedin_job_id(absolute)
+    if job_id:
+        return f"https://www.linkedin.com/jobs/view/{job_id}/"
+    return absolute.split("?")[0] if absolute else ""
 
 
 class LinkedInPortal(BasePortal):
@@ -356,20 +387,87 @@ class LinkedInPortal(BasePortal):
         jobs: list[ExtractedJob] = []
         for idx, card in enumerate(cards[:25]):
             title = await card.inner_text() if card else f"LinkedIn Job {idx}"
-            link = await card.query_selector("a")
-            href = await link.get_attribute("href") if link else ""
-            if href and href.startswith("/"):
-                href = f"https://www.linkedin.com{href}"
+            lines = [line.strip() for line in (title or "").splitlines() if line.strip()]
+            href = await self._card_job_url(card, pack)
+            job_id = linkedin_job_id(href)
+            external_id = (
+                f"linkedin-{job_id}" if job_id else f"linkedin-{idx}-{hash(title) & 0xFFFF}"
+            )
             jobs.append(
                 ExtractedJob(
-                    external_id=f"linkedin-{idx}-{hash(title) & 0xFFFF}",
-                    title=title.split("\n")[0][:200],
-                    company="LinkedIn Listing",
+                    external_id=external_id,
+                    title=(lines[0] if lines else f"LinkedIn Job {idx}")[:200],
+                    company=(lines[1] if len(lines) > 1 else "LinkedIn Listing")[:120],
                     apply_url=href or "",
                     description=title,
                 )
             )
         return jobs
+
+    async def _card_job_url(self, card, pack) -> str:
+        for sel in pack.all("job_links"):
+            try:
+                link = await card.query_selector(sel)
+            except Exception:  # noqa: BLE001
+                link = None
+            href = await link.get_attribute("href") if link else ""
+            if href and ("/jobs/view/" in href or "currentJobId=" in href):
+                return canonical_job_url(href)
+        try:
+            links = await card.query_selector_all("a")
+        except Exception:  # noqa: BLE001
+            links = []
+        for link in links or []:
+            try:
+                href = await link.get_attribute("href") or ""
+            except Exception:  # noqa: BLE001
+                continue
+            if "/jobs/view/" in href or "currentJobId=" in href:
+                return canonical_job_url(href)
+        return ""
+
+    async def _body_text(self, page: BasePage) -> str:
+        try:
+            return ((await page.page.inner_text("body")) or "").lower()
+        except Exception:  # noqa: BLE001
+            return ""
+
+    async def _already_applied(self, page: BasePage, pack) -> bool:
+        if pack.all("already_applied") and await any_visible(page, pack.all("already_applied")):
+            return True
+        body = await self._body_text(page)
+        return any(token in body for token in _ALREADY_APPLIED_TEXT)
+
+    async def _listing_closed(self, page: BasePage) -> str:
+        body = await self._body_text(page)
+        if "no longer accepting applications" in body:
+            return "This LinkedIn listing is no longer accepting applications"
+        return ""
+
+    async def _dismiss_job_overlays(self, page: BasePage) -> None:
+        await click_if_present(
+            page,
+            [
+                "#onetrust-accept-btn-handler",
+                "button[action-type='ACCEPT']",
+                "button:has-text('Accept cookies')",
+                "button[aria-label='Dismiss']",
+                "button:has-text('Dismiss')",
+                "button:has-text('Not now')",
+            ],
+        )
+
+    async def _fail_apply(self, page: BasePage, message: str) -> ApplyResult:
+        proof = await capture_fail_proof(page, prefix="linkedin-apply")
+        self.recorder.failed(message)
+        return ApplyResult(
+            success=False,
+            message=message,
+            screenshot_path=proof["screenshot_path"],
+            fail_proof_html=proof["html"],
+            fail_proof_path=proof["html_path"],
+            steps=self.recorder.to_list(),
+        )
 
     async def apply(
         self,
@@ -379,18 +477,56 @@ class LinkedInPortal(BasePortal):
         answers: dict,
     ) -> ApplyResult:
         pack = self._pack()
-        url = job.apply_url or "https://www.linkedin.com/jobs/"
+        url = canonical_job_url(job.apply_url) or job.apply_url or "https://www.linkedin.com/jobs/"
         await page.goto(url)
         self.recorder.opened_jd(url)
+        await self._dismiss_job_overlays(page)
+
+        landed = page.page.url or ""
+        if self._is_login_url(landed):
+            return await self._fail_apply(
+                page,
+                "LinkedIn session expired on the job page — paste a fresh li_at under Job portals",
+            )
+
+        closed = await self._listing_closed(page)
+        if closed:
+            return await self._fail_apply(page, closed)
+
+        if await self._already_applied(page, pack):
+            self.recorder.verified(True, "Already applied on LinkedIn")
+            return ApplyResult(
+                success=True,
+                message="Already applied on LinkedIn",
+                steps=self.recorder.to_list(),
+                metadata={"verify": "already_applied", "selector_version": pack.version},
+            )
 
         clicked = await click_first(page, pack.all("easy_apply"))
         if not clicked:
-            return ApplyResult(
-                success=False,
-                message="Easy Apply button not found",
-                steps=self.recorder.to_list(),
-            )
+            if await any_visible(page, pack.all("external_apply")):
+                return await self._fail_apply(
+                    page,
+                    "This listing is company-site Apply, not LinkedIn Easy Apply",
+                )
+            return await self._fail_apply(page, "Easy Apply button not found")
         self.recorder.clicked_apply(clicked)
+        modal_ready = (
+            pack.all("easy_apply_modal")
+            + pack.all("submit")
+            + pack.all("next")
+            + pack.all("file_input")
+        )
+        await wait_any_selector(page, modal_ready, timeout=4000)
+
+        if await self._already_applied(page, pack):
+            self.recorder.verified(True, "Already applied on LinkedIn")
+            return ApplyResult(
+                success=True,
+                message="Already applied on LinkedIn",
+                steps=self.recorder.to_list(),
+                metadata={"verify": "already_applied", "selector_version": pack.version},
+            )
 
         if await page.page.query_selector(pack.primary("file_input") or "input[type='file']"):
             await page.upload(pack.primary("file_input") or "input[type='file']", resume_path)
@@ -411,7 +547,6 @@ class LinkedInPortal(BasePortal):
                     steps=self.recorder.to_list(),
                 )
 
-            # Prefer submit when available
             submitted = await click_first(page, pack.all("submit"), timeout=2500)
             if submitted:
                 self.recorder.submitted()
@@ -419,13 +554,21 @@ class LinkedInPortal(BasePortal):
 
             advanced = await click_first(page, pack.all("next"), timeout=2500)
             if not advanced:
-                # last resort generic submit
                 await self.submit(page)
                 self.recorder.submitted()
                 break
         else:
             await self.submit(page)
             self.recorder.submitted()
+
+        if await self._already_applied(page, pack):
+            self.recorder.verified(True, "Already applied on LinkedIn")
+            return ApplyResult(
+                success=True,
+                message="Already applied on LinkedIn",
+                steps=self.recorder.to_list(),
+                metadata={"verify": "already_applied", "selector_version": pack.version},
+            )
 
         verified = await verify_apply_success(page, pack, prefix="linkedin")
         self.recorder.verified(verified.success, verified.detail)
