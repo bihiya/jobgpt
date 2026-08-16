@@ -9,10 +9,7 @@ from app.automation.base.page import BasePage
 from app.services.question_bank_service import normalize_question
 
 SKIP_TYPES = {"hidden", "submit", "button", "file", "image", "reset", "checkbox", "radio"}
-SKIP_NAMES = re.compile(
-    r"(csrf|token|password|email|phone|first.?name|last.?name|full.?name|resume|cv|linkedin)",
-    re.I,
-)
+SKIP_NAMES = re.compile(r"(csrf|token|password|captcha|honeypot)", re.I)
 
 
 @dataclass
@@ -31,6 +28,33 @@ class FieldResolution:
     fields: list[FormField] = field(default_factory=list)
 
 
+def match_bank_answer(label: str, bank: dict[str, str]) -> str:
+    if not label or not bank:
+        return ""
+    if label in bank and bank[label]:
+        return str(bank[label])
+    key = normalize_question(label)
+    normalized_bank = {normalize_question(k): v for k, v in bank.items() if v}
+    if key in normalized_bank:
+        return str(normalized_bank[key])
+    label_tokens = {part for part in key.split() if part}
+    hits: list[tuple[int, int, str]] = []
+    for bkey, bval in normalized_bank.items():
+        btokens = {part for part in bkey.split() if part}
+        if not bkey or not btokens:
+            continue
+        if btokens <= label_tokens or label_tokens <= btokens:
+            overlap = len(label_tokens & btokens)
+            hits.append((overlap, len(btokens), str(bval)))
+            continue
+        if bkey in key or key in bkey:
+            hits.append((1, len(btokens), str(bval)))
+    if hits:
+        hits.sort(reverse=True)
+        return hits[0][2]
+    return ""
+
+
 async def discover_form_fields(page: BasePage) -> list[FormField]:
     """Best-effort discovery of visible text-like inputs and their labels."""
     fields: list[FormField] = []
@@ -46,7 +70,9 @@ async def discover_form_fields(page: BasePage) -> list[FormField]:
             aria = (await handle.get_attribute("aria-label") or "").strip()
             placeholder = (await handle.get_attribute("placeholder") or "").strip()
             el_id = (await handle.get_attribute("id") or "").strip()
-            required = bool(await handle.get_attribute("required"))
+            required = bool(await handle.get_attribute("required")) or (
+                (await handle.get_attribute("aria-required") or "").lower() == "true"
+            )
 
             label = aria or placeholder
             if not label and el_id:
@@ -81,6 +107,7 @@ async def resolve_and_fill(
     bank: dict[str, str],
     *,
     pause_on_unknown: bool = True,
+    unknown_if_optional: bool = True,
 ) -> FieldResolution:
     """
     Fill discovered fields from question bank answers.
@@ -88,27 +115,19 @@ async def resolve_and_fill(
     """
     fields = await discover_form_fields(page)
     result = FieldResolution(fields=fields)
-    normalized_bank = {normalize_question(k): v for k, v in bank.items()}
 
     for field in fields:
-        key = normalize_question(field.label)
-        answer = bank.get(field.label) or normalized_bank.get(key)
-        if not answer:
-            # fuzzy: bank key contained in label or vice versa
-            for bkey, bval in normalized_bank.items():
-                if bkey and (bkey in key or key in bkey):
-                    answer = bval
-                    break
+        answer = match_bank_answer(field.label, bank)
         if answer:
             try:
                 await page.fill(field.selector, str(answer))
                 result.answers[field.label] = str(answer)
                 result.filled.append(field.label)
             except Exception:  # noqa: BLE001
-                if field.required or pause_on_unknown:
+                if field.required or (pause_on_unknown and unknown_if_optional):
                     result.unknown.append(field.label)
         else:
-            if field.required or pause_on_unknown:
+            if field.required or (pause_on_unknown and unknown_if_optional):
                 result.unknown.append(field.label)
 
     # de-dupe unknowns preserving order

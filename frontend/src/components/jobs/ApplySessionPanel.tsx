@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { memo } from 'react';
 import { applicationsApi } from '../../api';
 import {
+  applyChannelFromSteps,
   applyStatusLabel,
   isJobApplying,
   isLiveApplyStatus,
@@ -13,15 +14,18 @@ import {
 } from '../../lib/applyLive';
 import { fromNowLocal } from '../../utils/datetime';
 import ApplySessionTimeline from '../automation/ApplySessionTimeline';
+import ApplyChannelChip from './ApplyChannelChip';
 
 type Props = {
   jobId: string;
   jobStatus?: string;
+  jobPortal?: string;
+  jobMetadata?: Record<string, unknown>;
   open: boolean;
   fallback?: ApplySnapshot | null;
 };
 
-function ApplySessionPanel({ jobId, jobStatus, open, fallback }: Props) {
+function ApplySessionPanel({ jobId, jobStatus, jobPortal, jobMetadata, open, fallback }: Props) {
   const queryClient = useQueryClient();
   const { data } = useQuery({
     queryKey: ['job-application', jobId],
@@ -38,6 +42,7 @@ function ApplySessionPanel({ jobId, jobStatus, open, fallback }: Props) {
   const stale = applying && isStaleApply(live?.updated_at);
   const steps = live?.session_steps || [];
   const latest = latestSessionStep(steps);
+  const channel = applyChannelFromSteps(steps, { portal: jobPortal, metadata: jobMetadata });
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['job-application', jobId] });
@@ -92,6 +97,7 @@ function ApplySessionPanel({ jobId, jobStatus, open, fallback }: Props) {
         {typeof live?.attempts === 'number' && live.attempts > 0 ? (
           <Chip size="small" variant="outlined" label={`Attempt ${live.attempts}`} />
         ) : null}
+        <ApplyChannelChip channel={channel} />
       </Stack>
 
       {applying && !stale && (
@@ -152,7 +158,7 @@ function ApplySessionPanel({ jobId, jobStatus, open, fallback }: Props) {
 
       {live?.id && (applying || live.status === 'failed') ? (
         <Stack direction="row" spacing={1} sx={{ mt: 1.5 }}>
-          {(stale || live.status === 'failed' || live.status === 'pending') && (
+          {(stale || live.status === 'failed' || live.status === 'pending' || live.status === 'needs_account') && (
             <Button
               size="small"
               variant="contained"

@@ -17,10 +17,11 @@ import {
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import { memo, useMemo, type ReactNode } from 'react';
-import type { ApplySnapshot } from '../../lib/applyLive';
+import { applyChannelFromSteps, type ApplySnapshot } from '../../lib/applyLive';
 import { jobDescriptionBody, parseJobDescription, type JobDescriptionBlock } from '../../lib/jobDescription';
 import { listingUrlFor } from '../../lib/jobListing';
 import { formatLocal, fromNowLocal } from '../../utils/datetime';
+import ApplyChannelChip from './ApplyChannelChip';
 import ApplySessionPanel from './ApplySessionPanel';
 
 export type JobDetail = {
@@ -173,6 +174,10 @@ function JobDetailDrawerComponent({ open, job, onClose, onApply, applyBusy, live
   const fetchedExact = job?.fetched_at ? formatLocal(job.fetched_at) : '';
   const companyInitial = (job?.company || '?').trim().slice(0, 1).toUpperCase() || '?';
   const portalLabel = job?.portal === 'linkedin' ? 'LinkedIn' : job?.portal || '';
+  const channel = applyChannelFromSteps(liveApplication?.session_steps, {
+    portal: job?.portal,
+    metadata: job?.metadata,
+  });
 
   return (
     <Drawer
@@ -306,6 +311,7 @@ function JobDetailDrawerComponent({ open, job, onClose, onApply, applyBusy, live
 
           <Stack direction="row" spacing={1} sx={{ mb: 3 }} flexWrap="wrap" useFlexGap>
             {portalLabel ? <Chip label={portalLabel} size="small" /> : null}
+            <ApplyChannelChip channel={channel} />
             <Chip label={job.status} size="small" color="primary" variant="outlined" />
             <Chip
               label={`${Math.round((job.match_score || 0) * 100)}% match`}
@@ -318,6 +324,8 @@ function JobDetailDrawerComponent({ open, job, onClose, onApply, applyBusy, live
           <ApplySessionPanel
             jobId={job.id}
             jobStatus={job.status}
+            jobPortal={job.portal}
+            jobMetadata={job.metadata}
             open={open}
             fallback={liveApplication}
           />

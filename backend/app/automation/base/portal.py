@@ -33,6 +33,7 @@ class ExtractedJob:
     description: str = ""
     skills: list[str] = field(default_factory=list)
     apply_url: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -44,6 +45,7 @@ class ApplyResult:
     needs_input: bool = False
     unknown_questions: list[str] = field(default_factory=list)
     needs_otp: bool = False
+    needs_account: bool = False
     steps: list[dict[str, Any]] = field(default_factory=list)
     fail_proof_html: str = ""
     fail_proof_path: str = ""
@@ -80,6 +82,8 @@ class BasePortal(ABC):
         self.browser = BaseBrowser(headless=headless, proxy=proxy, cookies=cookies)
         self.recorder = ApplySessionRecorder()
         self.session_identity: dict[str, str] = {}
+        self.cover_letter_path = ""
+        self.extra_files: list[str] = []
 
     @abstractmethod
     async def login(self, page: BasePage) -> None: ...
@@ -224,7 +228,7 @@ class BasePortal(ABC):
                         result.correlation_id = self.recorder.correlation_id
                         result.cookies = list(self.browser.last_cookies)
 
-                        if result.needs_input or result.needs_otp:
+                        if result.needs_input or result.needs_otp or result.needs_account:
                             if not result.screenshot_path:
                                 proof = await capture_fail_proof(page, prefix=f"{self.name}-pause")
                                 result.screenshot_path = proof["screenshot_path"]

@@ -145,7 +145,8 @@ export default function DashboardPage() {
       portal: String(a.portal || ''),
       match_score: Number(a.match_score || 0),
       summary: String(a.summary || ''),
-      easy_apply: ['linkedin', 'indeed'].includes(String(a.portal || '').toLowerCase()),
+      apply_channel: typeof a.apply_channel === 'string' ? a.apply_channel : undefined,
+      metadata: (a.metadata as Record<string, unknown> | undefined) || undefined,
     }));
   }, [approvalsQ.data]);
 
@@ -174,6 +175,11 @@ export default function DashboardPage() {
       }
       if (b.blocker_type === 'otp' && b.application_id) {
         setOtpOpen({ application_id: b.application_id, portal: b.portal || '' });
+        return;
+      }
+      if (b.blocker_type === 'create_account') {
+        if (b.apply_url) window.open(b.apply_url, '_blank', 'noopener,noreferrer');
+        navigate('/job-portals');
         return;
       }
       if (b.application_id) {
@@ -325,7 +331,7 @@ export default function DashboardPage() {
       </Dialog>
 
       <Dialog open={!!otpOpen} onClose={() => setOtpOpen(null)} fullWidth maxWidth="xs">
-        <DialogTitle>Enter {otpOpen?.portal || 'portal'} OTP</DialogTitle>
+        <DialogTitle>Enter {otpOpen?.portal || 'portal'} verification code</DialogTitle>
         <DialogContent>
           <TextField
             autoFocus

@@ -152,6 +152,10 @@ class ApplyWorker(BaseWorker):
         credentials = portal_doc.credentials.model_dump() if portal_doc else {}
         proxy = portal_doc.proxy.model_dump() if portal_doc and portal_doc.proxy.server else None
         cookies = self.vault.load_cookies(portal_doc) if portal_doc else []
+        if (job.portal or "").lower() == "workday":
+            from app.automation.workday_session import cookies_for_workday_host, workday_tenant_host
+
+            cookies = cookies_for_workday_host(cookies, workday_tenant_host(job.apply_url or ""))
         totp_secret = self.vault.load_totp_secret(portal_doc) if portal_doc else ""
         selector_version = getattr(portal_doc, "selector_version", 1) if portal_doc else 1
         headless = bool(getattr(user_settings, "headless", True))
@@ -166,6 +170,7 @@ class ApplyWorker(BaseWorker):
             otp_code=_otp_code_from_payload(payload, app),
             selector_version=selector_version,
         )
+        await self._attach_ats_sessions(adapter, user_id)
 
         adapter.recorder.seed(list(app.session_steps or []))
         adapter.recorder.complete_pending("queued", detail="Worker picked up")
@@ -189,6 +194,7 @@ class ApplyWorker(BaseWorker):
 
         result = None
         resume_local = None
+        extra_temps: list[tuple[str, str]] = []
         crash = ""
         try:
             adapter.recorder.add(
@@ -200,7 +206,7 @@ class ApplyWorker(BaseWorker):
             await adapter.recorder.flush()
 
             user = await self.users.get_by_id(user_id)
-            answers = await self._load_apply_answers(user_id, user)
+            answers = await self._load_apply_answers(user_id, user, portal=job.portal)
 
             await AutomationLog(
                 user_id=user_id,
@@ -230,6 +236,7 @@ class ApplyWorker(BaseWorker):
                 self.storage.as_local_file(resume.file_path),
                 timeout=_RESUME_DOWNLOAD_TIMEOUT_S,
             )
+            extra_temps = await self._materialize_extra_files(user_id, resume, adapter)
             adapter.recorder.complete_pending(
                 "prepare",
                 label="Resume and answers ready",
@@ -261,18 +268,21 @@ class ApplyWorker(BaseWorker):
             await adapter.recorder.flush()
             await self._drain_session_progress(str(app.id))
             await self.storage.cleanup_temp(resume_local, original=resume.file_path)
+            for local, original in extra_temps:
+                await self.storage.cleanup_temp(local, original=original)
 
         if crash or result is None:
             await self._fail(app, job, crash or "Apply worker returned no result")
             return
 
+        self._remember_apply_channel(job, result)
+
         # Persist refreshed session cookies + who this session belongs to
         if portal_doc:
             apply_identity_to_portal(portal_doc, getattr(adapter, "session_identity", None))
-            if result.cookies:
-                self.vault.save_cookies(portal_doc, result.cookies)
             portal_doc.updated_at = datetime.utcnow()
             await portal_doc.save()
+        await self._persist_result_cookies(user_id, job, portal_doc, result)
 
         app.session_steps = adapter.recorder.to_list() or result.steps or []
         app.correlation_id = result.correlation_id or ""
@@ -297,6 +307,9 @@ class ApplyWorker(BaseWorker):
             return
         if result.needs_otp:
             await self._pause_for_otp(app, job, result)
+            return
+        if getattr(result, "needs_account", False):
+            await self._pause_for_account(app, job, result)
             return
 
         if result.success:
@@ -432,7 +445,7 @@ class ApplyWorker(BaseWorker):
             app.user_id,
             event="application.needs_otp",
             title="OTP needed",
-            body=f"{job.portal} requires your 2FA code for {job.title}",
+            body=result.message or f"{job.portal} requires a verification code for {job.title}",
             type_="warning",
             metadata={"job_id": app.job_id, "application_id": str(app.id), "portal": job.portal},
         )
@@ -453,6 +466,55 @@ class ApplyWorker(BaseWorker):
             app.user_id,
             "application.needs_otp",
             message="Paused apply — portal OTP required",
+            job_id=app.job_id,
+            application_id=str(app.id),
+            resource_type="application",
+            resource_id=str(app.id),
+            source="worker",
+            severity="warning",
+        )
+
+    async def _pause_for_account(self, app: Application, job, result) -> None:
+        app.status = ApplicationStatus.NEEDS_ACCOUNT
+        app.blocker_type = "create_account"
+        app.error_message = result.message or "Create a candidate account on the company site, then retry"
+        if result.screenshot_path:
+            stored = await self._store_screenshot(app.user_id, result.screenshot_path)
+            app.screenshot_path = stored["path"]
+            app.screenshot_url = stored["url"]
+        await self._store_fail_proof(app, result)
+        await app.save()
+        job.status = JobStatus.APPLYING
+        await job.save()
+        await self.notifier.dispatch(
+            app.user_id,
+            event="application.needs_account",
+            title="Candidate account needed",
+            body=f"Create an account on the {job.company} career site, save it under Job portals, then retry {job.title}",
+            type_="warning",
+            metadata={
+                "job_id": app.job_id,
+                "application_id": str(app.id),
+                "apply_url": getattr(job, "apply_url", "") or "",
+            },
+        )
+        await emit_realtime(
+            app.user_id,
+            "application.needs_account",
+            {
+                "job_id": app.job_id,
+                "application_id": str(app.id),
+                "apply_url": getattr(job, "apply_url", "") or "",
+                "steps": app.session_steps,
+            },
+            title="Candidate account required",
+            body=job.title,
+            severity="warning",
+        )
+        await audit_event(
+            app.user_id,
+            "application.needs_account",
+            message="Paused apply — company-site candidate account required",
             job_id=app.job_id,
             application_id=str(app.id),
             resource_type="application",
@@ -498,8 +560,10 @@ class ApplyWorker(BaseWorker):
         )
         app.fail_proof_path = stored["path"]
 
-    async def _load_apply_answers(self, user_id: str, user) -> dict[str, str]:
-        """Best-effort question bank + profile defaults. Must never abort apply."""
+    async def _load_apply_answers(self, user_id: str, user, *, portal: str = "") -> dict[str, str]:
+        """Best-effort question bank + profile identity. Must never abort apply."""
+        from app.automation.identity import identity_answers
+
         question_prompts = [
             "How many years of experience do you have?",
             "What is your notice period?",
@@ -507,6 +571,9 @@ class ApplyWorker(BaseWorker):
             "Are you authorized to work?",
             "Do you require sponsorship?",
             "Expected salary",
+            "How did you hear about us?",
+            "Cover Letter",
+            "Cover letter",
         ]
         bank: dict[str, str] = {}
         try:
@@ -522,7 +589,7 @@ class ApplyWorker(BaseWorker):
                 user_id=user_id,
                 error=str(exec_exc)[:300],
             )
-        return {
+        answers = {
             "years": bank.get(
                 "How many years of experience do you have?",
                 str(user.profile.experience_years) if user else "0",
@@ -535,8 +602,148 @@ class ApplyWorker(BaseWorker):
                 "What is your current location?",
                 user.profile.location if user else "",
             ),
-            **{k: v for k, v in bank.items()},
+            **identity_answers(user),
+            **{k: v for k, v in bank.items() if v},
         }
+        # Workday/Greenhouse "how did you hear" widgets, not only LinkedIn Easy Apply.
+        answers.setdefault("How Did You Hear About Us", "LinkedIn")
+        answers.setdefault("How did you hear about this job", "LinkedIn")
+        answers.setdefault("How did you hear about us?", "LinkedIn")
+        return {key: str(value) for key, value in answers.items() if value not in {None, ""}}
+
+    async def _materialize_extra_files(self, user_id: str, primary, adapter) -> list[tuple[str, str]]:
+        """Cover letter + additional PDFs from resume versions (best-effort)."""
+        temps: list[tuple[str, str]] = []
+        list_fn = getattr(self.resumes, "list_for_user", None)
+        if not callable(list_fn):
+            return temps
+        try:
+            items = await list_fn(user_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("extra_files_list_failed", error=str(exc)[:200])
+            return temps
+        primary_id = str(getattr(primary, "id", "") or "")
+        cover = None
+        others = []
+        for item in items or []:
+            if str(getattr(item, "id", "") or "") == primary_id:
+                continue
+            name = str(getattr(item, "name", "") or "").lower()
+            path = str(getattr(item, "file_path", "") or "")
+            if not path:
+                continue
+            if cover is None and "cover" in name:
+                cover = item
+            else:
+                others.append(item)
+        async def _local(doc) -> str:
+            return await asyncio.wait_for(
+                self.storage.as_local_file(doc.file_path),
+                timeout=_RESUME_DOWNLOAD_TIMEOUT_S,
+            )
+
+        try:
+            if cover:
+                local = await _local(cover)
+                adapter.cover_letter_path = local
+                temps.append((local, cover.file_path))
+            extra_paths = []
+            for doc in others[:3]:
+                local = await _local(doc)
+                extra_paths.append(local)
+                temps.append((local, doc.file_path))
+            adapter.extra_files = extra_paths
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("extra_files_download_failed", error=str(exc)[:200])
+        return temps
+
+    async def _persist_result_cookies(self, user_id: str, job, portal_doc, result) -> None:
+        cookies = list(getattr(result, "cookies", None) or [])
+        if not cookies:
+            return
+        from app.automation.workday_session import merge_workday_tenant_cookies, workday_tenant_host
+
+        def _name(doc) -> str:
+            return str(getattr(getattr(doc, "name", ""), "value", getattr(doc, "name", "")) or "").lower()
+
+        if portal_doc:
+            if _name(portal_doc) == "workday":
+                host = workday_tenant_host(job.apply_url or "")
+                existing = self.vault.load_cookies(portal_doc)
+                self.vault.save_cookies(portal_doc, merge_workday_tenant_cookies(existing, cookies, host))
+            else:
+                self.vault.save_cookies(portal_doc, cookies)
+            try:
+                await portal_doc.save()
+            except Exception:  # noqa: BLE001
+                pass
+        wd_url = str((getattr(result, "metadata", None) or {}).get("external_url") or "")
+        host = workday_tenant_host(wd_url) or workday_tenant_host(job.apply_url or "")
+        if not host:
+            return
+        if portal_doc and _name(portal_doc) == "workday":
+            return
+        try:
+            wd_doc = await self.portals.find_one({"user_id": user_id, "name": "workday"})
+        except Exception:  # noqa: BLE001
+            return
+        if not wd_doc or _name(wd_doc) != "workday":
+            return
+        existing = self.vault.load_cookies(wd_doc)
+        self.vault.save_cookies(wd_doc, merge_workday_tenant_cookies(existing, cookies, host))
+        try:
+            wd_doc.updated_at = datetime.utcnow()
+            await wd_doc.save()
+        except Exception:  # noqa: BLE001
+            return
+
+    async def _attach_ats_sessions(self, adapter, user_id: str) -> None:
+        """Load Workday/Greenhouse/etc. logins so LinkedIn company-site Apply can sign in."""
+        adapter.ats_credentials = {}
+        adapter.ats_cookies = {}
+        adapter.ats_totp = {}
+        list_fn = getattr(self.portals, "list_for_user", None)
+        if not callable(list_fn):
+            return
+        try:
+            docs = await list_fn(user_id)
+        except Exception:  # noqa: BLE001
+            return
+        skip = {"linkedin", "indeed"}
+        for doc in docs or []:
+            name = str(getattr(getattr(doc, "name", ""), "value", getattr(doc, "name", "")) or "")
+            if not name or name.lower() in skip:
+                continue
+            creds = getattr(doc, "credentials", None)
+            dump = creds.model_dump() if creds is not None and hasattr(creds, "model_dump") else {}
+            adapter.ats_credentials[name.lower()] = dump or {}
+            try:
+                adapter.ats_cookies[name.lower()] = self.vault.load_cookies(doc) or []
+            except Exception:  # noqa: BLE001
+                adapter.ats_cookies[name.lower()] = []
+            try:
+                adapter.ats_totp[name.lower()] = self.vault.load_totp_secret(doc) or ""
+            except Exception:  # noqa: BLE001
+                adapter.ats_totp[name.lower()] = ""
+
+    @staticmethod
+    def _remember_apply_channel(job, result) -> None:
+        meta = dict(getattr(job, "metadata", None) or {})
+        channel = (getattr(result, "metadata", None) or {}).get("apply_channel")
+        ats = (getattr(result, "metadata", None) or {}).get("ats")
+        if not channel:
+            for step in getattr(result, "steps", None) or []:
+                if isinstance(step, dict) and step.get("key") == "apply_channel":
+                    channel = step.get("label")
+                    ats = ats or (step.get("metadata") or {}).get("ats")
+                    break
+        if not channel:
+            return
+        meta["apply_channel"] = channel
+        if ats:
+            meta["ats"] = ats
+        meta["apply_channel_predicted"] = False
+        job.metadata = meta
 
     async def _fail(self, app: Application, job, message: str, screenshot: str = "") -> None:
         app.status = ApplicationStatus.FAILED

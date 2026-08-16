@@ -22,6 +22,7 @@ class UserProfile(BaseModel):
     salary_expectation: SalaryExpectation = Field(default_factory=SalaryExpectation)
     keywords: list[str] = Field(default_factory=list)
     notice_period_days: int = 0
+    phone: str = ""
     linkedin_url: str = ""
     github_url: str = ""
     portfolio_url: str = ""

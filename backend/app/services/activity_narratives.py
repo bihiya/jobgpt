@@ -35,6 +35,7 @@ _NEXT_STEPS: dict[str, str] = {
     "application.failed": "Failed — check Automation logs, then retry from Applications.",
     "application.needs_input": "Answer the questions, then resume the apply from Approvals.",
     "application.otp_required": "Enter the portal OTP to continue the application.",
+    "application.needs_account": "Create the company-site account, save it under Job portals, then Retry.",
     "application.retry": "Retry queued — watch Automation for progress.",
     "application.cancelled": "Cancelled — no further apply attempts for this job.",
     "automation.triggered": "Open Automation to see live progress and results.",
@@ -71,6 +72,7 @@ _ACTION_VERBS: dict[str, str] = {
     "application.failed": "failed an application",
     "application.needs_input": "paused apply — answers needed",
     "application.otp_required": "paused apply — OTP required",
+    "application.needs_account": "paused apply — candidate account required",
     "application.retry": "retried an application",
     "application.cancelled": "cancelled an application",
     "automation.triggered": "triggered automation",
@@ -86,7 +88,7 @@ def outcome_label(severity: str, action: str = "") -> str:
         if action.endswith(".rejected"):
             return "Stopped"
         return "Passed"
-    if severity == "warning" or "needs_input" in action or "otp" in action or action.endswith(".needed"):
+    if severity == "warning" or "needs_input" in action or "otp" in action or "account" in action or action.endswith(".needed"):
         return "Needs attention"
     if action.endswith(".started") or action.endswith(".queued") or action.endswith(".triggered"):
         return "In progress"

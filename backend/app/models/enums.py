@@ -72,6 +72,7 @@ class ApplicationStatus(StrEnum):
     FOLLOW_UP = "follow_up"
     NEEDS_INPUT = "needs_input"  # unknown form question — pause for user
     NEEDS_OTP = "needs_otp"  # portal 2FA — wait for user OTP
+    NEEDS_ACCOUNT = "needs_account"  # Workday/ATS candidate account — create then retry
     CANCELLED = "cancelled"
 
 

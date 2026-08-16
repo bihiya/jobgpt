@@ -2,6 +2,14 @@
 
 import re
 
+from app.automation.ats import (
+    KIND_LINKEDIN,
+    apply_on_landed_ats,
+    is_offsite,
+    predicted_channel_meta,
+    record_apply_channel,
+    tag_apply_result,
+)
 from app.automation.auth import (
     LOGIN_FAILED,
     NOT_LOGGED_IN,
@@ -13,6 +21,7 @@ from app.automation.auth import (
 from app.automation.base.page import BasePage
 from app.automation.base.portal import ApplyResult, BasePortal, ExtractedJob
 from app.automation.errors import PortalAuthError
+from app.automation.external_nav import click_and_follow
 from app.automation.form_fields import resolve_and_fill
 from app.automation.humanize import humanize_enabled, pause, wander_mouse
 from app.automation.selectors import (
@@ -38,6 +47,7 @@ _ALREADY_APPLIED_TEXT = (
 )
 _CARD_NOISE_RE = re.compile(
     r"^(promoted|easy apply|linkedin apply|actively recruiting|viewed|verified|"
+    r"apply on company website|apply on the company website|company website|"
     r"see more|be an early applicant|"
     r"\d[\d,]*\s+applicants?|"
     r"\d+\s+(second|minute|hour|day|week|month)s?\s+ago"
@@ -82,7 +92,18 @@ def parse_linkedin_card(text: str) -> dict[str, str]:
         "location": location,
         "salary": salary,
         "description": "\n".join(lines),
+        "apply_kind": detect_linkedin_card_apply_kind(text),
     }
+
+
+def detect_linkedin_card_apply_kind(text: str) -> str:
+    """linkedin = Easy Apply badge, external = company-site Apply, else unknown."""
+    blob = (text or "").lower()
+    if "easy apply" in blob or "linkedin apply" in blob:
+        return "linkedin"
+    if "apply on company" in blob or "company website" in blob:
+        return "external"
+    return ""
 
 
 def _absolute_linkedin_url(href: str) -> str:
@@ -461,6 +482,7 @@ class LinkedInPortal(BasePortal):
                     f"https://www.linkedin.com/jobs/view/{job_id}/" if job_id else ""
                 ),
                 description=parsed["description"] or blob,
+                metadata=predicted_channel_meta(parsed.get("apply_kind") or ""),
             )
             await self._enrich_from_detail_pane(page, card, job, pack)
             jobs.append(job)
@@ -497,6 +519,16 @@ class LinkedInPortal(BasePortal):
             job.company = parsed["company"]
         if len(detail) > len(job.description or ""):
             job.description = detail[:12000]
+        kind = await self._listing_apply_kind(page, pack, job.description or "")
+        if kind:
+            job.metadata = {**(job.metadata or {}), **predicted_channel_meta(kind)}
+
+    async def _listing_apply_kind(self, page: BasePage, pack, card_text: str) -> str:
+        if await any_visible(page, pack.all("easy_apply")):
+            return "linkedin"
+        if await any_visible(page, pack.all("external_apply")):
+            return "external"
+        return detect_linkedin_card_apply_kind(card_text)
 
     async def _card_job_url(self, card, pack) -> str:
         for sel in pack.all("job_links"):
@@ -599,12 +631,10 @@ class LinkedInPortal(BasePortal):
         clicked = await click_first(page, pack.all("easy_apply"))
         if not clicked:
             if await any_visible(page, pack.all("external_apply")):
-                return await self._fail_apply(
-                    page,
-                    "This listing is company-site Apply, not LinkedIn Easy Apply",
-                )
+                return await self._apply_company_site(page, job, resume_path, answers, pack)
             return await self._fail_apply(page, "Easy Apply button not found")
-        self.recorder.clicked_apply(clicked)
+        record_apply_channel(self, kind=KIND_LINKEDIN)
+        self.recorder.clicked_apply(clicked, kind="easy")
         modal_ready = (
             pack.all("easy_apply_modal")
             + pack.all("submit")
@@ -667,18 +697,57 @@ class LinkedInPortal(BasePortal):
         verified = await verify_apply_success(page, pack, prefix="linkedin")
         self.recorder.verified(verified.success, verified.detail)
         if verified.success:
-            return ApplyResult(
-                success=True,
-                screenshot_path=verified.screenshot_path,
-                message="Applied via LinkedIn Easy Apply (verified)",
-                steps=self.recorder.to_list(),
-                metadata={"verify": verified.detail, "selector_version": pack.version},
+            return tag_apply_result(
+                ApplyResult(
+                    success=True,
+                    screenshot_path=verified.screenshot_path,
+                    message="Applied via LinkedIn Easy Apply (verified)",
+                    steps=self.recorder.to_list(),
+                    metadata={"verify": verified.detail, "selector_version": pack.version},
+                ),
+                kind=KIND_LINKEDIN,
             )
-        return ApplyResult(
-            success=False,
-            screenshot_path=verified.screenshot_path,
-            fail_proof_html=verified.fail_proof_html,
-            fail_proof_path=verified.fail_proof_path,
-            message=verified.detail or "LinkedIn apply not verified",
-            steps=self.recorder.to_list(),
+        return tag_apply_result(
+            ApplyResult(
+                success=False,
+                screenshot_path=verified.screenshot_path,
+                fail_proof_html=verified.fail_proof_html,
+                fail_proof_path=verified.fail_proof_path,
+                message=verified.detail or "LinkedIn apply not verified",
+                steps=self.recorder.to_list(),
+            ),
+            kind=KIND_LINKEDIN,
+        )
+
+    async def _apply_company_site(
+        self,
+        page: BasePage,
+        job: ExtractedJob,
+        resume_path: str,
+        answers: dict,
+        pack,
+    ) -> ApplyResult:
+        origin = ("linkedin.com", "lnkd.in")
+        clicked, target = await click_and_follow(
+            page,
+            pack.all("external_apply"),
+            origin_hosts=origin,
+        )
+        if not clicked:
+            return await self._fail_apply(page, "Company-site Apply button not found")
+        self.recorder.clicked_apply(clicked, kind="external")
+        url = getattr(target.page, "url", "") or ""
+        if not is_offsite(url, origin):
+            return await self._fail_apply(
+                target,
+                "Clicked company-site Apply but the external site did not open. "
+                "LinkedIn may have blocked the popup — allow popups and retry.",
+            )
+        return await apply_on_landed_ats(
+            self,
+            target,
+            job,
+            resume_path,
+            answers,
+            source="linkedin_external",
         )

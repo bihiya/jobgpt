@@ -95,6 +95,10 @@ class ApprovalService:
                     "portal": getattr(job, "portal", "") if job else "",
                     "title": getattr(job, "title", "") if job else "",
                     "company": getattr(job, "company", "") if job else "",
+                    "apply_channel": (getattr(job, "metadata", None) or {}).get("apply_channel", "")
+                    if job
+                    else "",
+                    "metadata": dict(getattr(job, "metadata", None) or {}) if job else {},
                     "created_at": a.created_at.isoformat(),
                     "expires_at": a.expires_at.isoformat() if a.expires_at else None,
                 }
@@ -114,7 +118,11 @@ class ApprovalService:
                 {
                     "user_id": user_id,
                     "status": {
-                        "$in": [ApplicationStatus.NEEDS_INPUT, ApplicationStatus.NEEDS_OTP]
+                        "$in": [
+                            ApplicationStatus.NEEDS_INPUT,
+                            ApplicationStatus.NEEDS_OTP,
+                            ApplicationStatus.NEEDS_ACCOUNT,
+                        ]
                     },
                 }
             )
@@ -126,7 +134,11 @@ class ApprovalService:
         for app in apps:
             job = await Job.get(app.job_id)
             blocker = app.blocker_type or (
-                "otp" if app.status == ApplicationStatus.NEEDS_OTP else "unknown_question"
+                "otp"
+                if app.status == ApplicationStatus.NEEDS_OTP
+                else "create_account"
+                if app.status == ApplicationStatus.NEEDS_ACCOUNT
+                else "unknown_question"
             )
             # Captcha pauses often surface as needs_otp / session step metadata
             steps = app.session_steps or []
@@ -146,6 +158,7 @@ class ApprovalService:
                     "portal": getattr(job, "portal", "") if job else "",
                     "title": getattr(job, "title", "") if job else "",
                     "company": getattr(job, "company", "") if job else "",
+                    "apply_url": getattr(job, "apply_url", "") if job else "",
                     "updated_at": app.updated_at.isoformat() if app.updated_at else None,
                 }
             )

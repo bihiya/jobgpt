@@ -18,6 +18,7 @@ class UserProfileSchema(BaseModel):
     salary_expectation: SalaryExpectationSchema = Field(default_factory=SalaryExpectationSchema)
     keywords: list[str] = Field(default_factory=list)
     notice_period_days: int = 0
+    phone: str = ""
     linkedin_url: str = ""
     github_url: str = ""
     portfolio_url: str = ""

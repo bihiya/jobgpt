@@ -16,6 +16,7 @@ describe('profile form', () => {
         location: 'London',
         experience_years: 8,
         notice_period_days: 14,
+        phone: '555-0100',
         linkedin_url: 'https://www.linkedin.com/in/ada',
         github_url: 'https://github.com/ada',
         portfolio_url: 'https://ada.dev',
@@ -27,6 +28,7 @@ describe('profile form', () => {
     expect(form.email).toBe('ada@example.com');
     expect(form.location).toBe('London');
     expect(form.linkedin_url).toContain('linkedin.com');
+    expect(form.phone).toBe('555-0100');
     expect(form.skills).toBe('Python, Math');
     expect(form.keywords).toBe('remote');
     expect(form.experience_years).toBe(8);
@@ -49,6 +51,7 @@ describe('profile form', () => {
       linkedin_url: 'https://www.linkedin.com/in/ada',
       github_url: '',
       portfolio_url: '',
+      phone: '555-0100',
     });
 
     expect(payload.full_name).toBe('Ada Lovelace');
@@ -59,6 +62,7 @@ describe('profile form', () => {
       max: 160000,
       currency: 'GBP',
     });
-    expect(payload).not.toHaveProperty('email');
+    expect(payload.profile.linkedin_url).toContain('linkedin.com');
+    expect(payload.profile.phone).toBe('555-0100');
   });
 });

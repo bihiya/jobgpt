@@ -27,7 +27,7 @@ class Application(Document):
     session_steps: list[dict[str, Any]] = Field(default_factory=list)
     correlation_id: str = ""
     unknown_questions: list[str] = Field(default_factory=list)
-    blocker_type: str = ""  # unknown_question | otp | ""
+    blocker_type: str = ""  # unknown_question | otp | create_account | ""
     fail_proof_html: str = ""
     fail_proof_path: str = ""
     created_at: datetime = Field(default_factory=datetime.utcnow)

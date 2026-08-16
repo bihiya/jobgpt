@@ -91,6 +91,15 @@ def test_selector_packs_versioned():
     assert li.all("login_error")
     assert "a[href*='/feed']" not in li.all("logged_in")
     assert get_selector_pack("greenhouse").all("success")
+    assert get_selector_pack("workday").all("submit")
+    assert get_selector_pack("workday").all("apply_manually")
+    assert get_selector_pack("workday").all("autofill_resume")
+    assert get_selector_pack("workday").all("use_last_application")
+    assert get_selector_pack("workday").all("email_verify")
+    assert get_selector_pack("workday").all("mfa")
+    assert get_selector_pack("workday").all("job_closed")
+    assert get_selector_pack("workday").all("wizard_title")
+    assert any("bottom-navigation-next-button" in sel for sel in get_selector_pack("workday").all("next"))
     assert get_selector_pack("unknown").version == 0
 
 
@@ -98,6 +107,7 @@ def test_session_recorder_timeline():
     rec = ApplySessionRecorder()
     rec.opened_jd("https://example.com/job")
     rec.clicked_apply("button:has-text('Easy Apply')")
+    rec.apply_channel("LinkedIn Easy Apply", kind="linkedin")
     rec.filled_fields(3)
     rec.submitted()
     rec.verified(True, "Matched success selector")
@@ -105,11 +115,14 @@ def test_session_recorder_timeline():
     assert [s["key"] for s in steps] == [
         "opened_jd",
         "clicked_apply",
+        "apply_channel",
         "filled_fields",
         "submitted",
         "verified",
     ]
-    assert steps[2]["metadata"]["count"] == 3
+    assert steps[1]["label"] == "Clicked LinkedIn Easy Apply"
+    assert steps[2]["label"] == "LinkedIn Easy Apply"
+    assert steps[3]["metadata"]["count"] == 3
 
 
 def test_session_recorder_seeds_and_notifies_on_step():

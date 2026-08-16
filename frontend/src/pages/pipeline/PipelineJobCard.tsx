@@ -3,6 +3,7 @@ import { Box, Button, Chip, CircularProgress, Stack, Typography } from '@mui/mat
 import { alpha } from '@mui/material/styles';
 import { memo, type DragEvent } from 'react';
 import {
+  applyChannelFromSteps,
   applyStatusLabel,
   isJobApplying,
   isLiveApplyStatus,
@@ -12,6 +13,7 @@ import {
 } from '../../lib/applyLive';
 import { fromNowLocal } from '../../utils/datetime';
 import type { PipeJob, PipelineColumnKey } from './pipelineColumns';
+import ApplyChannelChip from '../../components/jobs/ApplyChannelChip';
 
 type Props = {
   job: PipeJob;
@@ -47,6 +49,7 @@ function PipelineJobCard({
   const steps = live?.session_steps || [];
   const latest = latestSessionStep(steps);
   const recent = steps.slice(-3);
+  const channel = applyChannelFromSteps(steps, { portal: job.portal, metadata: job.metadata });
 
   return (
     <Box
@@ -133,6 +136,7 @@ function PipelineJobCard({
           )}
           <Stack direction="row" spacing={0.75} sx={{ mt: 0.75 }} alignItems="center" flexWrap="wrap" useFlexGap>
             <Chip size="small" label={`${Math.round((job.match_score || 0) * 100)}%`} />
+            <ApplyChannelChip channel={channel} />
             {applying && (
               <Chip
                 size="small"

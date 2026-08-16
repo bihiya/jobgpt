@@ -68,6 +68,7 @@ class JobPipelineCard(BaseModel):
     match_score: float
     location: str = ""
     updated_at: str = ""
+    metadata: dict = Field(default_factory=dict)
     application: dict | None = None
 
 

@@ -1,6 +1,8 @@
 import { Box, Button, Chip, Stack, Typography } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import { memo } from 'react';
+import { applyChannelFromSteps } from '../../lib/applyLive';
+import ApplyChannelChip from '../jobs/ApplyChannelChip';
 
 export type DigestJob = {
   id: string;
@@ -14,7 +16,8 @@ export type DigestJob = {
     reasons?: string[];
     llm_rationale?: string;
   };
-  easy_apply?: boolean;
+  apply_channel?: string;
+  metadata?: Record<string, unknown>;
 };
 
 type Props = {
@@ -32,9 +35,13 @@ function DigestCard({ job, onApprove, onSkip, onOpen, busy }: Props) {
     job.match_breakdown?.llm_rationale ||
     job.summary ||
     'Strong match for your profile';
-  const easy =
-    job.easy_apply ??
-    ['linkedin', 'indeed'].includes((job.portal || '').toLowerCase());
+  const channel = applyChannelFromSteps(null, {
+    portal: job.portal,
+    metadata: {
+      ...(job.metadata || {}),
+      ...(job.apply_channel ? { apply_channel: job.apply_channel } : {}),
+    },
+  });
 
   return (
     <Box
@@ -74,7 +81,7 @@ function DigestCard({ job, onApprove, onSkip, onOpen, busy }: Props) {
       </Typography>
 
       <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 1.75 }}>
-        {easy && <Chip size="small" color="info" label="Easy Apply" />}
+        <ApplyChannelChip channel={channel} />
         {job.portal && <Chip size="small" variant="outlined" label={job.portal} />}
       </Stack>
 
