@@ -127,6 +127,9 @@ def test_session_recorder_seeds_and_notifies_on_step():
     rec.add("started", "Worker started applying", detail="linkedin")
     assert [s["key"] for s in rec.to_list()] == ["queued", "started"]
     assert seen == ["started"]
+    rec.complete_pending("queued", detail="Worker picked up")
+    assert rec.to_list()[0]["status"] == "ok"
+    assert rec.to_list()[0]["detail"] == "Worker picked up"
 
 
 def test_compact_sync_steps_trims_fields():
