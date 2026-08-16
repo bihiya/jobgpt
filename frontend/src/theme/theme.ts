@@ -365,21 +365,6 @@ const sharedComponents = (mode: 'light' | 'dark'): ThemeOptions['components'] =>
       },
     },
   },
-  MuiDataGrid: {
-    styleOverrides: {
-      root: {
-        border: `1px solid ${alpha(mode === 'light' ? pink : '#fff', 0.14)}`,
-        '--DataGrid-rowBorderColor': alpha(mode === 'light' ? pink : '#fff', 0.1),
-        '& .MuiDataGrid-columnHeaders': {
-          background: alpha(pink, mode === 'light' ? 0.08 : 0.16),
-          fontWeight: 800,
-        },
-        '& .MuiDataGrid-row:hover': {
-          background: alpha(pink, 0.08),
-        },
-      },
-    },
-  },
 });
 
 const sharedTypography: ThemeOptions['typography'] = {
