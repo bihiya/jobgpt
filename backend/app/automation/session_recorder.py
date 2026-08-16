@@ -181,6 +181,14 @@ class ApplySessionRecorder:
             questions=questions[:20],
         )
 
+    def needs_account(self, detail: str = "") -> None:
+        self.add(
+            "needs_account",
+            "Paused — candidate account required",
+            status="pending",
+            detail=detail[:500],
+        )
+
     def failed(self, message: str) -> None:
         self.add("failed", "Apply failed", status="error", detail=message[:500])
 

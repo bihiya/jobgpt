@@ -16,7 +16,7 @@ export type LiveApplication = {
   portal?: string;
 };
 
-const LIVE = new Set(['pending', 'in_progress', 'retrying', 'needs_input', 'needs_otp']);
+const LIVE = new Set(['pending', 'in_progress', 'retrying', 'needs_input', 'needs_otp', 'needs_account']);
 
 function LiveApplyTray({
   applications,

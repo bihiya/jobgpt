@@ -81,6 +81,24 @@ def channel_label(*, kind: str, ats: str = "") -> str:
     return "External apply"
 
 
+def predicted_channel_meta(kind: str, *, ats: str = "") -> dict[str, Any]:
+    """Store a fetch-time Easy Apply vs company-site guess on the job."""
+    if kind in {KIND_LINKEDIN, "easy", "linkedin_easy_apply"}:
+        return {
+            "apply_channel": channel_label(kind=KIND_LINKEDIN),
+            "apply_channel_kind": KIND_LINKEDIN,
+            "apply_channel_predicted": True,
+        }
+    if kind in {KIND_EXTERNAL, "company", "company_site"}:
+        return {
+            "apply_channel": channel_label(kind=KIND_EXTERNAL, ats=ats),
+            "apply_channel_kind": KIND_EXTERNAL,
+            "apply_channel_predicted": True,
+            "ats": ats or "",
+        }
+    return {}
+
+
 def is_offsite(url: str, origin_hosts: tuple[str, ...]) -> bool:
     host = hostname(url)
     if not host:

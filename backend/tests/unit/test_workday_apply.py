@@ -224,5 +224,6 @@ async def test_workday_account_wall_without_credentials():
     )
     result = await WorkdayPortal().apply_landed(_Page(inner), _job(), "/tmp/r.pdf", {})
     assert result.success is False
+    assert result.needs_account is True
     assert "candidate account" in result.message.lower()
     assert result.fail_proof_html

@@ -92,7 +92,17 @@ def _worker(job, app, portal_doc=None):
     worker.portals.list_for_user = AsyncMock(return_value=[])
     worker.users.get_by_id = AsyncMock(
         return_value=SimpleNamespace(
-            profile=SimpleNamespace(experience_years=5, notice_period_days=30, location="Remote")
+            email="ada@example.com",
+            full_name="Ada Lovelace",
+            profile=SimpleNamespace(
+                experience_years=5,
+                notice_period_days=30,
+                location="Remote",
+                phone="555-0100",
+                linkedin_url="https://www.linkedin.com/in/ada",
+                github_url="",
+                portfolio_url="",
+            ),
         )
     )
     worker.questions.resolve_answers = AsyncMock(return_value={})
@@ -153,8 +163,12 @@ async def test_apply_worker_marks_linkedin_success():
     worker.notifier.dispatch.assert_awaited()
     adapter.apply_with_retry.assert_awaited_once()
     extracted = adapter.apply_with_retry.await_args.args[0]
+    answers = adapter.apply_with_retry.await_args.args[2]
     assert extracted.apply_url == job.apply_url
     assert extracted.title == "Software Engineer"
+    assert answers["First Name"] == "Ada"
+    assert answers["Email"] == "ada@example.com"
+    assert answers["How Did You Hear About Us"] == "LinkedIn"
     assert any(step["key"] == "started" for step in adapter.recorder.to_list())
 
 
@@ -330,3 +344,39 @@ def test_remember_apply_channel_on_job():
     ApplyWorker._remember_apply_channel(job, result)
     assert job.metadata["apply_channel"] == "External apply · Workday"
     assert job.metadata["ats"] == "workday"
+    assert job.metadata["apply_channel_predicted"] is False
+
+
+@pytest.mark.asyncio
+async def test_apply_worker_pauses_for_candidate_account():
+    job = _job()
+    app = _app()
+    worker = _worker(job, app)
+    adapter = MagicMock()
+    adapter.recorder = ApplySessionRecorder()
+    adapter.session_identity = {}
+    adapter.apply_with_retry = AsyncMock(
+        return_value=ApplyResult(
+            success=False,
+            needs_account=True,
+            message="Workday needs a candidate account for this company.",
+            steps=[{"key": "needs_account", "label": "Paused — candidate account required", "status": "pending"}],
+        )
+    )
+
+    with (
+        patch("app.workers.apply_worker.Application.get", new=AsyncMock(return_value=app)),
+        patch("app.workers.apply_worker.AutomationLog", _Log),
+        patch("app.workers.apply_worker.get_portal_adapter", return_value=adapter),
+        patch("app.workers.apply_worker.emit_realtime", new=AsyncMock()),
+        patch("app.workers.apply_worker.publish", new=AsyncMock()),
+        patch("app.workers.apply_worker.audit_event", new=AsyncMock()),
+        patch("app.workers.apply_worker.apply_identity_to_portal"),
+    ):
+        await worker.handle("job.apply", {"user_id": "u1", "job_id": "j1", "application_id": "a1"})
+
+    assert app.status == ApplicationStatus.NEEDS_ACCOUNT
+    assert app.blocker_type == "create_account"
+    assert job.status == JobStatus.APPLYING
+    worker.notifier.dispatch.assert_awaited()
+    assert worker.notifier.dispatch.await_args.kwargs["event"] == "application.needs_account"

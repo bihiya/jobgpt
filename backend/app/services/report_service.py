@@ -221,7 +221,7 @@ class ReportService:
         blockers = await Application.find(
             {
                 "user_id": user_id,
-                "status": {"$in": [ApplicationStatus.NEEDS_INPUT, ApplicationStatus.NEEDS_OTP]},
+                "status": {"$in": [ApplicationStatus.NEEDS_INPUT, ApplicationStatus.NEEDS_OTP, ApplicationStatus.NEEDS_ACCOUNT]},
             }
         ).count()
 

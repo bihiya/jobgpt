@@ -15,12 +15,14 @@ export type BlockerItem = {
   error_message?: string;
   unknown_questions?: string[];
   session_steps?: Array<Record<string, unknown>>;
+  apply_url?: string;
 };
 
 function actionLabel(type?: string) {
   if (type === 'otp') return 'Enter OTP';
   if (type === 'unknown_question') return 'Answer';
   if (type === 'captcha') return 'Resolve';
+  if (type === 'create_account') return 'Open site';
   if (type === 'login_expired' || type === 'portal_paused') return 'Re-auth';
   return 'Fix';
 }

@@ -7,6 +7,7 @@ export const LIVE_APPLY_STATUSES = new Set([
   'retrying',
   'needs_input',
   'needs_otp',
+  'needs_account',
 ]);
 
 /** No worker update for this long → treat the apply as stuck. */
@@ -76,6 +77,7 @@ export function applyStatusLabel(status?: string | null): string {
   if (value === 'retrying') return 'Retrying';
   if (value === 'needs input') return 'Needs an answer';
   if (value === 'needs otp') return 'Needs OTP';
+  if (value === 'needs account') return 'Needs a candidate account';
   if (value === 'success') return 'Applied';
   return value.charAt(0).toUpperCase() + value.slice(1);
 }

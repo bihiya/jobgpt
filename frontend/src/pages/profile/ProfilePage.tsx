@@ -221,6 +221,7 @@ export default function ProfilePage() {
           <TextField label="Full name" value={form.full_name} onChange={setField('full_name')} fullWidth />
           <TextField label="Email" value={form.email} fullWidth disabled helperText="Sign-in email" />
           <TextField label="Location" value={form.location} onChange={setField('location')} fullWidth />
+          <TextField label="Phone" value={form.phone} onChange={setField('phone')} fullWidth />
           <TextField label="LinkedIn URL" value={form.linkedin_url} onChange={setField('linkedin_url')} fullWidth />
           <TextField label="GitHub URL" value={form.github_url} onChange={setField('github_url')} fullWidth />
           <TextField label="Portfolio URL" value={form.portfolio_url} onChange={setField('portfolio_url')} fullWidth />

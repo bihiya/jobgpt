@@ -51,7 +51,7 @@ function PipelinePage() {
     refetchInterval: (query) => {
       const items = (query.state.data as { items?: LiveApplication[] } | undefined)?.items || [];
       return items.some((app) =>
-        ['pending', 'in_progress', 'retrying', 'needs_input', 'needs_otp'].includes(app.status),
+        ['pending', 'in_progress', 'retrying', 'needs_input', 'needs_otp', 'needs_account'].includes(app.status),
       )
         ? 4000
         : false;

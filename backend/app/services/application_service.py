@@ -226,6 +226,7 @@ class ApplicationService:
             ApplicationStatus.RETRYING,
             ApplicationStatus.NEEDS_INPUT,
             ApplicationStatus.NEEDS_OTP,
+            ApplicationStatus.NEEDS_ACCOUNT,
         }
         if app.status not in cancellable:
             raise NotFoundError("Application cannot be cancelled in its current state")

@@ -368,6 +368,7 @@ class FetchWorker(BaseWorker):
                         source="portal",
                         status=JobStatus.NEW,
                         fetched_at=datetime.utcnow(),
+                        metadata=dict(getattr(item, "metadata", None) or {}),
                     )
                     await job.insert()
                     await self.dedupe.remember(user_id, fingerprint)

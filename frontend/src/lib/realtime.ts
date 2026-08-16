@@ -72,6 +72,7 @@ export function queryKeysForEvent(event: string): string[][] {
     case 'application.cancelled':
     case 'application.needs_input':
     case 'application.needs_otp':
+    case 'application.needs_account':
     case 'application.rate_limited':
     case 'job.success':
     case 'job.failed':
@@ -145,6 +146,7 @@ export function shouldToastEvent(event: string): boolean {
     'application.started',
     'application.needs_input',
     'application.needs_otp',
+    'application.needs_account',
     'application.cancelled',
     'report.ready',
     'report.failed',

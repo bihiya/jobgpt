@@ -56,6 +56,7 @@ class ApplicationRepository(BaseRepository[Application]):
             ApplicationStatus.RETRYING,
             ApplicationStatus.NEEDS_INPUT,
             ApplicationStatus.NEEDS_OTP,
+            ApplicationStatus.NEEDS_ACCOUNT,
         ]
         return await self.find_one(
             {

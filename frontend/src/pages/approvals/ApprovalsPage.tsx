@@ -16,9 +16,11 @@ import { DataGrid, GridColDef, GridRowSelectionModel } from '@mui/x-data-grid';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { memo, useCallback, useMemo, useState } from 'react';
 import { approvalsApi, applicationsApi, jobsApi, questionsApi, settingsApi } from '../../api';
+import ApplyChannelChip from '../../components/jobs/ApplyChannelChip';
 import ApplySessionTimeline from '../../components/automation/ApplySessionTimeline';
 import PageShell from '../../components/common/PageShell';
 import JobDetailDrawer, { type JobDetail } from '../../components/jobs/JobDetailDrawer';
+import { applyChannelFromSteps } from '../../lib/applyLive';
 import { useRequireAuth } from '../../hooks/useRequireAuth';
 import { useToast } from '../../hooks/useToast';
 
@@ -130,6 +132,19 @@ function ApprovalsPage() {
       { field: 'summary', headerName: 'Job', flex: 1.5, minWidth: 180 },
       { field: 'portal', headerName: 'Portal', width: 120 },
       {
+        field: 'apply_channel',
+        headerName: 'Apply type',
+        width: 190,
+        sortable: false,
+        renderCell: (params) => {
+          const channel = applyChannelFromSteps(null, {
+            portal: params.row.portal,
+            metadata: params.row.metadata || { apply_channel: params.row.apply_channel },
+          });
+          return channel ? <ApplyChannelChip channel={channel} /> : '—';
+        },
+      },
+      {
         field: 'match_score',
         headerName: 'Match',
         width: 110,
@@ -235,6 +250,17 @@ function ApprovalsPage() {
                       }
                     >
                       Enter OTP
+                    </Button>
+                  ) : b.blocker_type === 'create_account' ? (
+                    <Button
+                      color="inherit"
+                      size="small"
+                      onClick={() => {
+                        const url = String(b.apply_url || '');
+                        if (url) window.open(url, '_blank', 'noopener,noreferrer');
+                      }}
+                    >
+                      Open site
                     </Button>
                   ) : (
                     <Button

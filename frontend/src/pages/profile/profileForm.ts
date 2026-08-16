@@ -12,6 +12,7 @@ export type ProfileForm = {
   linkedin_url: string;
   github_url: string;
   portfolio_url: string;
+  phone: string;
 };
 
 export type ProfileApiUser = {
@@ -26,6 +27,7 @@ export type ProfileApiUser = {
     linkedin_url?: string;
     github_url?: string;
     portfolio_url?: string;
+    phone?: string;
     salary_expectation?: {
       min?: number;
       max?: number;
@@ -49,6 +51,7 @@ export function emptyProfileForm(): ProfileForm {
     linkedin_url: '',
     github_url: '',
     portfolio_url: '',
+    phone: '',
   };
 }
 
@@ -76,6 +79,7 @@ export function profileFromApi(data: ProfileApiUser | null | undefined): Profile
     linkedin_url: profile.linkedin_url || '',
     github_url: profile.github_url || '',
     portfolio_url: profile.portfolio_url || '',
+    phone: profile.phone || '',
   };
 }
 
@@ -96,6 +100,7 @@ export function profileToUpdate(form: ProfileForm) {
       linkedin_url: form.linkedin_url,
       github_url: form.github_url,
       portfolio_url: form.portfolio_url,
+      phone: form.phone,
     },
   };
 }

@@ -2,7 +2,14 @@
 
 import re
 
-from app.automation.ats import KIND_LINKEDIN, apply_on_landed_ats, is_offsite, record_apply_channel, tag_apply_result
+from app.automation.ats import (
+    KIND_LINKEDIN,
+    apply_on_landed_ats,
+    is_offsite,
+    predicted_channel_meta,
+    record_apply_channel,
+    tag_apply_result,
+)
 from app.automation.auth import (
     LOGIN_FAILED,
     NOT_LOGGED_IN,
@@ -40,6 +47,7 @@ _ALREADY_APPLIED_TEXT = (
 )
 _CARD_NOISE_RE = re.compile(
     r"^(promoted|easy apply|linkedin apply|actively recruiting|viewed|verified|"
+    r"apply on company website|apply on the company website|company website|"
     r"see more|be an early applicant|"
     r"\d[\d,]*\s+applicants?|"
     r"\d+\s+(second|minute|hour|day|week|month)s?\s+ago"
@@ -84,7 +92,18 @@ def parse_linkedin_card(text: str) -> dict[str, str]:
         "location": location,
         "salary": salary,
         "description": "\n".join(lines),
+        "apply_kind": detect_linkedin_card_apply_kind(text),
     }
+
+
+def detect_linkedin_card_apply_kind(text: str) -> str:
+    """linkedin = Easy Apply badge, external = company-site Apply, else unknown."""
+    blob = (text or "").lower()
+    if "easy apply" in blob or "linkedin apply" in blob:
+        return "linkedin"
+    if "apply on company" in blob or "company website" in blob:
+        return "external"
+    return ""
 
 
 def _absolute_linkedin_url(href: str) -> str:
@@ -463,6 +482,7 @@ class LinkedInPortal(BasePortal):
                     f"https://www.linkedin.com/jobs/view/{job_id}/" if job_id else ""
                 ),
                 description=parsed["description"] or blob,
+                metadata=predicted_channel_meta(parsed.get("apply_kind") or ""),
             )
             await self._enrich_from_detail_pane(page, card, job, pack)
             jobs.append(job)
@@ -499,6 +519,16 @@ class LinkedInPortal(BasePortal):
             job.company = parsed["company"]
         if len(detail) > len(job.description or ""):
             job.description = detail[:12000]
+        kind = await self._listing_apply_kind(page, pack, job.description or "")
+        if kind:
+            job.metadata = {**(job.metadata or {}), **predicted_channel_meta(kind)}
+
+    async def _listing_apply_kind(self, page: BasePage, pack, card_text: str) -> str:
+        if await any_visible(page, pack.all("easy_apply")):
+            return "linkedin"
+        if await any_visible(page, pack.all("external_apply")):
+            return "external"
+        return detect_linkedin_card_apply_kind(card_text)
 
     async def _card_job_url(self, card, pack) -> str:
         for sel in pack.all("job_links"):

@@ -3,6 +3,7 @@
 from app.automation.ats import KIND_EXTERNAL, record_apply_channel, tag_apply_result
 from app.automation.base.page import BasePage
 from app.automation.base.portal import ApplyResult, BasePortal, ExtractedJob
+from app.automation.choice_fields import fill_choice_fields, fill_workday_comboboxes
 from app.automation.form_fields import resolve_and_fill
 from app.automation.selectors import any_visible, click_first, click_if_present, fill_first, get_selector_pack
 from app.automation.verify import capture_fail_proof, verify_apply_success
@@ -29,6 +30,24 @@ class WorkdayPortal(BasePortal):
 
     async def extract_jobs(self, page: BasePage) -> list[ExtractedJob]:
         return []
+
+    async def _pause_account(self, page: BasePage, message: str, url: str) -> ApplyResult:
+        proof = await capture_fail_proof(page, prefix="workday-account")
+        self.recorder.needs_account(message)
+        return tag_apply_result(
+            ApplyResult(
+                success=False,
+                needs_account=True,
+                message=message,
+                screenshot_path=proof["screenshot_path"],
+                fail_proof_html=proof["html"],
+                fail_proof_path=proof["html_path"],
+                steps=self.recorder.to_list(),
+            ),
+            kind=KIND_EXTERNAL,
+            ats="workday",
+            url=url,
+        )
 
     async def _fail(self, page: BasePage, message: str) -> ApplyResult:
         proof = await capture_fail_proof(page, prefix="workday-apply")
@@ -124,20 +143,17 @@ class WorkdayPortal(BasePortal):
         if await self._account_wall(page):
             if self.credentials.get("username") and self.credentials.get("password"):
                 signed_in = await self._sign_in(page)
-                if not signed_in:
-                    return await self._fail(
-                        page,
-                        "Workday asked for a candidate account and sign-in did not complete. "
-                        "Check the Workday email/password under Job portals.",
-                    )
-                await click_first(page, pack.all("apply"), timeout=4000)
-                await click_first(page, pack.all("apply_manually"), timeout=4000)
-            else:
-                return await self._fail(
+                if signed_in:
+                    await click_first(page, pack.all("apply"), timeout=4000)
+                    await click_first(page, pack.all("apply_manually"), timeout=4000)
+                    await self._dismiss_overlays(page)
+            if await self._account_wall(page):
+                return await self._pause_account(
                     page,
-                    "Workday requires a candidate account (Sign In / Create Account). "
-                    "Connect Workday under Job portals with that email and password, "
-                    "or create the account on the company site first.",
+                    "Workday needs a candidate account for this company. "
+                    "Create/sign in on the career site (accounts do not carry across companies), "
+                    "save that email/password under Job portals → Workday, then Retry.",
+                    url,
                 )
 
         file_sel = pack.primary("file_input") or "input[type='file']"
@@ -157,15 +173,24 @@ class WorkdayPortal(BasePortal):
 
         for _ in range(12):
             await click_if_present(page, pack.all("agree"))
-            resolution = await resolve_and_fill(page, answers, pause_on_unknown=True)
-            if resolution.filled:
-                self.recorder.filled_fields(len(resolution.filled))
-            if resolution.unknown:
-                self.recorder.needs_input(resolution.unknown)
+            choices = await fill_choice_fields(page, answers)
+            combos = await fill_workday_comboboxes(page, answers)
+            resolution = await resolve_and_fill(
+                page,
+                answers,
+                pause_on_unknown=True,
+                unknown_if_optional=False,
+            )
+            filled = list(choices.filled) + list(combos.filled) + list(resolution.filled)
+            if filled:
+                self.recorder.filled_fields(len(filled))
+            unknown = list(resolution.unknown) + list(combos.unknown)
+            if unknown:
+                self.recorder.needs_input(unknown)
                 return ApplyResult(
                     success=False,
                     needs_input=True,
-                    unknown_questions=resolution.unknown,
+                    unknown_questions=unknown,
                     message="Paused — answer unknown Workday questions to resume",
                     steps=self.recorder.to_list(),
                 )

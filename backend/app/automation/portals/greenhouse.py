@@ -3,6 +3,7 @@
 from app.automation.ats import KIND_EXTERNAL, record_apply_channel, tag_apply_result
 from app.automation.base.page import BasePage
 from app.automation.base.portal import ApplyResult, BasePortal, ExtractedJob
+from app.automation.choice_fields import fill_choice_fields
 from app.automation.form_fields import resolve_and_fill
 from app.automation.selectors import any_visible, click_first, get_selector_pack
 from app.automation.verify import verify_apply_success
@@ -80,9 +81,11 @@ class GreenhousePortal(BasePortal):
             await page.upload(file_sel, resume_path)
             self.recorder.uploaded_resume()
 
+        choices = await fill_choice_fields(page, answers)
         resolution = await resolve_and_fill(page, answers, pause_on_unknown=True)
-        if resolution.filled:
-            self.recorder.filled_fields(len(resolution.filled))
+        filled = list(choices.filled) + list(resolution.filled)
+        if filled:
+            self.recorder.filled_fields(len(filled))
         if resolution.unknown:
             self.recorder.needs_input(resolution.unknown)
             return ApplyResult(

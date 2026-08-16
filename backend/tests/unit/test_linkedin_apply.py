@@ -12,6 +12,7 @@ from app.automation.form_fields import FieldResolution
 from app.automation.portals.linkedin import (
     LinkedInPortal,
     canonical_job_url,
+    detect_linkedin_card_apply_kind,
     linkedin_job_id,
     parse_linkedin_card,
 )
@@ -286,6 +287,36 @@ async def test_extract_jobs_uses_job_view_not_company_logo():
     assert jobs[0].external_id == "linkedin-4123456789"
 
 
+def test_detect_linkedin_card_apply_kind():
+    assert detect_linkedin_card_apply_kind("Easy Apply") == "linkedin"
+    assert detect_linkedin_card_apply_kind("Apply on company website") == "external"
+    assert detect_linkedin_card_apply_kind("Software Engineer\nAcme") == ""
+
+
+@pytest.mark.asyncio
+async def test_extract_jobs_tags_easy_apply_vs_company_site():
+    inner = _InnerPage("https://www.linkedin.com/jobs/search/?keywords=eng")
+    inner.cards = [
+        _Card(
+            "Software Engineer\nAcme\nRemote\nEasy Apply",
+            [("a[href*='/jobs/view/']", "/jobs/view/4123456789/")],
+        )
+    ]
+    jobs = await _portal().extract_jobs(_Page(inner))
+    assert jobs[0].metadata.get("apply_channel") == "LinkedIn Easy Apply"
+    assert jobs[0].metadata.get("apply_channel_kind") == "linkedin"
+
+    inner.cards = [
+        _Card(
+            "Staff Engineer\nNvidia\nSanta Clara\nApply on company website",
+            [("a[href*='/jobs/view/']", "/jobs/view/4987654321/")],
+        )
+    ]
+    jobs = await _portal().extract_jobs(_Page(inner))
+    assert jobs[0].metadata.get("apply_channel_kind") == "external"
+    assert "External apply" in jobs[0].metadata.get("apply_channel", "")
+
+
 def test_parse_linkedin_card_captures_answerthis_listing():
     parsed = parse_linkedin_card(
         "Product Engineer\n"
@@ -299,6 +330,7 @@ def test_parse_linkedin_card_captures_answerthis_listing():
     assert parsed["company"] == "AnswerThis (YC F25)"
     assert "Remote" in parsed["location"]
     assert "$150K" in parsed["salary"]
+    assert parsed["apply_kind"] == "linkedin"
 
 
 @pytest.mark.asyncio

@@ -201,7 +201,7 @@ class ApplyWorker(BaseWorker):
             await adapter.recorder.flush()
 
             user = await self.users.get_by_id(user_id)
-            answers = await self._load_apply_answers(user_id, user)
+            answers = await self._load_apply_answers(user_id, user, portal=job.portal)
 
             await AutomationLog(
                 user_id=user_id,
@@ -300,6 +300,9 @@ class ApplyWorker(BaseWorker):
             return
         if result.needs_otp:
             await self._pause_for_otp(app, job, result)
+            return
+        if getattr(result, "needs_account", False):
+            await self._pause_for_account(app, job, result)
             return
 
         if result.success:
@@ -464,6 +467,55 @@ class ApplyWorker(BaseWorker):
             severity="warning",
         )
 
+    async def _pause_for_account(self, app: Application, job, result) -> None:
+        app.status = ApplicationStatus.NEEDS_ACCOUNT
+        app.blocker_type = "create_account"
+        app.error_message = result.message or "Create a candidate account on the company site, then retry"
+        if result.screenshot_path:
+            stored = await self._store_screenshot(app.user_id, result.screenshot_path)
+            app.screenshot_path = stored["path"]
+            app.screenshot_url = stored["url"]
+        await self._store_fail_proof(app, result)
+        await app.save()
+        job.status = JobStatus.APPLYING
+        await job.save()
+        await self.notifier.dispatch(
+            app.user_id,
+            event="application.needs_account",
+            title="Candidate account needed",
+            body=f"Create an account on the {job.company} career site, save it under Job portals, then retry {job.title}",
+            type_="warning",
+            metadata={
+                "job_id": app.job_id,
+                "application_id": str(app.id),
+                "apply_url": getattr(job, "apply_url", "") or "",
+            },
+        )
+        await emit_realtime(
+            app.user_id,
+            "application.needs_account",
+            {
+                "job_id": app.job_id,
+                "application_id": str(app.id),
+                "apply_url": getattr(job, "apply_url", "") or "",
+                "steps": app.session_steps,
+            },
+            title="Candidate account required",
+            body=job.title,
+            severity="warning",
+        )
+        await audit_event(
+            app.user_id,
+            "application.needs_account",
+            message="Paused apply — company-site candidate account required",
+            job_id=app.job_id,
+            application_id=str(app.id),
+            resource_type="application",
+            resource_id=str(app.id),
+            source="worker",
+            severity="warning",
+        )
+
     async def _store_screenshot(self, user_id: str, local_path: str) -> dict[str, str]:
         if not local_path:
             return {"path": "", "url": ""}
@@ -501,8 +553,10 @@ class ApplyWorker(BaseWorker):
         )
         app.fail_proof_path = stored["path"]
 
-    async def _load_apply_answers(self, user_id: str, user) -> dict[str, str]:
-        """Best-effort question bank + profile defaults. Must never abort apply."""
+    async def _load_apply_answers(self, user_id: str, user, *, portal: str = "") -> dict[str, str]:
+        """Best-effort question bank + profile identity. Must never abort apply."""
+        from app.automation.identity import identity_answers
+
         question_prompts = [
             "How many years of experience do you have?",
             "What is your notice period?",
@@ -510,6 +564,7 @@ class ApplyWorker(BaseWorker):
             "Are you authorized to work?",
             "Do you require sponsorship?",
             "Expected salary",
+            "How did you hear about us?",
         ]
         bank: dict[str, str] = {}
         try:
@@ -525,7 +580,7 @@ class ApplyWorker(BaseWorker):
                 user_id=user_id,
                 error=str(exec_exc)[:300],
             )
-        return {
+        answers = {
             "years": bank.get(
                 "How many years of experience do you have?",
                 str(user.profile.experience_years) if user else "0",
@@ -538,8 +593,14 @@ class ApplyWorker(BaseWorker):
                 "What is your current location?",
                 user.profile.location if user else "",
             ),
-            **{k: v for k, v in bank.items()},
+            **identity_answers(user),
+            **{k: v for k, v in bank.items() if v},
         }
+        # Workday/Greenhouse "how did you hear" widgets, not only LinkedIn Easy Apply.
+        answers.setdefault("How Did You Hear About Us", "LinkedIn")
+        answers.setdefault("How did you hear about this job", "LinkedIn")
+        answers.setdefault("How did you hear about us?", "LinkedIn")
+        return {key: str(value) for key, value in answers.items() if value not in {None, ""}}
 
     async def _attach_ats_sessions(self, adapter, user_id: str) -> None:
         """Load Workday/Greenhouse/etc. logins so LinkedIn company-site Apply can sign in."""
@@ -581,6 +642,7 @@ class ApplyWorker(BaseWorker):
         meta["apply_channel"] = channel
         if ats:
             meta["ats"] = ats
+        meta["apply_channel_predicted"] = False
         job.metadata = meta
 
     async def _fail(self, app: Application, job, message: str, screenshot: str = "") -> None:

@@ -158,7 +158,7 @@ function ApplySessionPanel({ jobId, jobStatus, jobPortal, jobMetadata, open, fal
 
       {live?.id && (applying || live.status === 'failed') ? (
         <Stack direction="row" spacing={1} sx={{ mt: 1.5 }}>
-          {(stale || live.status === 'failed' || live.status === 'pending') && (
+          {(stale || live.status === 'failed' || live.status === 'pending' || live.status === 'needs_account') && (
             <Button
               size="small"
               variant="contained"

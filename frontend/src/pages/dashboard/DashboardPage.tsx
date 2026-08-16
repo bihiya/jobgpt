@@ -177,6 +177,11 @@ export default function DashboardPage() {
         setOtpOpen({ application_id: b.application_id, portal: b.portal || '' });
         return;
       }
+      if (b.blocker_type === 'create_account') {
+        if (b.apply_url) window.open(b.apply_url, '_blank', 'noopener,noreferrer');
+        navigate('/job-portals');
+        return;
+      }
       if (b.application_id) {
         const qs = b.unknown_questions || [];
         setAnswers(Object.fromEntries(qs.map((q) => [q, ''])));

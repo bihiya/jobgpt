@@ -76,6 +76,11 @@ describe('apply live helpers', () => {
     expect(
       applyChannelFromSteps([], { metadata: { apply_channel: 'External apply · Greenhouse', ats: 'greenhouse' } }),
     ).toMatchObject({ kind: 'external', label: 'External apply · Greenhouse', ats: 'greenhouse' });
+    expect(applyChannelFromSteps([], { metadata: { apply_channel: 'LinkedIn Easy Apply' } })).toMatchObject({
+      kind: 'linkedin',
+      label: 'LinkedIn Easy Apply',
+    });
     expect(applyChannelFromSteps([], { portal: 'linkedin' })).toBeNull();
+    expect(applyStatusLabel('needs_account')).toBe('Needs a candidate account');
   });
 });

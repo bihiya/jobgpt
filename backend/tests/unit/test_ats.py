@@ -4,6 +4,7 @@ from app.automation.ats import (
     channel_label,
     detect_ats,
     is_offsite,
+    predicted_channel_meta,
     tag_apply_result,
 )
 from app.automation.base.portal import ApplyResult
@@ -33,6 +34,18 @@ def test_channel_labels():
     assert channel_label(kind="external", ats="greenhouse") == "External apply · Greenhouse"
     assert channel_label(kind="external", ats="generic") == "External apply"
     assert channel_label(kind="indeed") == "Indeed apply"
+
+
+def test_predicted_channel_meta_for_fetch():
+    easy = predicted_channel_meta("linkedin")
+    assert easy["apply_channel"] == "LinkedIn Easy Apply"
+    assert easy["apply_channel_kind"] == "linkedin"
+    assert easy["apply_channel_predicted"] is True
+    company = predicted_channel_meta("external")
+    assert company["apply_channel"] == "External apply"
+    assert company["apply_channel_kind"] == "external"
+    assert company["apply_channel_predicted"] is True
+    assert predicted_channel_meta("") == {}
 
 
 def test_offsite_detection():
