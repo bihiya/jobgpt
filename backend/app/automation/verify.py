@@ -27,6 +27,10 @@ SUCCESS_TEXT_FALLBACKS = [
     "your application has been submitted",
     "successfully applied",
     "we have received your application",
+    "you applied on",
+    "you’ve already applied",
+    "you've already applied",
+    "you have already applied",
 ]
 
 

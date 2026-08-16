@@ -217,11 +217,19 @@ class ApplyWorker(BaseWorker):
 
         result = None
         resume_local = None
+        crash = ""
         try:
             resume_local = await self.storage.as_local_file(resume.file_path)
             result = await adapter.apply_with_retry(extracted, resume_local, answers)
+        except Exception as exc:  # noqa: BLE001
+            crash = str(exc) or exc.__class__.__name__
+            logger.exception("apply_worker_crashed", job_id=job_id, error=crash)
         finally:
             await self.storage.cleanup_temp(resume_local, original=resume.file_path)
+
+        if crash or result is None:
+            await self._fail(app, job, crash or "Apply worker returned no result")
+            return
 
         # Persist refreshed session cookies + who this session belongs to
         if portal_doc:

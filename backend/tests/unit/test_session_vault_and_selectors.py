@@ -78,6 +78,12 @@ def test_selector_packs_versioned():
     li = get_selector_pack("linkedin")
     assert li.version == 1
     assert li.all("easy_apply")
+    assert "button:has-text('Apply')" not in li.all("easy_apply")
+    assert any("Easy Apply" in sel or "LinkedIn Apply to" in sel for sel in li.all("easy_apply"))
+    assert li.all("already_applied")
+    assert li.all("external_apply")
+    assert li.all("job_links")
+    assert any("/jobs/view/" in sel for sel in li.all("job_links"))
     assert li.all("login_error")
     assert "a[href*='/feed']" not in li.all("logged_in")
     assert get_selector_pack("greenhouse").all("success")
