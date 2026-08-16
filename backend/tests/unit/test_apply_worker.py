@@ -89,6 +89,7 @@ def _worker(job, app, portal_doc=None):
     worker.vault.load_cookies = MagicMock(return_value=[{"name": "li_at", "value": "tok"}])
     worker.vault.load_totp_secret = MagicMock(return_value="")
     worker.vault.save_cookies = MagicMock()
+    worker.portals.list_for_user = AsyncMock(return_value=[])
     worker.users.get_by_id = AsyncMock(
         return_value=SimpleNamespace(
             profile=SimpleNamespace(experience_years=5, notice_period_days=30, location="Remote")
@@ -318,3 +319,14 @@ async def test_apply_worker_continues_when_question_bank_list_fails():
     keys = [step["key"] for step in adapter.recorder.to_list()]
     assert "prepare" in keys
     assert "started" in keys
+
+
+def test_remember_apply_channel_on_job():
+    job = _job()
+    result = ApplyResult(
+        success=True,
+        metadata={"apply_channel": "External apply · Workday", "ats": "workday"},
+    )
+    ApplyWorker._remember_apply_channel(job, result)
+    assert job.metadata["apply_channel"] == "External apply · Workday"
+    assert job.metadata["ats"] == "workday"

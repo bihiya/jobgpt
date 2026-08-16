@@ -123,8 +123,13 @@ LINKEDIN_V1 = SelectorPack(
         ],
         "external_apply": [
             "button[aria-label*='Apply on company']",
+            "a[aria-label*='Apply on company']",
             "button[aria-label*='company website']",
+            "a[aria-label*='company website']",
+            "button:has-text('Apply on company website')",
+            "a:has-text('Apply on company website')",
             "button.jobs-apply-button:has-text('Apply'):not(:has-text('Easy'))",
+            "a.jobs-apply-button:has-text('Apply'):not(:has-text('Easy'))",
         ],
         "easy_apply_modal": [
             ".jobs-easy-apply-modal",
@@ -221,6 +226,11 @@ INDEED_V1 = SelectorPack(
             "a:has-text('Apply now')",
             "button.ia-IndeedApplyButton",
         ],
+        "external_apply": [
+            "a[href*='clk']",
+            "button:has-text('Apply on company site')",
+            "a:has-text('Apply on company site')",
+        ],
         "file_input": ["input[type='file']"],
         "submit": [
             "button:has-text('Submit')",
@@ -247,6 +257,11 @@ GREENHOUSE_V1 = SelectorPack(
     selectors={
         "job_links": ["a[href*='/jobs/']", "#main a[href*='jobs']"],
         "file_input": ["input[type='file']", "#resume"],
+        "apply": [
+            "a:has-text('Apply')",
+            "button:has-text('Apply')",
+            "input[type='button'][value='Apply']",
+        ],
         "submit": [
             "button[type='submit']",
             "input[type='submit']",
@@ -280,6 +295,113 @@ LEVER_V1 = SelectorPack(
             "h3:has-text('Application submitted')",
         ],
         "form_fields": ["form input, form textarea, form select"],
+        "apply": [
+            "a:has-text('Apply')",
+            "button:has-text('Apply')",
+            "a[href$='/apply']",
+        ],
+    },
+)
+
+WORKDAY_V1 = SelectorPack(
+    portal="workday",
+    version=1,
+    selectors={
+        "apply": [
+            "a[data-automation-id='jobPostingApplyButton']",
+            "button[data-automation-id='jobPostingApplyButton']",
+            "a[data-automation-id='adventureButton']",
+            "button[data-automation-id='adventureButton']",
+            "a[data-automation-id='applyButton']",
+            "button[data-automation-id='applyButton']",
+            "button:has-text('Apply')",
+            "a:has-text('Apply')",
+        ],
+        "apply_manually": [
+            "a[data-automation-id='applyManually']",
+            "button[data-automation-id='applyManually']",
+            "button:has-text('Apply Manually')",
+            "a:has-text('Apply Manually')",
+            "button:has-text('Start New Application')",
+            "a:has-text('Start New Application')",
+        ],
+        "file_input": [
+            "input[data-automation-id='file-upload-input-ref']",
+            "input[data-automation-id='fileUpload']",
+            "input[type='file']",
+        ],
+        "next": [
+            "button[data-automation-id='bottom-navigation-next-button']",
+            "button[data-automation-id='pageFooterNextButton']",
+            "button[data-automation-id='wd-CommandButton_next']",
+            "button:has-text('Save and Continue')",
+            "button:has-text('Continue')",
+            "button:has-text('Next')",
+        ],
+        "submit": [
+            "button[data-automation-id='bottom-navigation-submit-button']",
+            "button[data-automation-id='wd-CommandButton_uic_submitButton']",
+            "button[aria-label='Submit']",
+            "button:has-text('Submit')",
+        ],
+        "success": [
+            "h2:has-text('Application Submitted')",
+            "[data-automation-id='successMessage']",
+            "text=Thank you for applying",
+            "text=We have received your application",
+            "text=successfully submitted",
+            "text=Application Submitted",
+        ],
+        "cookie": [
+            "button[data-automation-id='legalNoticeAcceptButton']",
+            "button[data-automation-id='acceptCookie']",
+            "#onetrust-accept-btn-handler",
+            "button:has-text('Accept All')",
+            "button:has-text('Accept')",
+        ],
+        "legal": [
+            "button[data-automation-id='legalNoticeAcceptButton']",
+            "button:has-text('I Agree')",
+            "button:has-text('Agree')",
+        ],
+        "agree": [
+            "input[data-automation-id='agreeToTermsCheckBox']",
+            "input[type='checkbox'][data-automation-id*='agree']",
+            "input[type='checkbox'][data-automation-id*='consent']",
+        ],
+        "account_wall": [
+            "button[data-automation-id='signInSubmitButton']",
+            "a[data-automation-id='createAccountLink']",
+            "button:has-text('Create Account')",
+            "a:has-text('Create Account')",
+            "h1:has-text('Sign In')",
+            "h2:has-text('Sign In')",
+            "h1:has-text('Create Account')",
+        ],
+        "login_user": [
+            "input[data-automation-id='email']",
+            "input[type='email']",
+            "input[name='email']",
+        ],
+        "login_pass": [
+            "input[data-automation-id='password']",
+            "input[type='password']",
+        ],
+        "login_submit": [
+            "button[data-automation-id='signInSubmitButton']",
+            "button:has-text('Sign In')",
+            "button[type='submit']",
+        ],
+        "wizard": [
+            "[data-automation-id='applyFlowPage']",
+            "[data-automation-id='bottom-navigation-next-button']",
+            "[data-automation-id='applyFlowFooter']",
+        ],
+        "already_applied": [
+            "text=You have already applied",
+            "text=already submitted an application",
+            "text=You have already submitted",
+        ],
     },
 )
 
@@ -288,6 +410,7 @@ PACKS: dict[str, SelectorPack] = {
     "indeed": INDEED_V1,
     "greenhouse": GREENHOUSE_V1,
     "lever": LEVER_V1,
+    "workday": WORKDAY_V1,
 }
 
 

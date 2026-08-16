@@ -145,7 +145,8 @@ export default function DashboardPage() {
       portal: String(a.portal || ''),
       match_score: Number(a.match_score || 0),
       summary: String(a.summary || ''),
-      easy_apply: ['linkedin', 'indeed'].includes(String(a.portal || '').toLowerCase()),
+      apply_channel: typeof a.apply_channel === 'string' ? a.apply_channel : undefined,
+      metadata: (a.metadata as Record<string, unknown> | undefined) || undefined,
     }));
   }, [approvalsQ.data]);
 

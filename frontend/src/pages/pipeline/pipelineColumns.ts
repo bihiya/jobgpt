@@ -42,6 +42,7 @@ export type PipeJob = {
   match_score: number;
   location?: string;
   updated_at?: string;
+  metadata?: Record<string, unknown>;
   application?: {
     id: string;
     job_id?: string;

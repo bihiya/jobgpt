@@ -8,6 +8,7 @@ export type SessionStep = {
   status?: string;
   detail?: string;
   at?: string;
+  metadata?: Record<string, unknown>;
 };
 
 type Props = {

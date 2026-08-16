@@ -175,6 +175,7 @@ class JobService:
                     "match_score": j.match_score,
                     "location": j.location,
                     "updated_at": getattr(j, "updated_at", "") or "",
+                    "metadata": dict(getattr(j, "metadata", None) or {}),
                 }
                 for j in page.items
             ]

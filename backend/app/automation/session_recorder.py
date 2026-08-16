@@ -125,8 +125,19 @@ class ApplySessionRecorder:
     def opened_jd(self, url: str = "") -> None:
         self.add("opened_jd", "Opened job description", detail=url[:300])
 
-    def clicked_apply(self, selector: str = "") -> None:
-        self.add("clicked_apply", "Clicked Easy Apply / Apply", detail=selector)
+    def apply_channel(self, label: str, *, kind: str = "", ats: str = "", url: str = "") -> None:
+        self.add("apply_channel", label, kind=kind, ats=ats, url=url)
+
+    def clicked_apply(self, selector: str = "", *, kind: str = "easy") -> None:
+        if kind == "external":
+            label = "Clicked External Apply"
+        elif kind in {"easy", "linkedin"}:
+            label = "Clicked LinkedIn Easy Apply"
+        elif kind == "indeed":
+            label = "Clicked Indeed Apply"
+        else:
+            label = "Clicked Apply"
+        self.add("clicked_apply", label, detail=selector, kind=kind)
 
     def uploaded_resume(self) -> None:
         self.add("uploaded_resume", "Uploaded resume")

@@ -166,6 +166,7 @@ class ApplyWorker(BaseWorker):
             otp_code=_otp_code_from_payload(payload, app),
             selector_version=selector_version,
         )
+        await self._attach_ats_sessions(adapter, user_id)
 
         adapter.recorder.seed(list(app.session_steps or []))
         adapter.recorder.complete_pending("queued", detail="Worker picked up")
@@ -265,6 +266,8 @@ class ApplyWorker(BaseWorker):
         if crash or result is None:
             await self._fail(app, job, crash or "Apply worker returned no result")
             return
+
+        self._remember_apply_channel(job, result)
 
         # Persist refreshed session cookies + who this session belongs to
         if portal_doc:
@@ -537,6 +540,48 @@ class ApplyWorker(BaseWorker):
             ),
             **{k: v for k, v in bank.items()},
         }
+
+    async def _attach_ats_sessions(self, adapter, user_id: str) -> None:
+        """Load Workday/Greenhouse/etc. logins so LinkedIn company-site Apply can sign in."""
+        adapter.ats_credentials = {}
+        adapter.ats_cookies = {}
+        list_fn = getattr(self.portals, "list_for_user", None)
+        if not callable(list_fn):
+            return
+        try:
+            docs = await list_fn(user_id)
+        except Exception:  # noqa: BLE001
+            return
+        skip = {"linkedin", "indeed"}
+        for doc in docs or []:
+            name = str(getattr(getattr(doc, "name", ""), "value", getattr(doc, "name", "")) or "")
+            if not name or name.lower() in skip:
+                continue
+            creds = getattr(doc, "credentials", None)
+            dump = creds.model_dump() if creds is not None and hasattr(creds, "model_dump") else {}
+            adapter.ats_credentials[name.lower()] = dump or {}
+            try:
+                adapter.ats_cookies[name.lower()] = self.vault.load_cookies(doc) or []
+            except Exception:  # noqa: BLE001
+                adapter.ats_cookies[name.lower()] = []
+
+    @staticmethod
+    def _remember_apply_channel(job, result) -> None:
+        meta = dict(getattr(job, "metadata", None) or {})
+        channel = (getattr(result, "metadata", None) or {}).get("apply_channel")
+        ats = (getattr(result, "metadata", None) or {}).get("ats")
+        if not channel:
+            for step in getattr(result, "steps", None) or []:
+                if isinstance(step, dict) and step.get("key") == "apply_channel":
+                    channel = step.get("label")
+                    ats = ats or (step.get("metadata") or {}).get("ats")
+                    break
+        if not channel:
+            return
+        meta["apply_channel"] = channel
+        if ats:
+            meta["ats"] = ats
+        job.metadata = meta
 
     async def _fail(self, app: Application, job, message: str, screenshot: str = "") -> None:
         app.status = ApplicationStatus.FAILED

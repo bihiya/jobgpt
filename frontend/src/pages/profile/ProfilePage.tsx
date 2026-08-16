@@ -207,7 +207,7 @@ export default function ProfilePage() {
       <Box>
         <Typography variant="h4">Profile</Typography>
         <Typography color="text.secondary">
-          Personal details and job preferences used for matching and Easy Apply.
+          Personal details and job preferences used for matching and auto-apply.
         </Typography>
       </Box>
 

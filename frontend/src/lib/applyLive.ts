@@ -86,3 +86,63 @@ export function pipelineHasLiveApply(columns?: Record<string, Array<{ status?: s
     jobs.some((job) => isJobApplying(job.status, job.application?.status)),
   );
 }
+
+export type ApplyChannel = {
+  kind: 'linkedin' | 'external' | 'indeed';
+  label: string;
+  ats?: string;
+};
+
+type StepLike = {
+  key?: string;
+  label?: string;
+  detail?: string;
+  metadata?: Record<string, unknown>;
+};
+
+function stepMeta(step: StepLike): Record<string, unknown> {
+  return step.metadata && typeof step.metadata === 'object' ? step.metadata : {};
+}
+
+export function applyChannelFromSteps(
+  steps?: StepLike[] | null,
+  fallback?: { portal?: string; metadata?: Record<string, unknown> } | null,
+): ApplyChannel | null {
+  for (const step of steps || []) {
+    if (step.key !== 'apply_channel' || !step.label) continue;
+    const meta = stepMeta(step);
+    const kindRaw = String(meta.kind || '');
+    const label = String(step.label);
+    const kind: ApplyChannel['kind'] =
+      kindRaw === 'linkedin' || /easy apply/i.test(label)
+        ? 'linkedin'
+        : kindRaw === 'indeed' || /^indeed apply$/i.test(label)
+          ? 'indeed'
+          : 'external';
+    return { kind, label, ats: String(meta.ats || '') || undefined };
+  }
+  for (const step of steps || []) {
+    if (step.key !== 'clicked_apply') continue;
+    const label = String(step.label || '');
+    if (/external/i.test(label)) return { kind: 'external', label: 'External apply' };
+    if (/easy apply/i.test(label)) return { kind: 'linkedin', label: 'LinkedIn Easy Apply' };
+    if (/indeed/i.test(label)) return { kind: 'indeed', label: 'Indeed apply' };
+  }
+  const stored = fallback?.metadata?.apply_channel;
+  if (typeof stored === 'string' && stored.trim()) {
+    if (/easy apply/i.test(stored)) return { kind: 'linkedin', label: stored };
+    if (/indeed apply/i.test(stored)) return { kind: 'indeed', label: stored };
+    return {
+      kind: 'external',
+      label: stored,
+      ats: typeof fallback?.metadata?.ats === 'string' ? fallback.metadata.ats : undefined,
+    };
+  }
+  return null;
+}
+
+export function applyChannelChipColor(channel: ApplyChannel): 'info' | 'secondary' | 'default' {
+  if (channel.kind === 'linkedin') return 'info';
+  if (channel.kind === 'external') return 'secondary';
+  return 'default';
+}

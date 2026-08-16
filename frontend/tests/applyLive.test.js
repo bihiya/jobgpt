@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyChannelFromSteps,
   applyStatusLabel,
   isJobApplying,
   isLiveApplyStatus,
@@ -58,5 +59,23 @@ describe('apply live helpers', () => {
       }),
     ).toBe(true);
     expect(pipelineHasLiveApply({ fetched: [{ status: 'matched' }], queued: [] })).toBe(false);
+  });
+
+  it('tags LinkedIn Easy Apply vs Workday external apply', () => {
+    expect(
+      applyChannelFromSteps([
+        { key: 'apply_channel', label: 'LinkedIn Easy Apply', metadata: { kind: 'linkedin' } },
+      ]),
+    ).toEqual({ kind: 'linkedin', label: 'LinkedIn Easy Apply', ats: undefined });
+    expect(
+      applyChannelFromSteps([
+        { key: 'clicked_apply', label: 'Clicked External Apply' },
+        { key: 'apply_channel', label: 'External apply · Workday', metadata: { kind: 'external', ats: 'workday' } },
+      ]),
+    ).toMatchObject({ kind: 'external', label: 'External apply · Workday', ats: 'workday' });
+    expect(
+      applyChannelFromSteps([], { metadata: { apply_channel: 'External apply · Greenhouse', ats: 'greenhouse' } }),
+    ).toMatchObject({ kind: 'external', label: 'External apply · Greenhouse', ats: 'greenhouse' });
+    expect(applyChannelFromSteps([], { portal: 'linkedin' })).toBeNull();
   });
 });

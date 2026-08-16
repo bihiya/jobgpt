@@ -189,6 +189,11 @@ class _InnerPage:
             self.body = "Application sent. Your application was sent to Acme."
             self.visible.add("text=Application sent")
             self.html = "<html><body>Application sent</body></html>"
+        if "Apply on company" in selector or "company website" in selector:
+            dest = getattr(self, "external_url", "") or "https://acme.wd5.myworkdayjobs.com/en-US/External/job/Engineer"
+            self.url = dest
+            self.visible.discard("button[aria-label*='Apply on company']")
+            self.visible.discard("a[aria-label*='Apply on company']")
 
     async def inner_text(self, selector: str) -> str:
         if selector == "body":
@@ -335,8 +340,11 @@ async def test_apply_verified_easy_apply_submit(tmp_path):
     keys = [step["key"] for step in result.steps]
     assert "opened_jd" in keys
     assert "clicked_apply" in keys
+    assert "apply_channel" in keys
     assert "submitted" in keys
     assert "verified" in keys
+    assert result.metadata.get("apply_channel") == "LinkedIn Easy Apply"
+    assert any(step.get("label") == "Clicked LinkedIn Easy Apply" for step in result.steps)
 
 
 @pytest.mark.asyncio
@@ -353,16 +361,46 @@ async def test_apply_treats_already_applied_as_success():
 
 
 @pytest.mark.asyncio
-async def test_apply_rejects_company_site_apply():
+async def test_apply_follows_company_site_to_workday():
     inner = _InnerPage(
         JOB_URL,
         visible={"button[aria-label*='Apply on company']"},
         body="Apply on company website",
     )
+    inner.external_url = "https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite/job/US/Engineer"
+    handed = ApplyResult(
+        success=True,
+        message="Applied via Workday (verified)",
+        metadata={"apply_channel": "External apply · Workday", "ats": "workday"},
+        steps=[
+            {"key": "apply_channel", "label": "External apply · Workday", "status": "ok"},
+            {"key": "verified", "label": "Verified apply result", "status": "ok"},
+        ],
+    )
+    with patch(
+        "app.automation.portals.linkedin.apply_on_landed_ats",
+        new=AsyncMock(return_value=handed),
+    ) as mocked:
+        result = await _portal().apply(_Page(inner), _job(), "/tmp/r.pdf", {})
+    assert result.success is True
+    assert result.metadata.get("apply_channel") == "External apply · Workday"
+    assert any("Apply on company" in click for click in inner.clicks)
+    mocked.assert_awaited_once()
+    landed_page = mocked.await_args.args[1]
+    assert "myworkdayjobs.com" in landed_page.page.url
+
+
+@pytest.mark.asyncio
+async def test_apply_company_site_fails_when_external_stays_on_linkedin():
+    inner = _InnerPage(
+        JOB_URL,
+        visible={"button[aria-label*='Apply on company']"},
+        body="Apply on company website",
+    )
+    inner.external_url = JOB_URL  # click does not leave LinkedIn
     result = await _portal().apply(_Page(inner), _job(), "/tmp/r.pdf", {})
     assert result.success is False
-    assert "company-site" in result.message
-    assert result.fail_proof_html
+    assert "did not open" in result.message.lower() or "popup" in result.message.lower()
 
 
 @pytest.mark.asyncio

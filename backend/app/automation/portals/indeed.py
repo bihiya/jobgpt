@@ -1,9 +1,11 @@
 """Indeed portal adapter with login persistence + verified apply."""
 
+from app.automation.ats import apply_on_landed_ats, is_offsite, record_apply_channel, tag_apply_result
 from app.automation.auth import LOGIN_FAILED, describe_page, ensure_logged_in, format_landed
 from app.automation.base.page import BasePage
 from app.automation.base.portal import ApplyResult, BasePortal, ExtractedJob
 from app.automation.errors import PortalAuthError
+from app.automation.external_nav import click_and_follow
 from app.automation.form_fields import resolve_and_fill
 from app.automation.selectors import any_visible, click_first, fill_first, get_selector_pack
 from app.automation.verify import verify_apply_success
@@ -149,9 +151,28 @@ class IndeedPortal(BasePortal):
             await page.goto(job.apply_url)
             self.recorder.opened_jd(job.apply_url)
 
-        clicked = await click_first(page, pack.all("apply"))
+        origin = ("indeed.com",)
+        clicked, target = await click_and_follow(
+            page,
+            pack.all("apply") + pack.all("external_apply"),
+            origin_hosts=origin,
+            timeout_ms=2500,
+        )
         if clicked:
-            self.recorder.clicked_apply(clicked)
+            url = getattr(target.page, "url", "") or ""
+            if is_offsite(url, origin):
+                self.recorder.clicked_apply(clicked, kind="external")
+                return await apply_on_landed_ats(
+                    self,
+                    target,
+                    job,
+                    resume_path,
+                    answers,
+                    source="indeed_external",
+                )
+            self.recorder.clicked_apply(clicked, kind="indeed")
+            record_apply_channel(self, kind="indeed")
+            page = target
 
         file_sel = pack.primary("file_input") or "input[type='file']"
         if await page.page.query_selector(file_sel):
@@ -179,18 +200,24 @@ class IndeedPortal(BasePortal):
         verified = await verify_apply_success(page, pack, prefix="indeed")
         self.recorder.verified(verified.success, verified.detail)
         if verified.success:
-            return ApplyResult(
-                success=True,
-                screenshot_path=verified.screenshot_path,
-                message="Applied via Indeed (verified)",
-                steps=self.recorder.to_list(),
-                metadata={"verify": verified.detail, "selector_version": pack.version},
+            return tag_apply_result(
+                ApplyResult(
+                    success=True,
+                    screenshot_path=verified.screenshot_path,
+                    message="Applied via Indeed (verified)",
+                    steps=self.recorder.to_list(),
+                    metadata={"verify": verified.detail, "selector_version": pack.version},
+                ),
+                kind="indeed",
             )
-        return ApplyResult(
-            success=False,
-            screenshot_path=verified.screenshot_path,
-            fail_proof_html=verified.fail_proof_html,
-            fail_proof_path=verified.fail_proof_path,
-            message=verified.detail or "Indeed apply not verified",
-            steps=self.recorder.to_list(),
+        return tag_apply_result(
+            ApplyResult(
+                success=False,
+                screenshot_path=verified.screenshot_path,
+                fail_proof_html=verified.fail_proof_html,
+                fail_proof_path=verified.fail_proof_path,
+                message=verified.detail or "Indeed apply not verified",
+                steps=self.recorder.to_list(),
+            ),
+            kind="indeed",
         )

@@ -302,7 +302,7 @@ function ApprovalsPage() {
               inputProps={{ min: 50, max: 100 }}
             />
             <TextField select label="Portal" value={portal} onChange={(e) => setPortal(e.target.value)}>
-              <MenuItem value="linkedin">LinkedIn Easy Apply</MenuItem>
+              <MenuItem value="linkedin">LinkedIn</MenuItem>
               <MenuItem value="indeed">Indeed</MenuItem>
               <MenuItem value="greenhouse">Greenhouse</MenuItem>
               <MenuItem value="lever">Lever</MenuItem>
