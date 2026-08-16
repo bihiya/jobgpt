@@ -17,16 +17,31 @@ function WeeklyStory({ story }: { story: WeeklyStoryData }) {
   return (
     <Box
       sx={{
-        p: { xs: 2.5, md: 3 },
-        borderRadius: 4,
-        color: '#F4FFF9',
+        p: { xs: 2.5, md: 3.25 },
+        borderRadius: 5,
+        color: '#FFF8FB',
+        position: 'relative',
+        overflow: 'hidden',
         background: (t) =>
-          `linear-gradient(120deg, ${t.palette.primary.dark} 0%, ${t.palette.secondary.dark} 55%, ${alpha(
-            t.palette.info.main,
-            0.85,
+          `linear-gradient(125deg, ${t.palette.primary.main} 0%, ${t.palette.secondary.dark} 48%, ${alpha(
+            t.palette.primary.light,
+            0.92,
           )} 100%)`,
         backgroundSize: '180% 180%',
         animation: 'jp-gradient-shift 12s ease infinite',
+        boxShadow: (t) => `0 18px 40px ${alpha(t.palette.primary.main, 0.28)}`,
+        '&::before': {
+          content: '""',
+          position: 'absolute',
+          width: 220,
+          height: 220,
+          right: -40,
+          top: -60,
+          borderRadius: '42% 58% 62% 38%',
+          background: 'rgba(255,255,255,0.16)',
+          animation: 'jp-blob 14s ease-in-out infinite, jp-float-slow 8s ease-in-out infinite',
+          pointerEvents: 'none',
+        },
       }}
     >
       <Typography variant="overline" sx={{ opacity: 0.85, letterSpacing: '0.12em' }}>
@@ -35,10 +50,10 @@ function WeeklyStory({ story }: { story: WeeklyStoryData }) {
       <Typography
         variant="h4"
         sx={{
-          fontFamily: '"Fraunces", Georgia, serif',
           mt: 0.5,
           mb: 1,
           letterSpacing: '-0.03em',
+          position: 'relative',
         }}
       >
         {story.headline}

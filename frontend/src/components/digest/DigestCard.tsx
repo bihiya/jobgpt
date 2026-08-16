@@ -40,21 +40,21 @@ function DigestCard({ job, onApprove, onSkip, onOpen, busy }: Props) {
     <Box
       sx={{
         p: 2.25,
-        borderRadius: 3,
+        borderRadius: 4,
         border: '1px solid',
         borderColor: 'divider',
         background: (t) =>
-          `linear-gradient(145deg, ${t.palette.background.paper}, ${alpha(t.palette.secondary.main, 0.07)})`,
-        transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+          `linear-gradient(145deg, ${t.palette.background.paper}, ${alpha(t.palette.primary.main, 0.07)})`,
+        transition: 'transform 0.25s cubic-bezier(0.34, 1.45, 0.64, 1), box-shadow 0.25s ease',
         '&:hover': {
-          transform: 'translateY(-2px)',
-          boxShadow: (t) => `0 12px 28px ${alpha(t.palette.primary.main, 0.12)}`,
+          transform: 'translateY(-4px)',
+          boxShadow: (t) => `0 16px 32px ${alpha(t.palette.primary.main, 0.14)}`,
         },
       }}
     >
       <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
         <Box sx={{ minWidth: 0 }}>
-          <Typography variant="h6" sx={{ fontFamily: '"Fraunces", Georgia, serif', lineHeight: 1.25 }}>
+          <Typography variant="h6" sx={{ lineHeight: 1.25, letterSpacing: '-0.02em' }}>
             {job.title}
           </Typography>
           <Typography color="text.secondary" noWrap>

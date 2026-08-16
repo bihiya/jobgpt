@@ -4,11 +4,36 @@
     <meta charset="UTF-8" />
     <title>JobPilot</title>
     <style>
-      body { font-family: system-ui, sans-serif; width: 320px; margin: 0; padding: 14px; background: #f3f7f5; color: #14201c; }
-      h1 { font-size: 16px; margin: 0 0 8px; }
-      label { display: block; font-size: 12px; margin-top: 8px; }
-      input, textarea { width: 100%; box-sizing: border-box; margin-top: 4px; padding: 8px; border: 1px solid #c5d2cb; border-radius: 8px; }
-      button { margin-top: 12px; width: 100%; padding: 10px; border: 0; border-radius: 8px; background: #0f6e56; color: white; font-weight: 600; cursor: pointer; }
+      body {
+        font-family: "Sofia Sans", system-ui, sans-serif;
+        width: 320px;
+        margin: 0;
+        padding: 16px;
+        background: linear-gradient(180deg, #fff8fb, #fff1f6);
+        color: #1c0a14;
+      }
+      h1 { font-size: 16px; margin: 0 0 8px; letter-spacing: -0.03em; }
+      label { display: block; font-size: 12px; margin-top: 8px; font-weight: 600; }
+      input, textarea {
+        width: 100%;
+        box-sizing: border-box;
+        margin-top: 4px;
+        padding: 8px;
+        border: 1px solid #ffc2d9;
+        border-radius: 12px;
+        background: #fff;
+      }
+      button {
+        margin-top: 12px;
+        width: 100%;
+        padding: 10px;
+        border: 0;
+        border-radius: 999px;
+        background: linear-gradient(135deg, #ff3d8a, #e2186f);
+        color: white;
+        font-weight: 700;
+        cursor: pointer;
+      }
       .msg { margin-top: 10px; font-size: 12px; }
     </style>
   </head>
@@ -20,7 +45,7 @@
     <label>Company <input id="company" /></label>
     <label>Apply URL <input id="url" /></label>
     <button id="send">Send job</button>
-    <button id="copyLi" type="button" style="background:#12352c;margin-top:8px">Copy LinkedIn li_at</button>
+    <button id="copyLi" type="button" style="background:#4a1230;margin-top:8px">Copy LinkedIn li_at</button>
     <div class="msg" id="msg"></div>
     <script src="popup.js"></script>
   </body>

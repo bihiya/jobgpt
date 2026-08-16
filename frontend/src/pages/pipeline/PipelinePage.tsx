@@ -136,7 +136,7 @@ function PipelinePage() {
   return (
     <PageShell spacing={2} loading={isLoading} fetching={!isLoading && isFetching}>
       <Box>
-        <Typography variant="h4" sx={{ fontFamily: '"Fraunces", Georgia, serif' }}>
+        <Typography variant="h4">
           Pipeline
         </Typography>
         <Typography color="text.secondary">

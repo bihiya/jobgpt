@@ -56,8 +56,9 @@ export default function LoginPage() {
       elevation={1}
       sx={{
         p: { xs: 3, sm: 4 },
-        borderRadius: 3,
-        animation: 'jp-scale-in 0.4s cubic-bezier(0.22, 1, 0.36, 1)',
+        borderRadius: 4,
+        animation: 'jp-scale-in 0.45s cubic-bezier(0.22, 1, 0.36, 1)',
+        boxShadow: '0 18px 50px rgba(226, 24, 111, 0.14)',
       }}
     >
       <Typography variant="h5" sx={{ mb: 2 }}>

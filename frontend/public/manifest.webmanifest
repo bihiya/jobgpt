@@ -4,8 +4,8 @@
   "description": "Approve and track job applications on the go",
   "start_url": "/approvals",
   "display": "standalone",
-  "background_color": "#F3F7F5",
-  "theme_color": "#0F6E56",
+  "background_color": "#FFF1F6",
+  "theme_color": "#FF3D8A",
   "orientation": "portrait-primary",
   "icons": [
     {

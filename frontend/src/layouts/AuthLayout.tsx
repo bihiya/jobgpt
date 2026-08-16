@@ -1,10 +1,11 @@
 import { Box, Container, Typography } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import { Outlet } from 'react-router-dom';
 
 export default function AuthLayout() {
   return (
     <Box
-      sx={{
+      sx={(t) => ({
         minHeight: '100vh',
         display: 'grid',
         placeItems: 'center',
@@ -13,32 +14,32 @@ export default function AuthLayout() {
         px: { xs: 2, sm: 3 },
         py: { xs: 4, sm: 6 },
         background:
-          'radial-gradient(1000px 500px at 8% 12%, rgba(31,166,122,0.28), transparent 55%), radial-gradient(800px 420px at 92% 78%, rgba(43,179,192,0.22), transparent 50%), radial-gradient(600px 300px at 50% 100%, rgba(11,61,46,0.12), transparent 55%), linear-gradient(160deg, #E8F5F0 0%, #DFF3EC 55%, #EAF6F1 100%)',
+          t.palette.mode === 'light'
+            ? `radial-gradient(1000px 520px at 6% 8%, ${alpha(t.palette.primary.main, 0.32)}, transparent 55%), radial-gradient(820px 440px at 94% 82%, ${alpha(t.palette.secondary.main, 0.22)}, transparent 52%), linear-gradient(160deg, #FFF8FB 0%, #FFF1F6 50%, #FFE4F0 100%)`
+            : `radial-gradient(1000px 520px at 6% 8%, ${alpha(t.palette.primary.main, 0.28)}, transparent 55%), radial-gradient(820px 440px at 94% 82%, ${alpha(t.palette.secondary.main, 0.18)}, transparent 52%), linear-gradient(160deg, #160810 0%, #1A0A14 55%, #221018 100%)`,
         '&::before': {
           content: '""',
           position: 'absolute',
-          width: 280,
-          height: 280,
-          borderRadius: '50%',
-          top: '12%',
-          right: '8%',
-          background: 'radial-gradient(circle, rgba(43,179,192,0.35), transparent 70%)',
-          animation: 'jp-float 6s ease-in-out infinite',
+          width: 320,
+          height: 320,
+          top: '8%',
+          right: '4%',
+          background: `radial-gradient(circle, ${alpha(t.palette.primary.main, 0.42)}, transparent 70%)`,
+          animation: 'jp-float 6.5s ease-in-out infinite, jp-blob 12s ease-in-out infinite',
           pointerEvents: 'none',
         },
         '&::after': {
           content: '""',
           position: 'absolute',
-          width: 220,
-          height: 220,
-          borderRadius: '50%',
-          bottom: '10%',
-          left: '6%',
-          background: 'radial-gradient(circle, rgba(31,166,122,0.3), transparent 70%)',
-          animation: 'jp-float 7.5s ease-in-out infinite reverse',
+          width: 240,
+          height: 240,
+          bottom: '8%',
+          left: '4%',
+          background: `radial-gradient(circle, ${alpha(t.palette.secondary.main, 0.34)}, transparent 70%)`,
+          animation: 'jp-float 8s ease-in-out infinite reverse, jp-blob 14s ease-in-out infinite',
           pointerEvents: 'none',
         },
-      }}
+      })}
     >
       <Container maxWidth="sm" className="jp-page" sx={{ position: 'relative', zIndex: 1 }}>
         <Typography
@@ -46,17 +47,17 @@ export default function AuthLayout() {
           sx={{
             mb: 1,
             textAlign: 'center',
-            letterSpacing: '-0.03em',
-            background: 'linear-gradient(135deg, #0B3D2E 0%, #1FA67A 55%, #2BB3C0 100%)',
+            letterSpacing: '-0.04em',
+            background: 'linear-gradient(135deg, #FF3D8A 0%, #E2186F 50%, #FF7AB5 100%)',
             backgroundClip: 'text',
             WebkitBackgroundClip: 'text',
             color: 'transparent',
-            fontSize: { xs: '2rem', sm: '2.75rem' },
+            fontSize: { xs: '2.05rem', sm: '2.85rem' },
           }}
         >
           JobPilot AI
         </Typography>
-        <Typography color="text.secondary" sx={{ mb: 3, textAlign: 'center' }}>
+        <Typography color="text.secondary" sx={{ mb: 3, textAlign: 'center', fontWeight: 600 }}>
           Configure once. Apply continuously.
         </Typography>
         <Outlet />

@@ -50,7 +50,7 @@ function ToastHostComponent() {
               width: '100%',
               borderRadius: 2,
               fontWeight: 600,
-              boxShadow: '0 12px 40px rgba(15, 40, 30, 0.25)',
+              boxShadow: '0 12px 40px rgba(226, 24, 111, 0.28)',
               animation: 'toastPop 0.35s cubic-bezier(0.22, 1, 0.36, 1)',
             }}
           >
