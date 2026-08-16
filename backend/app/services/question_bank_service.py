@@ -47,7 +47,11 @@ class QuestionBankService:
         return doc
 
     async def list(self, user_id: str) -> list[dict]:
-        items = await QuestionAnswer.find({"user_id": user_id}).sort([("use_count", -1)]).to_list()
+        # Cosmos Mongo rejects ORDER BY on paths without a composite index
+        # ("The index path corresponding to the specified order-by item is excluded").
+        # Sort in process so apply workers do not crash after "started".
+        items = await QuestionAnswer.find({"user_id": user_id}).to_list()
+        items.sort(key=lambda i: int(getattr(i, "use_count", 0) or 0), reverse=True)
         return [
             {
                 "id": str(i.id),
