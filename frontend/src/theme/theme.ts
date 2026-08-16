@@ -1,15 +1,23 @@
 import { alpha, createTheme, type ThemeOptions } from '@mui/material/styles';
 
-const forest = '#0B3D2E';
-const teal = '#1FA67A';
-const sky = '#2BB3C0';
-const coral = '#E85D4C';
-const ink = '#0F1F1A';
-const mint = '#EAF6F1';
+/** Snabbit-inspired hot pink system */
+const pink = '#FF3D8A';
+const magenta = '#E2186F';
+const rose = '#FF7AB5';
+const blush = '#FFF1F6';
+const cream = '#FFF8FB';
+const ink = '#1C0A14';
+const plum = '#4A1230';
+const coral = '#FF5C6B';
+const gold = '#F5B942';
+const displayFont = '"Sora", "Sofia Sans", "Segoe UI", sans-serif';
+const bodyFont = '"Sofia Sans", "Segoe UI", sans-serif';
+const spring = 'cubic-bezier(0.34, 1.45, 0.64, 1)';
+const smooth = 'cubic-bezier(0.22, 1, 0.36, 1)';
 
 const motionKeyframes = {
   '@keyframes jp-fade-up': {
-    from: { opacity: 0, transform: 'translateY(14px)' },
+    from: { opacity: 0, transform: 'translateY(18px)' },
     to: { opacity: 1, transform: 'translateY(0)' },
   },
   '@keyframes jp-fade-in': {
@@ -17,7 +25,7 @@ const motionKeyframes = {
     to: { opacity: 1 },
   },
   '@keyframes jp-scale-in': {
-    from: { opacity: 0, transform: 'scale(0.96)' },
+    from: { opacity: 0, transform: 'scale(0.94)' },
     to: { opacity: 1, transform: 'scale(1)' },
   },
   '@keyframes jp-shimmer': {
@@ -25,27 +33,44 @@ const motionKeyframes = {
     '100%': { backgroundPosition: '-200% 0' },
   },
   '@keyframes jp-float': {
-    '0%, 100%': { transform: 'translateY(0)' },
-    '50%': { transform: 'translateY(-6px)' },
+    '0%, 100%': { transform: 'translateY(0) rotate(0deg)' },
+    '50%': { transform: 'translateY(-10px) rotate(3deg)' },
+  },
+  '@keyframes jp-float-slow': {
+    '0%, 100%': { transform: 'translate3d(0, 0, 0) scale(1)' },
+    '50%': { transform: 'translate3d(12px, -18px, 0) scale(1.06)' },
   },
   '@keyframes jp-gradient-shift': {
     '0%, 100%': { backgroundPosition: '0% 50%' },
     '50%': { backgroundPosition: '100% 50%' },
   },
   '@keyframes jp-pulse-soft': {
-    '0%, 100%': { boxShadow: `0 0 0 0 ${alpha(teal, 0.35)}` },
-    '50%': { boxShadow: `0 0 0 10px ${alpha(teal, 0)}` },
+    '0%, 100%': { boxShadow: `0 0 0 0 ${alpha(pink, 0.45)}` },
+    '50%': { boxShadow: `0 0 0 12px ${alpha(pink, 0)}` },
   },
   '@keyframes jp-step-in': {
-    from: { opacity: 0, transform: 'translateY(10px)' },
+    from: { opacity: 0, transform: 'translateY(12px)' },
     to: { opacity: 1, transform: 'translateY(0)' },
   },
   '@keyframes jp-live-sweep': {
     '0%': { transform: 'translateX(-120%)' },
     '100%': { transform: 'translateX(220%)' },
   },
+  '@keyframes jp-shine': {
+    '0%': { transform: 'translateX(-140%) skewX(-18deg)' },
+    '100%': { transform: 'translateX(240%) skewX(-18deg)' },
+  },
+  '@keyframes jp-blob': {
+    '0%, 100%': { borderRadius: '42% 58% 62% 38% / 46% 42% 58% 54%' },
+    '33%': { borderRadius: '58% 42% 38% 62% / 42% 58% 42% 58%' },
+    '66%': { borderRadius: '38% 62% 54% 46% / 58% 38% 62% 42%' },
+  },
+  '@keyframes jp-spin-slow': {
+    from: { transform: 'rotate(0deg)' },
+    to: { transform: 'rotate(360deg)' },
+  },
   '@keyframes toastPop': {
-    from: { opacity: 0, transform: 'translateY(12px) scale(0.96)' },
+    from: { opacity: 0, transform: 'translateY(14px) scale(0.94)' },
     to: { opacity: 1, transform: 'translateY(0) scale(1)' },
   },
 };
@@ -54,37 +79,47 @@ const sharedComponents = (mode: 'light' | 'dark'): ThemeOptions['components'] =>
   MuiCssBaseline: {
     styleOverrides: {
       ':root': {
-        '--jp-forest': forest,
-        '--jp-teal': teal,
-        '--jp-sky': sky,
-        '--jp-coral': coral,
+        '--jp-pink': pink,
+        '--jp-magenta': magenta,
+        '--jp-rose': rose,
+        '--jp-blush': blush,
         '--jp-ink': ink,
-        '--jp-mint': mint,
+        '--jp-spring': spring,
       },
       html: { scrollBehavior: 'smooth' },
+      '::-webkit-scrollbar': { width: 10, height: 10 },
+      '::-webkit-scrollbar-thumb': {
+        background: alpha(pink, mode === 'light' ? 0.45 : 0.55),
+        borderRadius: 99,
+        border: '2px solid transparent',
+        backgroundClip: 'padding-box',
+      },
+      '::-webkit-scrollbar-track': {
+        background: mode === 'light' ? blush : '#160810',
+      },
       body: {
         minHeight: '100%',
         backgroundAttachment: 'fixed',
         backgroundImage:
           mode === 'light'
             ? `
-              radial-gradient(ellipse 80% 50% at 0% -10%, ${alpha(teal, 0.2)}, transparent 55%),
-              radial-gradient(ellipse 60% 40% at 100% 0%, ${alpha(sky, 0.18)}, transparent 50%),
-              radial-gradient(ellipse 50% 30% at 80% 100%, ${alpha(forest, 0.1)}, transparent 55%),
-              linear-gradient(180deg, #E8F5F0 0%, ${mint} 45%, #E3F2EC 100%)
+              radial-gradient(ellipse 90% 55% at -10% -15%, ${alpha(pink, 0.28)}, transparent 58%),
+              radial-gradient(ellipse 70% 45% at 110% -5%, ${alpha(rose, 0.32)}, transparent 52%),
+              radial-gradient(ellipse 55% 35% at 80% 110%, ${alpha(magenta, 0.16)}, transparent 55%),
+              linear-gradient(180deg, ${cream} 0%, ${blush} 48%, #FFE8F2 100%)
             `
             : `
-              radial-gradient(ellipse 70% 45% at 0% 0%, ${alpha(teal, 0.22)}, transparent 55%),
-              radial-gradient(ellipse 55% 40% at 100% 10%, ${alpha(sky, 0.14)}, transparent 50%),
-              linear-gradient(180deg, #0A1411 0%, #0D1512 50%, #101C18 100%)
+              radial-gradient(ellipse 80% 50% at 0% 0%, ${alpha(pink, 0.28)}, transparent 55%),
+              radial-gradient(ellipse 60% 40% at 100% 8%, ${alpha(magenta, 0.22)}, transparent 50%),
+              linear-gradient(180deg, #14080E 0%, #1A0A14 50%, #221018 100%)
             `,
       },
       ...motionKeyframes,
       '.jp-page': {
-        animation: 'jp-fade-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) both',
+        animation: `jp-fade-up 0.55s ${smooth} both`,
       },
       '.jp-stagger > *': {
-        animation: 'jp-fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both',
+        animation: `jp-fade-up 0.58s ${smooth} both`,
       },
       '.jp-stagger > *:nth-of-type(1)': { animationDelay: '0.04s' },
       '.jp-stagger > *:nth-of-type(2)': { animationDelay: '0.1s' },
@@ -92,6 +127,19 @@ const sharedComponents = (mode: 'light' | 'dark'): ThemeOptions['components'] =>
       '.jp-stagger > *:nth-of-type(4)': { animationDelay: '0.22s' },
       '.jp-stagger > *:nth-of-type(5)': { animationDelay: '0.28s' },
       '.jp-stagger > *:nth-of-type(6)': { animationDelay: '0.34s' },
+      '.jp-shine': {
+        position: 'relative',
+        overflow: 'hidden',
+        '&::after': {
+          content: '""',
+          position: 'absolute',
+          inset: 0,
+          width: '40%',
+          background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent)',
+          animation: 'jp-shine 2.8s ease-in-out infinite',
+          pointerEvents: 'none',
+        },
+      },
       '@media (prefers-reduced-motion: reduce)': {
         '*, *::before, *::after': {
           animationDuration: '0.01ms !important',
@@ -105,27 +153,45 @@ const sharedComponents = (mode: 'light' | 'dark'): ThemeOptions['components'] =>
     defaultProps: { disableElevation: true },
     styleOverrides: {
       root: {
-        borderRadius: 12,
-        paddingInline: 18,
-        transition: 'transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease',
-        '&:hover': { transform: 'translateY(-1px)' },
-        '&:active': { transform: 'translateY(0)' },
+        borderRadius: 999,
+        paddingInline: 20,
+        minHeight: 42,
+        position: 'relative',
+        transition: `transform 0.22s ${spring}, box-shadow 0.22s ${smooth}, background 0.22s ease`,
+        '&:hover': { transform: 'translateY(-2px)' },
+        '&:active': { transform: 'translateY(0) scale(0.98)' },
       },
       containedPrimary: {
-        background: `linear-gradient(135deg, ${forest} 0%, ${teal} 55%, ${sky} 100%)`,
+        background: `linear-gradient(135deg, ${pink} 0%, ${magenta} 55%, #FF6BA8 100%)`,
         backgroundSize: '200% 200%',
-        animation: 'jp-gradient-shift 10s ease infinite',
-        boxShadow: `0 8px 20px ${alpha(forest, mode === 'light' ? 0.25 : 0.45)}`,
+        animation: 'jp-gradient-shift 9s ease infinite',
+        boxShadow: `0 10px 24px ${alpha(magenta, mode === 'light' ? 0.32 : 0.5)}`,
+        overflow: 'hidden',
+        '&::after': {
+          content: '""',
+          position: 'absolute',
+          inset: 0,
+          width: '38%',
+          background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.28), transparent)',
+          animation: 'jp-shine 2.8s ease-in-out infinite',
+          pointerEvents: 'none',
+        },
         '&:hover': {
-          boxShadow: `0 12px 28px ${alpha(forest, mode === 'light' ? 0.35 : 0.55)}`,
+          boxShadow: `0 16px 32px ${alpha(magenta, mode === 'light' ? 0.42 : 0.6)}`,
         },
       },
       containedSecondary: {
-        background: `linear-gradient(135deg, ${teal} 0%, ${sky} 100%)`,
+        background: `linear-gradient(135deg, ${rose} 0%, ${pink} 100%)`,
+        color: '#fff',
       },
       outlined: {
         borderWidth: 1.5,
-        '&:hover': { borderWidth: 1.5, background: alpha(teal, 0.08) },
+        '&:hover': { borderWidth: 1.5, background: alpha(pink, 0.08) },
+      },
+      sizeLarge: {
+        minHeight: 48,
+        paddingInline: 26,
+        fontSize: '1.02rem',
       },
     },
   },
@@ -133,28 +199,28 @@ const sharedComponents = (mode: 'light' | 'dark'): ThemeOptions['components'] =>
     styleOverrides: {
       root: {
         backgroundImage: 'none',
-        transition: 'box-shadow 0.25s ease, transform 0.25s ease',
+        transition: `box-shadow 0.28s ${smooth}, transform 0.28s ${smooth}`,
       },
       elevation1: {
-        boxShadow: `0 4px 20px ${alpha(forest, 0.08)}`,
-        border: `1px solid ${alpha(mode === 'light' ? forest : '#fff', 0.08)}`,
+        boxShadow: `0 8px 28px ${alpha(magenta, 0.1)}`,
+        border: `1px solid ${alpha(mode === 'light' ? pink : '#fff', 0.12)}`,
       },
     },
   },
   MuiCard: {
     styleOverrides: {
       root: {
-        borderRadius: 18,
-        border: `1px solid ${alpha(mode === 'light' ? forest : '#fff', 0.1)}`,
+        borderRadius: 24,
+        border: `1px solid ${alpha(mode === 'light' ? pink : '#fff', 0.14)}`,
         background:
           mode === 'light'
-            ? `linear-gradient(165deg, #FFFFFF 0%, ${alpha(teal, 0.05)} 100%)`
-            : `linear-gradient(165deg, #14201C 0%, ${alpha(teal, 0.12)} 100%)`,
-        transition: 'transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease',
+            ? `linear-gradient(165deg, #FFFFFF 0%, ${alpha(pink, 0.06)} 100%)`
+            : `linear-gradient(165deg, #251018 0%, ${alpha(pink, 0.16)} 100%)`,
+        transition: `transform 0.28s ${spring}, box-shadow 0.28s ${smooth}, border-color 0.28s ease`,
         '&:hover': {
-          transform: 'translateY(-3px)',
-          boxShadow: `0 16px 36px ${alpha(forest, 0.14)}`,
-          borderColor: alpha(teal, 0.35),
+          transform: 'translateY(-5px)',
+          boxShadow: `0 20px 40px ${alpha(magenta, 0.16)}`,
+          borderColor: alpha(pink, 0.45),
         },
       },
     },
@@ -162,9 +228,9 @@ const sharedComponents = (mode: 'light' | 'dark'): ThemeOptions['components'] =>
   MuiAppBar: {
     styleOverrides: {
       root: {
-        background: alpha(mode === 'light' ? '#FFFFFF' : '#0D1512', 0.82),
-        backdropFilter: 'blur(14px)',
-        borderBottom: `1px solid ${alpha(mode === 'light' ? forest : '#fff', 0.08)}`,
+        background: alpha(mode === 'light' ? cream : '#160810', 0.72),
+        backdropFilter: 'blur(18px) saturate(1.35)',
+        borderBottom: `1px solid ${alpha(mode === 'light' ? pink : '#fff', 0.12)}`,
       },
     },
   },
@@ -174,41 +240,43 @@ const sharedComponents = (mode: 'light' | 'dark'): ThemeOptions['components'] =>
         borderRight: 'none',
         background:
           mode === 'light'
-            ? `linear-gradient(180deg, ${forest} 0%, #0E4F3A 48%, #126B4F 100%)`
-            : `linear-gradient(180deg, #061510 0%, #0A2A20 50%, #0E3D2E 100%)`,
-        color: '#F4FFF9',
+            ? `linear-gradient(185deg, ${pink} 0%, ${magenta} 48%, ${plum} 100%)`
+            : `linear-gradient(185deg, #1A0810 0%, #3A1024 48%, ${plum} 100%)`,
+        color: '#FFF5F9',
       },
     },
   },
   MuiListItemButton: {
     styleOverrides: {
       root: {
-        borderRadius: 12,
+        borderRadius: 16,
         marginInline: 8,
-        marginBlock: 2,
-        transition: 'background 0.2s ease, transform 0.2s ease',
+        marginBlock: 3,
+        transition: `background 0.2s ease, transform 0.22s ${spring}`,
         '&.Mui-selected': {
-          background: alpha('#fff', 0.16),
-          '&:hover': { background: alpha('#fff', 0.22) },
+          background: alpha('#fff', 0.2),
+          boxShadow: `0 8px 18px ${alpha('#000', 0.12)}`,
+          '&:hover': { background: alpha('#fff', 0.26) },
         },
         '&:hover': {
-          background: alpha('#fff', 0.1),
-          transform: 'translateX(2px)',
+          background: alpha('#fff', 0.12),
+          transform: 'translateX(4px)',
         },
       },
     },
   },
   MuiListItemIcon: {
     styleOverrides: {
-      root: { color: 'inherit', opacity: 0.92 },
+      root: { color: 'inherit', opacity: 0.95 },
     },
   },
   MuiChip: {
     styleOverrides: {
       root: {
-        fontWeight: 600,
-        transition: 'transform 0.15s ease',
-        '&:hover': { transform: 'scale(1.03)' },
+        fontWeight: 700,
+        borderRadius: 999,
+        transition: `transform 0.18s ${spring}`,
+        '&:hover': { transform: 'scale(1.05)' },
       },
     },
   },
@@ -217,89 +285,132 @@ const sharedComponents = (mode: 'light' | 'dark'): ThemeOptions['components'] =>
     styleOverrides: {
       root: {
         '& .MuiOutlinedInput-root': {
-          borderRadius: 12,
+          borderRadius: 16,
           transition: 'box-shadow 0.2s ease',
           '&.Mui-focused': {
-            boxShadow: `0 0 0 3px ${alpha(teal, 0.22)}`,
+            boxShadow: `0 0 0 4px ${alpha(pink, 0.22)}`,
           },
+        },
+      },
+    },
+  },
+  MuiDialog: {
+    styleOverrides: {
+      paper: {
+        borderRadius: 24,
+        border: `1px solid ${alpha(pink, 0.16)}`,
+        animation: `jp-scale-in 0.35s ${smooth}`,
+      },
+    },
+  },
+  MuiTooltip: {
+    styleOverrides: {
+      tooltip: {
+        borderRadius: 12,
+        background: plum,
+        fontWeight: 600,
+      },
+    },
+  },
+  MuiSwitch: {
+    styleOverrides: {
+      switchBase: {
+        '&.Mui-checked': {
+          color: pink,
         },
       },
     },
   },
   MuiAlert: {
     styleOverrides: {
-      root: { borderRadius: 14 },
+      root: { borderRadius: 16 },
       filledSuccess: {
-        background: `linear-gradient(135deg, ${teal}, ${forest})`,
+        background: `linear-gradient(135deg, ${pink}, ${magenta})`,
       },
       filledError: {
-        background: `linear-gradient(135deg, ${coral}, #C43B2C)`,
+        background: `linear-gradient(135deg, ${coral}, #D63A4A)`,
       },
       filledInfo: {
-        background: `linear-gradient(135deg, ${sky}, #1A8A96)`,
+        background: `linear-gradient(135deg, ${rose}, ${pink})`,
       },
       filledWarning: {
-        background: 'linear-gradient(135deg, #E0A100, #C48400)',
+        background: `linear-gradient(135deg, ${gold}, #E09A20)`,
       },
     },
   },
   MuiLinearProgress: {
     styleOverrides: {
-      root: { borderRadius: 8, height: 8, background: alpha(forest, 0.1) },
+      root: { borderRadius: 99, height: 8, background: alpha(pink, 0.14) },
       bar: {
-        borderRadius: 8,
-        background: `linear-gradient(90deg, ${teal}, ${sky}, ${teal})`,
+        borderRadius: 99,
+        background: `linear-gradient(90deg, ${pink}, ${rose}, ${magenta}, ${pink})`,
         backgroundSize: '200% 100%',
         animation: 'jp-shimmer 2s linear infinite',
+      },
+    },
+  },
+  MuiSkeleton: {
+    styleOverrides: {
+      root: {
+        background: alpha(pink, mode === 'light' ? 0.12 : 0.22),
+      },
+    },
+  },
+  MuiTabs: {
+    styleOverrides: {
+      indicator: {
+        height: 3,
+        borderRadius: 99,
+        background: `linear-gradient(90deg, ${pink}, ${magenta})`,
       },
     },
   },
 });
 
 const sharedTypography: ThemeOptions['typography'] = {
-  fontFamily: '"DM Sans", "Segoe UI", sans-serif',
-  h1: { fontFamily: '"Fraunces", Georgia, serif', fontWeight: 700, letterSpacing: '-0.03em', lineHeight: 1.1 },
-  h2: { fontFamily: '"Fraunces", Georgia, serif', fontWeight: 700, letterSpacing: '-0.02em' },
-  h3: { fontFamily: '"Fraunces", Georgia, serif', fontWeight: 650 },
-  h4: { fontFamily: '"Fraunces", Georgia, serif', fontWeight: 650 },
-  h5: { fontFamily: '"Fraunces", Georgia, serif', fontWeight: 600 },
-  h6: { fontFamily: '"Fraunces", Georgia, serif', fontWeight: 600 },
-  button: { textTransform: 'none', fontWeight: 700, letterSpacing: '0.01em' },
-  subtitle1: { fontWeight: 600 },
+  fontFamily: bodyFont,
+  h1: { fontFamily: displayFont, fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1.08 },
+  h2: { fontFamily: displayFont, fontWeight: 800, letterSpacing: '-0.03em' },
+  h3: { fontFamily: displayFont, fontWeight: 700, letterSpacing: '-0.03em' },
+  h4: { fontFamily: displayFont, fontWeight: 700, letterSpacing: '-0.02em' },
+  h5: { fontFamily: displayFont, fontWeight: 700 },
+  h6: { fontFamily: displayFont, fontWeight: 650 },
+  button: { textTransform: 'none', fontWeight: 800, letterSpacing: '0.01em' },
+  subtitle1: { fontWeight: 650 },
 };
 
 export const lightTheme = createTheme({
   palette: {
     mode: 'light',
-    primary: { main: forest, light: '#1A5C45', dark: '#06261C', contrastText: '#F4FFF9' },
-    secondary: { main: teal, light: '#4BC49A', dark: '#0E7A58', contrastText: '#042018' },
+    primary: { main: pink, light: rose, dark: magenta, contrastText: '#FFFFFF' },
+    secondary: { main: magenta, light: '#FF8FC4', dark: plum, contrastText: '#FFFFFF' },
     error: { main: coral },
-    warning: { main: '#E0A100' },
-    info: { main: sky },
-    success: { main: teal },
-    background: { default: mint, paper: '#FFFFFF' },
-    text: { primary: ink, secondary: '#4A635A' },
-    divider: alpha(forest, 0.12),
+    warning: { main: gold },
+    info: { main: rose },
+    success: { main: pink },
+    background: { default: blush, paper: '#FFFFFF' },
+    text: { primary: ink, secondary: '#6B3A52' },
+    divider: alpha(pink, 0.16),
   },
   typography: sharedTypography,
-  shape: { borderRadius: 16 },
+  shape: { borderRadius: 20 },
   components: sharedComponents('light'),
 });
 
 export const darkTheme = createTheme({
   palette: {
     mode: 'dark',
-    primary: { main: '#3DDC97', light: '#6EE7B3', dark: '#1FA67A', contrastText: '#042018' },
-    secondary: { main: sky, light: '#5ECFDB', dark: '#1A8A96', contrastText: '#041416' },
-    error: { main: '#F28B7E' },
-    warning: { main: '#F0C14A' },
-    info: { main: sky },
-    success: { main: '#3DDC97' },
-    background: { default: '#0D1512', paper: '#14201C' },
-    text: { primary: '#E7F2EC', secondary: '#A7B8B0' },
-    divider: alpha('#fff', 0.1),
+    primary: { main: '#FF6BA8', light: '#FF9AC8', dark: pink, contrastText: '#1C0A14' },
+    secondary: { main: rose, light: '#FFB3D4', dark: magenta, contrastText: '#1C0A14' },
+    error: { main: '#FF8A96' },
+    warning: { main: '#FFD166' },
+    info: { main: rose },
+    success: { main: '#FF6BA8' },
+    background: { default: '#160810', paper: '#241018' },
+    text: { primary: '#FFEAF3', secondary: '#D4A0B6' },
+    divider: alpha('#fff', 0.12),
   },
   typography: sharedTypography,
-  shape: { borderRadius: 16 },
+  shape: { borderRadius: 20 },
   components: sharedComponents('dark'),
 });

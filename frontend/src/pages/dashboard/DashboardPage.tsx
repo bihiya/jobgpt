@@ -205,7 +205,7 @@ export default function DashboardPage() {
         <Box>
           <Typography
             variant="h3"
-            sx={{ fontFamily: '"Fraunces", Georgia, serif', letterSpacing: '-0.03em' }}
+            sx={{ letterSpacing: '-0.04em', fontSize: { xs: '1.85rem', sm: '2.4rem' } }}
           >
             Digest
           </Typography>

@@ -279,21 +279,39 @@ function DashboardLayout() {
     ));
 
   const drawer = (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', color: '#F4FFF9' }}>
-      <Box sx={{ px: 2.5, py: 2.5 }}>
-        <Typography
-          variant="h5"
-          sx={{
-            letterSpacing: '-0.03em',
-            background: 'linear-gradient(135deg, #F4FFF9, #7EE0C3)',
-            backgroundClip: 'text',
-            WebkitBackgroundClip: 'text',
-            color: 'transparent',
-          }}
-        >
-          JobPilot AI
-        </Typography>
-        <Typography variant="body2" sx={{ opacity: 0.75, mt: 0.5 }}>
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', color: '#FFF5F9' }}>
+      <Box sx={{ px: 2.25, py: 2.5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mb: 0.75 }}>
+          <Box
+            sx={{
+              width: 38,
+              height: 38,
+              borderRadius: '14px',
+              display: 'grid',
+              placeItems: 'center',
+              fontWeight: 800,
+              fontSize: 15,
+              letterSpacing: '-0.04em',
+              color: '#FF3D8A',
+              background: 'linear-gradient(145deg, #FFFFFF, #FFE4F0)',
+              boxShadow: '0 8px 18px rgba(0,0,0,0.14)',
+              animation: 'jp-pulse-soft 2.8s ease infinite',
+            }}
+          >
+            JP
+          </Box>
+          <Typography
+            variant="h5"
+            sx={{
+              letterSpacing: '-0.04em',
+              color: '#FFF8FB',
+              fontWeight: 800,
+            }}
+          >
+            JobPilot
+          </Typography>
+        </Box>
+        <Typography variant="body2" sx={{ opacity: 0.82, mt: 0.25, pl: 0.25 }}>
           {isAuthenticated ? displayName : 'Guest explorer'}
         </Typography>
       </Box>
@@ -381,9 +399,10 @@ function DashboardLayout() {
           <Typography
             sx={{
               flex: 1,
-              fontWeight: 700,
-              fontFamily: '"Fraunces", Georgia, serif',
-              fontSize: { xs: '1.05rem', sm: '1.25rem' },
+              fontWeight: 800,
+              fontFamily: '"Sora", "Sofia Sans", sans-serif',
+              fontSize: { xs: '1.05rem', sm: '1.28rem' },
+              letterSpacing: '-0.03em',
             }}
           >
             {pageTitle}
@@ -462,7 +481,7 @@ function DashboardLayout() {
           transition: 'width 0.25s ease',
           minWidth: 0,
           background: (t) =>
-            `radial-gradient(700px 260px at 100% 0%, ${alpha(t.palette.secondary.main, 0.1)}, transparent)`,
+            `radial-gradient(720px 280px at 100% 0%, ${alpha(t.palette.primary.main, 0.12)}, transparent 60%)`,
         }}
       >
         <GuestBanner />

@@ -6,50 +6,53 @@ type Props = {
   label: string;
   value: string | number;
   accent?: boolean;
-  tone?: 'teal' | 'sky' | 'forest' | 'coral';
+  tone?: 'pink' | 'rose' | 'magenta' | 'coral' | 'teal' | 'sky' | 'forest';
 };
 
 const tones = {
-  teal: { from: '#1FA67A', to: '#2BB3C0' },
-  sky: { from: '#2BB3C0', to: '#5ECFDB' },
-  forest: { from: '#0B3D2E', to: '#1FA67A' },
-  coral: { from: '#E85D4C', to: '#F28B7E' },
+  pink: { from: '#FF3D8A', to: '#FF7AB5' },
+  rose: { from: '#FF7AB5', to: '#FFB3D4' },
+  magenta: { from: '#E2186F', to: '#FF3D8A' },
+  coral: { from: '#FF5C6B', to: '#FF8A96' },
+  teal: { from: '#FF3D8A', to: '#FF7AB5' },
+  sky: { from: '#FF7AB5', to: '#FFB3D4' },
+  forest: { from: '#E2186F', to: '#FF3D8A' },
 };
 
-function StatCard({ label, value, accent, tone = 'teal' }: Props) {
+function StatCard({ label, value, accent, tone = 'pink' }: Props) {
   const colors = tones[tone];
   return (
     <Box
       sx={{
         p: { xs: 2, sm: 2.5 },
-        borderRadius: 3,
+        borderRadius: 4,
         border: '1px solid',
         borderColor: 'divider',
         bgcolor: 'background.paper',
         position: 'relative',
         overflow: 'hidden',
         minHeight: 120,
-        transition: 'transform 0.25s ease, box-shadow 0.25s ease',
+        transition: 'transform 0.28s cubic-bezier(0.34, 1.45, 0.64, 1), box-shadow 0.28s ease',
         backgroundImage: accent
-          ? `linear-gradient(135deg, ${alpha(colors.from, 0.16)}, ${alpha(colors.to, 0.06)})`
-          : `linear-gradient(165deg, transparent, ${alpha(colors.from, 0.04)})`,
+          ? `linear-gradient(135deg, ${alpha(colors.from, 0.18)}, ${alpha(colors.to, 0.08)})`
+          : `linear-gradient(165deg, transparent, ${alpha(colors.from, 0.06)})`,
         '&:hover': {
-          transform: 'translateY(-4px)',
-          boxShadow: (t) => `0 16px 32px ${alpha(t.palette.primary.main, 0.12)}`,
+          transform: 'translateY(-6px)',
+          boxShadow: (t) => `0 18px 36px ${alpha(t.palette.primary.main, 0.16)}`,
         },
         '&::after': {
           content: '""',
           position: 'absolute',
           inset: 'auto -20% -40% auto',
-          width: 120,
-          height: 120,
+          width: 130,
+          height: 130,
           borderRadius: '50%',
-          background: `radial-gradient(circle, ${alpha(colors.to, 0.28)}, transparent 70%)`,
-          animation: 'jp-float 5s ease-in-out infinite',
+          background: `radial-gradient(circle, ${alpha(colors.to, 0.34)}, transparent 70%)`,
+          animation: 'jp-float 5.5s ease-in-out infinite',
         },
       }}
     >
-      <Typography variant="body2" color="text.secondary" sx={{ position: 'relative', zIndex: 1 }}>
+      <Typography variant="body2" color="text.secondary" sx={{ position: 'relative', zIndex: 1, fontWeight: 650 }}>
         {label}
       </Typography>
       <Typography

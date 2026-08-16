@@ -18,8 +18,12 @@ function GuestBannerComponent() {
       severity="info"
       sx={{
         mb: 2,
-        borderRadius: 2,
+        borderRadius: 3,
         alignItems: 'center',
+        background: (t) =>
+          t.palette.mode === 'light' ? 'linear-gradient(90deg, #FFE4F0, #FFF8FB)' : undefined,
+        border: '1px solid',
+        borderColor: 'divider',
         '& .MuiAlert-message': { width: '100%' },
       }}
       action={

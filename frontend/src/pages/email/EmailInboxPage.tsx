@@ -144,7 +144,7 @@ function EmailInboxPage() {
     <PageShell spacing={2.5} loading={loading} fetching={fetching} busy={busy}>
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2}>
         <Box>
-          <Typography variant="h4" sx={{ fontFamily: '"Fraunces", Georgia, serif' }}>
+          <Typography variant="h4">
             Email inbox
           </Typography>
           <Typography color="text.secondary">

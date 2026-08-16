@@ -155,7 +155,19 @@ function JobsPage({ mode = 'all' }: { mode?: Mode }) {
         pageSizeOptions={[10, 25, 50]}
         initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
         disableRowSelectionOnClick
-        sx={{ bgcolor: 'background.paper', borderRadius: 3, width: '100%' }}
+        sx={{
+          bgcolor: 'background.paper',
+          borderRadius: 4,
+          width: '100%',
+          borderColor: 'divider',
+          '& .MuiDataGrid-columnHeaders': {
+            bgcolor: (t) => (t.palette.mode === 'light' ? '#FFF1F6' : 'rgba(255,61,138,0.16)'),
+            fontWeight: 800,
+          },
+          '& .MuiDataGrid-row:hover': {
+            bgcolor: (t) => (t.palette.mode === 'light' ? '#FFE4F0' : 'rgba(255,61,138,0.08)'),
+          },
+        }}
       />
       <JobDetailDrawer
         open={!!drawerJob}

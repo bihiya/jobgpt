@@ -15,7 +15,7 @@ export default function HomePage() {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
   return (
     <main className="hero">
-      <p style={{ color: 'var(--accent)', fontWeight: 600, marginBottom: 8 }}>Job automation platform</p>
+      <p style={{ color: 'var(--accent)', fontWeight: 700, marginBottom: 8, letterSpacing: '0.04em' }}>Job automation platform</p>
       <h1 className="brand">JobPilot AI</h1>
       <p className="lead">
         Configure your resume and portals once. JobPilot scans continuously, explains match scores,
