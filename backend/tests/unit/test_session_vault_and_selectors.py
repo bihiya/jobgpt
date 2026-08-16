@@ -1,3 +1,5 @@
+import pytest
+
 from app.automation.selectors import get_selector_pack
 from app.automation.session_recorder import ApplySessionRecorder
 from app.services.session_vault import (
@@ -130,6 +132,23 @@ def test_session_recorder_seeds_and_notifies_on_step():
     rec.complete_pending("queued", detail="Worker picked up")
     assert rec.to_list()[0]["status"] == "ok"
     assert rec.to_list()[0]["detail"] == "Worker picked up"
+
+
+@pytest.mark.asyncio
+async def test_session_recorder_flush_awaits_async_on_step():
+    import asyncio
+
+    seen: list[str] = []
+
+    async def on_step(step):
+        await asyncio.sleep(0.01)
+        seen.append(step.key)
+
+    rec = ApplySessionRecorder(on_step=on_step)
+    rec.add("browser", "Launching browser", status="pending")
+    assert seen == []
+    await rec.flush()
+    assert seen == ["browser"]
 
 
 def test_compact_sync_steps_trims_fields():

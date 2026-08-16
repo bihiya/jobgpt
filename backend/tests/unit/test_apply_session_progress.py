@@ -64,3 +64,39 @@ async def test_apply_with_retry_keeps_live_recorder_and_emits_browser_login():
     assert "browser" in seen
     assert result.success is True
     assert portal.recorder.to_list()[0]["status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_apply_with_retry_flushes_browser_step_before_session():
+    """Live UI must see 'Launching browser' before Chromium.session() starts."""
+    order: list[str] = []
+
+    async def on_step(step):
+        order.append(f"{step.key}:{step.status}")
+
+    portal = _DummyPortal()
+    portal.recorder = ApplySessionRecorder(on_step=on_step)
+    portal.recorder.add("started", "Worker started applying", detail="linkedin")
+
+    @asynccontextmanager
+    async def fake_session():
+        order.append("session-start")
+        yield (None, None, MagicMock())
+
+    portal.browser.session = fake_session  # type: ignore[method-assign]
+    portal.handle_captcha = AsyncMock(return_value=CaptchaHookResult())
+    portal.capture_screenshot = AsyncMock(return_value="/tmp/shot.png")
+
+    await portal.apply_with_retry(
+        ExtractedJob(
+            external_id="1",
+            title="Engineer",
+            company="Acme",
+            apply_url="https://www.linkedin.com/jobs/view/1",
+        ),
+        "/tmp/resume.pdf",
+        {},
+    )
+
+    assert "browser:pending" in order
+    assert order.index("browser:pending") < order.index("session-start")

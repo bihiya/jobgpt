@@ -14,7 +14,7 @@ class BasePage:
         self.page = page
 
     async def goto(self, url: str, wait_until: str = "domcontentloaded") -> None:
-        await self.page.goto(url, wait_until=wait_until)
+        await self.page.goto(url, wait_until=wait_until, timeout=30_000)
 
     async def fill(self, selector: str, value: str) -> None:
         await self.page.fill(selector, value)

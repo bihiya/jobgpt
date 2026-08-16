@@ -216,3 +216,73 @@ async def test_apply_worker_crash_marks_failed():
     assert "browser died" in app.error_message
     assert job.status == JobStatus.FAILED
     worker.storage.cleanup_temp.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_apply_worker_timeout_marks_failed(monkeypatch):
+    import asyncio
+
+    job = _job()
+    app = _app()
+    worker = _worker(job, app)
+    adapter = MagicMock()
+    adapter.recorder = ApplySessionRecorder()
+    adapter.session_identity = {}
+
+    async def hang(*_args, **_kwargs):
+        await asyncio.sleep(30)
+        return ApplyResult(success=True)
+
+    adapter.apply_with_retry = hang
+    monkeypatch.setattr("app.workers.apply_worker._APPLY_TIMEOUT_S", 0.05)
+
+    with (
+        patch("app.workers.apply_worker.Application.get", new=AsyncMock(return_value=app)),
+        patch("app.workers.apply_worker.AutomationLog", _Log),
+        patch("app.workers.apply_worker.get_portal_adapter", return_value=adapter),
+        patch("app.workers.apply_worker.emit_realtime", new=AsyncMock()),
+        patch("app.workers.apply_worker.publish", new=AsyncMock()),
+        patch("app.workers.apply_worker.audit_event", new=AsyncMock()),
+        patch("app.workers.apply_worker.apply_identity_to_portal"),
+    ):
+        await worker.handle("job.apply", {"user_id": "u1", "job_id": "j1", "application_id": "a1"})
+
+    assert app.status == ApplicationStatus.FAILED
+    assert "timed out" in app.error_message.lower()
+    assert any(step["key"] == "failed" for step in adapter.recorder.to_list())
+    assert any(step["key"] == "resume" for step in adapter.recorder.to_list())
+
+
+@pytest.mark.asyncio
+async def test_apply_worker_resume_download_timeout_marks_failed(monkeypatch):
+    import asyncio
+
+    job = _job()
+    app = _app()
+    worker = _worker(job, app)
+    adapter = MagicMock()
+    adapter.recorder = ApplySessionRecorder()
+    adapter.session_identity = {}
+    adapter.apply_with_retry = AsyncMock(return_value=ApplyResult(success=True))
+
+    async def hang_download(_stored: str) -> str:
+        await asyncio.sleep(30)
+        return "/tmp/resume.pdf"
+
+    worker.storage.as_local_file = hang_download
+    monkeypatch.setattr("app.workers.apply_worker._RESUME_DOWNLOAD_TIMEOUT_S", 0.05)
+
+    with (
+        patch("app.workers.apply_worker.Application.get", new=AsyncMock(return_value=app)),
+        patch("app.workers.apply_worker.AutomationLog", _Log),
+        patch("app.workers.apply_worker.get_portal_adapter", return_value=adapter),
+        patch("app.workers.apply_worker.emit_realtime", new=AsyncMock()),
+        patch("app.workers.apply_worker.publish", new=AsyncMock()),
+        patch("app.workers.apply_worker.audit_event", new=AsyncMock()),
+        patch("app.workers.apply_worker.apply_identity_to_portal"),
+    ):
+        await worker.handle("job.apply", {"user_id": "u1", "job_id": "j1", "application_id": "a1"})
+
+    assert app.status == ApplicationStatus.FAILED
+    assert "resume" in app.error_message.lower()
+    adapter.apply_with_retry.assert_not_called()
