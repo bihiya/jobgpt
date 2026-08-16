@@ -44,4 +44,11 @@ describe('guest demo data', () => {
     expect(data[1].name).toBe('Guest_Explorer_Resume_v2.pdf');
     expect(data[0].is_default).toBe(true);
   });
+
+  it('returns the listing URL on a single job fetch', () => {
+    const data = resolveDemoData('/api/v1/jobs/demo-job-1', 'get');
+    expect(data.title).toBe('Senior Frontend Engineer');
+    expect(data.apply_url).toContain('linkedin.com/jobs/view/');
+    expect(data.description).toMatch(/React/);
+  });
 });

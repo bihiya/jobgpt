@@ -14,6 +14,7 @@ from app.repository.job_repository import JobRepository
 from app.schemas.application import ApplicationCreate
 from app.schemas.common import PaginatedResponse
 from app.schemas.job import JobFilterParams, JobMoveResponse, JobResponse, JobUpdateRequest
+from app.services.job_links import listing_url_for
 from app.services.match_service import MatchService
 from app.services.pipeline import (
     PIPELINE_COLUMNS,
@@ -44,6 +45,7 @@ class JobService:
         from app.schemas.job import MatchBreakdownSchema
 
         breakdown = job.match_breakdown.model_dump() if job.match_breakdown else {}
+        listing_url = listing_url_for(job.portal, job.apply_url, job.external_id)
         return JobResponse(
             id=str(job.id),
             title=job.title,
@@ -53,14 +55,17 @@ class JobService:
             experience=job.experience,
             description=job.description,
             skills=job.skills,
-            apply_url=job.apply_url,
+            apply_url=job.apply_url or listing_url,
+            listing_url=listing_url,
             portal=job.portal,
             status=job.status,
             match_score=job.match_score,
             match_breakdown=MatchBreakdownSchema(**breakdown),
             source=getattr(job, "source", "portal"),
+            external_id=job.external_id,
             fetched_at=job.fetched_at.isoformat(),
             created_at=job.created_at.isoformat(),
+            metadata=getattr(job, "metadata", {}) or {},
         )
 
     async def list_jobs(self, user_id: str, params: JobFilterParams) -> PaginatedResponse[JobResponse]:
@@ -228,6 +233,11 @@ class JobService:
 
     async def get(self, user_id: str, job_id: str) -> JobResponse:
         job = await self._owned(user_id, job_id)
+        listing_url = listing_url_for(job.portal, job.apply_url, job.external_id)
+        if listing_url and not (job.apply_url or "").strip():
+            job.apply_url = listing_url
+            job.updated_at = datetime.utcnow()
+            await job.save()
         return self._to_response(job)
 
     async def update(

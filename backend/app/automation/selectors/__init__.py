@@ -172,6 +172,13 @@ LINKEDIN_V1 = SelectorPack(
             ".job-card-container",
             "[data-job-id]",
         ],
+        "job_detail": [
+            "#job-details",
+            ".jobs-description-content__text",
+            ".jobs-description",
+            ".jobs-box__html-content",
+            ".job-details-jobs-unified-top-card",
+        ],
     },
 )
 

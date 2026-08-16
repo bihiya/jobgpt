@@ -31,9 +31,20 @@ export const demoJobs = {
       title: 'Senior Frontend Engineer',
       company: 'Northwind Labs',
       location: 'Remote',
+      salary: '$160K – $190K / yr',
+      experience: '5+ years',
+      description:
+        'Build the JobPilot-style product surface: React, TypeScript, and design systems.\n\nYou will own listing pages, match explanations, and apply workflows.',
+      skills: ['React', 'TypeScript', 'MUI'],
+      apply_url: 'https://www.linkedin.com/jobs/view/4123456789/',
+      listing_url: 'https://www.linkedin.com/jobs/view/4123456789/',
       portal: 'linkedin',
       status: 'matched',
       match_score: 0.92,
+      source: 'portal',
+      external_id: 'linkedin-4123456789',
+      fetched_at: now,
+      created_at: now,
       match_breakdown: {
         total: 0.92,
         skills: 0.95,
@@ -636,7 +647,8 @@ export function resolveDemoData(url = '', method = 'get'): unknown | undefined {
     return demoJobs;
   }
   if (path.match(/\/jobs\/[^/]+$/) && !path.endsWith('/jobs')) {
-    return demoJobs.items[0];
+    const id = path.split('/').pop();
+    return demoJobs.items.find((job) => job.id === id) || demoJobs.items[0];
   }
   if (path.endsWith('/jobs') || path.includes('/jobs?')) return demoJobs;
   if (path.includes('/approvals/blockers')) return demoBlockers;

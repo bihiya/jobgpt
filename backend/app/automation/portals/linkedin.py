@@ -36,6 +36,53 @@ _ALREADY_APPLIED_TEXT = (
     "you've already applied",
     "you have already applied",
 )
+_CARD_NOISE_RE = re.compile(
+    r"^(promoted|easy apply|linkedin apply|actively recruiting|viewed|verified|"
+    r"see more|be an early applicant|"
+    r"\d[\d,]*\s+applicants?|"
+    r"\d+\s+(second|minute|hour|day|week|month)s?\s+ago"
+    r"(?:\s*[·•]\s*\d[\d,]*\s+applicants?)?)$",
+    re.I,
+)
+_SALARY_RE = re.compile(
+    r"(?:[$₹€£]\s?[\d,.]+K?(?:\s*[-–]\s*[$₹€£]?\s?[\d,.]+K?)?(?:\s*/\s*\w+)?|"
+    r"[\d,.]+\s*[-–]\s*[\d,.]+\s*(?:lpa|lakhs?|/yr|/year|/hr))",
+    re.I,
+)
+_LOCATION_RE = re.compile(
+    r"\b(remote|hybrid|on-?site|worldwide|india|united states|united kingdom|"
+    r"bay area|area|city|county)\b|,",
+    re.I,
+)
+
+
+def parse_linkedin_card(text: str) -> dict[str, str]:
+    """Split a LinkedIn job-card blob into title, company, location, salary."""
+    lines = [line.strip() for line in (text or "").splitlines() if line.strip()]
+    title = lines[0][:200] if lines else ""
+    company = ""
+    location = ""
+    salary = ""
+    for line in lines[1:]:
+        compact = " ".join(line.split())
+        if _CARD_NOISE_RE.match(compact):
+            continue
+        if not salary and _SALARY_RE.search(compact):
+            salary = compact[:120]
+            continue
+        if not company:
+            company = compact[:120]
+            continue
+        if not location and _LOCATION_RE.search(compact):
+            location = compact[:160]
+            continue
+    return {
+        "title": title,
+        "company": company,
+        "location": location,
+        "salary": salary,
+        "description": "\n".join(lines),
+    }
 
 
 def _absolute_linkedin_url(href: str) -> str:
@@ -386,23 +433,61 @@ class LinkedInPortal(BasePortal):
                 break
         jobs: list[ExtractedJob] = []
         for idx, card in enumerate(cards[:25]):
-            title = await card.inner_text() if card else f"LinkedIn Job {idx}"
-            lines = [line.strip() for line in (title or "").splitlines() if line.strip()]
+            blob = await card.inner_text() if card else ""
+            parsed = parse_linkedin_card(blob)
             href = await self._card_job_url(card, pack)
             job_id = linkedin_job_id(href)
             external_id = (
-                f"linkedin-{job_id}" if job_id else f"linkedin-{idx}-{hash(title) & 0xFFFF}"
+                f"linkedin-{job_id}"
+                if job_id
+                else f"linkedin-{idx}-{hash(blob or parsed['title']) & 0xFFFF}"
             )
-            jobs.append(
-                ExtractedJob(
-                    external_id=external_id,
-                    title=(lines[0] if lines else f"LinkedIn Job {idx}")[:200],
-                    company=(lines[1] if len(lines) > 1 else "LinkedIn Listing")[:120],
-                    apply_url=href or "",
-                    description=title,
-                )
+            job = ExtractedJob(
+                external_id=external_id,
+                title=parsed["title"] or f"LinkedIn Job {idx}",
+                company=parsed["company"] or "LinkedIn Listing",
+                location=parsed["location"],
+                salary=parsed["salary"],
+                apply_url=href or (
+                    f"https://www.linkedin.com/jobs/view/{job_id}/" if job_id else ""
+                ),
+                description=parsed["description"] or blob,
             )
+            await self._enrich_from_detail_pane(page, card, job, pack)
+            jobs.append(job)
         return jobs
+
+    async def _enrich_from_detail_pane(self, page: BasePage, card, job: ExtractedJob, pack) -> None:
+        """Click the search-result card and copy the right-rail JD when LinkedIn shows it."""
+        try:
+            await card.click(timeout=1500)
+        except Exception:  # noqa: BLE001
+            return
+        try:
+            await page.page.wait_for_timeout(600)
+        except Exception:  # noqa: BLE001
+            pass
+        detail = ""
+        for sel in pack.all("job_detail"):
+            try:
+                el = await page.page.query_selector(sel)
+                text = (await el.inner_text()) if el else ""
+            except Exception:  # noqa: BLE001
+                text = ""
+            if text and len(text.strip()) > 80:
+                detail = text.strip()
+                break
+        if not detail:
+            return
+        parsed = parse_linkedin_card(detail)
+        if parsed["location"] and not job.location:
+            job.location = parsed["location"]
+        if parsed["salary"] and not job.salary:
+            job.salary = parsed["salary"]
+        if parsed["company"] and job.company in {"", "LinkedIn Listing"}:
+            job.company = parsed["company"]
+        if len(detail) > len(job.description or ""):
+            job.description = detail[:12000]
 
     async def _card_job_url(self, card, pack) -> str:
         for sel in pack.all("job_links"):
