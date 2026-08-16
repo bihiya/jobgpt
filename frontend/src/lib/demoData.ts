@@ -34,7 +34,7 @@ export const demoJobs = {
       salary: '$160K – $190K / yr',
       experience: '5+ years',
       description:
-        'Build the JobPilot-style product surface: React, TypeScript, and design systems.\n\nYou will own listing pages, match explanations, and apply workflows.',
+        'About the job\nSenior Frontend Engineer\nNorthwind Labs\nRemote\n\nWe are hiring a Senior Frontend Engineer to own the product surface candidates see every day.\n\nResponsibilities\n• Build listing pages, match explanations, and apply workflows in React and TypeScript\n• Partner with design on a system that stays readable in light and dark themes\n• Ship accessible, high-contrast job details that feel like a LinkedIn posting\n\nRequirements\n• 5+ years building web apps with React\n• Strong TypeScript and design-system experience\n• Comfort working with REST APIs and real-time updates\n\nBenefits\n• Remote-first team\n• $160K – $190K / yr',
       skills: ['React', 'TypeScript', 'MUI'],
       apply_url: 'https://www.linkedin.com/jobs/view/4123456789/',
       listing_url: 'https://www.linkedin.com/jobs/view/4123456789/',

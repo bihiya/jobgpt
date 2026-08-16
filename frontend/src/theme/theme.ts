@@ -237,12 +237,7 @@ const sharedComponents = (mode: 'light' | 'dark'): ThemeOptions['components'] =>
   MuiDrawer: {
     styleOverrides: {
       paper: {
-        borderRight: 'none',
-        background:
-          mode === 'light'
-            ? `linear-gradient(185deg, ${pink} 0%, ${magenta} 48%, ${plum} 100%)`
-            : `linear-gradient(185deg, #1A0810 0%, #3A1024 48%, ${plum} 100%)`,
-        color: '#FFF5F9',
+        backgroundImage: 'none',
       },
     },
   },
