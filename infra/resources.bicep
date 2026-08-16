@@ -140,6 +140,7 @@ var sharedEnv = [
   { name: 'AZURE_JOB_APPLY', value: applyJobName }
   { name: 'CORS_ORIGINS', value: corsOriginsEffective }
   { name: 'PLAYWRIGHT_HEADLESS', value: 'true' }
+  { name: 'PLAYWRIGHT_NO_SANDBOX', value: 'true' }
   { name: 'WEB_CONCURRENCY', value: '1' }
   { name: 'GUNICORN_TIMEOUT', value: '120' }
   { name: 'MONGODB_DB', value: 'jobpilot' }

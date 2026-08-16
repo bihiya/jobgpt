@@ -132,3 +132,20 @@ async def test_upload_resume_stores_blob_path(blob_settings):
     storage.save_bytes.assert_awaited_once()
     payload = resumes.create.await_args.args[0]
     assert payload["file_path"] == "blob://resumes/u1/abc.pdf"
+
+
+@pytest.mark.asyncio
+async def test_blob_client_skips_hanging_cli_credentials(blob_settings):
+    service = StorageService()
+    fake = MagicMock()
+    with (
+        patch("azure.storage.blob.aio.BlobServiceClient") as client_cls,
+        patch("azure.identity.aio.DefaultAzureCredential") as cred_cls,
+    ):
+        client_cls.return_value = fake
+        client = await service._blob_client()
+    assert client is fake
+    kwargs = cred_cls.call_args.kwargs
+    assert kwargs["exclude_azure_cli_credential"] is True
+    assert kwargs["exclude_interactive_browser_credential"] is True
+    assert kwargs["exclude_azure_developer_cli_credential"] is True

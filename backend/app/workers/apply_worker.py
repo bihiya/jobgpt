@@ -31,6 +31,10 @@ from app.workers.base import BaseWorker
 
 logger = get_logger(__name__)
 
+# Hard caps so a hung Chromium / blob download cannot sit in Applying forever.
+_RESUME_DOWNLOAD_TIMEOUT_S = 45.0
+_APPLY_TIMEOUT_S = 8 * 60.0
+
 
 def _otp_code_from_payload(payload: dict[str, Any], app: Application) -> str:
     """Read a one-shot OTP from the event payload or a prior session step."""
@@ -68,6 +72,7 @@ class ApplyWorker(BaseWorker):
         self.vault = SessionVault()
         self.rate_limiter = ApplyRateLimiter()
         self._session_progress_tasks: dict[str, list[asyncio.Task]] = {}
+        self._session_progress_locks: dict[str, asyncio.Lock] = {}
 
     async def handle(self, topic: str, payload: dict[str, Any]) -> None:
         user_id = payload["user_id"]
@@ -165,10 +170,10 @@ class ApplyWorker(BaseWorker):
         adapter.recorder.seed(list(app.session_steps or []))
         adapter.recorder.complete_pending("queued", detail="Worker picked up")
         adapter.recorder.add("started", "Worker started applying", detail=job.portal or "")
-        await self._publish_session_progress(app, adapter.recorder)
-        adapter.recorder.on_step = lambda _step: self._schedule_session_progress(
+        adapter.recorder.on_step = lambda _step: self._publish_session_progress(
             app, adapter.recorder
         )
+        await self._publish_session_progress(app, adapter.recorder)
 
         from app.automation.base.portal import ExtractedJob
 
@@ -192,7 +197,7 @@ class ApplyWorker(BaseWorker):
                 status="pending",
                 detail=job.portal or "",
             )
-            await self._publish_session_progress(app, adapter.recorder)
+            await adapter.recorder.flush()
 
             user = await self.users.get_by_id(user_id)
             answers = await self._load_apply_answers(user_id, user)
@@ -221,18 +226,39 @@ class ApplyWorker(BaseWorker):
                 severity="info",
             )
 
-            resume_local = await self.storage.as_local_file(resume.file_path)
+            resume_local = await asyncio.wait_for(
+                self.storage.as_local_file(resume.file_path),
+                timeout=_RESUME_DOWNLOAD_TIMEOUT_S,
+            )
             adapter.recorder.complete_pending(
                 "prepare",
                 label="Resume and answers ready",
                 detail=job.portal or "",
             )
-            await self._publish_session_progress(app, adapter.recorder)
-            result = await adapter.apply_with_retry(extracted, resume_local, answers)
+            await adapter.recorder.flush()
+            result = await asyncio.wait_for(
+                adapter.apply_with_retry(extracted, resume_local, answers),
+                timeout=_APPLY_TIMEOUT_S,
+            )
+        except TimeoutError as exc:
+            if resume_local is None:
+                crash = (
+                    "Timed out downloading the resume from storage. "
+                    "Check Azure Blob access for this worker job."
+                )
+            else:
+                crash = (
+                    "Apply timed out — the worker did not finish browser automation. "
+                    "This usually means Chromium hung in the container or LinkedIn stopped responding."
+                )
+            adapter.recorder.failed(crash)
+            logger.exception("apply_worker_timeout", job_id=job_id, error=str(exc))
         except Exception as exc:  # noqa: BLE001
             crash = str(exc) or exc.__class__.__name__
+            adapter.recorder.failed(crash)
             logger.exception("apply_worker_crashed", job_id=job_id, error=crash)
         finally:
+            await adapter.recorder.flush()
             await self._drain_session_progress(str(app.id))
             await self.storage.cleanup_temp(resume_local, original=resume.file_path)
 
@@ -574,29 +600,32 @@ class ApplyWorker(BaseWorker):
     async def _publish_session_progress(
         self, app: Application, recorder: ApplySessionRecorder
     ) -> None:
+        app_id = str(getattr(app, "id", "") or "")
+        lock = self._session_progress_locks.setdefault(app_id, asyncio.Lock())
         try:
-            steps = recorder.to_list()
-            app.session_steps = steps
-            app.updated_at = datetime.utcnow()
-            await app.save()
-            latest = steps[-1] if steps else {}
-            await emit_realtime(
-                app.user_id,
-                "application.session",
-                {
-                    "application_id": str(app.id),
-                    "job_id": app.job_id,
-                    "status": getattr(app.status, "value", str(app.status)),
-                    "steps": steps,
-                    "updated_at": iso_utc(app.updated_at),
-                    "error_message": app.error_message or "",
-                    "attempts": app.attempts,
-                    "blocker_type": getattr(app, "blocker_type", "") or "",
-                },
-                title=str(latest.get("label") or "Applying…"),
-                body=str(latest.get("detail") or ""),
-                severity="info",
-            )
+            async with lock:
+                steps = recorder.to_list()
+                app.session_steps = steps
+                app.updated_at = datetime.utcnow()
+                await app.save()
+                latest = steps[-1] if steps else {}
+                await emit_realtime(
+                    app.user_id,
+                    "application.session",
+                    {
+                        "application_id": str(app.id),
+                        "job_id": app.job_id,
+                        "status": getattr(app.status, "value", str(app.status)),
+                        "steps": steps,
+                        "updated_at": iso_utc(app.updated_at),
+                        "error_message": app.error_message or "",
+                        "attempts": app.attempts,
+                        "blocker_type": getattr(app, "blocker_type", "") or "",
+                    },
+                    title=str(latest.get("label") or "Applying…"),
+                    body=str(latest.get("detail") or ""),
+                    severity="info",
+                )
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "apply_session_progress_failed",

@@ -79,6 +79,8 @@ services:
     environment:
       MONGODB_URL: mongodb://mongodb:27017
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      PLAYWRIGHT_HEADLESS: "true"
+      PLAYWRIGHT_NO_SANDBOX: "true"
     depends_on:
       - backend
       - kafka
@@ -106,6 +108,7 @@ services:
       MONGODB_URL: mongodb://mongodb:27017
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       PLAYWRIGHT_HEADLESS: "true"
+      PLAYWRIGHT_NO_SANDBOX: "true"
     depends_on:
       - backend
       - kafka

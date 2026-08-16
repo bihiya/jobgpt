@@ -174,11 +174,20 @@ class LinkedInPortal(BasePortal):
 
     async def login(self, page: BasePage) -> None:
         pack = self._pack()
+        self.recorder.add(
+            "login",
+            "Opening LinkedIn (checking existing session)",
+            status="pending",
+        )
         await page.goto("https://www.linkedin.com/feed/")
         await wander_mouse(page)
         await pause(page, 700, 1600)
         snap = await describe_page(page)
-        self.recorder.add("login", "Opened LinkedIn (checking existing session)", detail=snap.get("url", ""))
+        self.recorder.complete_pending(
+            "login",
+            label="Opened LinkedIn (checking existing session)",
+            detail=snap.get("url", ""),
+        )
         injected = await self._page_cookies(page)
         on_login = self._is_login_url(snap.get("url", "") or page.page.url or "")
         # li_at + /feed is enough even when 2026 nav class names change.

@@ -20,9 +20,18 @@ class IndeedPortal(BasePortal):
 
     async def login(self, page: BasePage) -> None:
         pack = self._pack()
+        self.recorder.add(
+            "login",
+            "Opening Indeed (checking existing session)",
+            status="pending",
+        )
         await page.goto("https://www.indeed.com/")
         snap = await describe_page(page)
-        self.recorder.add("login", "Opened Indeed (checking existing session)", detail=snap.get("url", ""))
+        self.recorder.complete_pending(
+            "login",
+            label="Opened Indeed (checking existing session)",
+            detail=snap.get("url", ""),
+        )
         if await any_visible(page, pack.all("logged_in")):
             try:
                 await ensure_logged_in(

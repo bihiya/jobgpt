@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any
@@ -30,6 +32,7 @@ class ApplySessionRecorder:
         self.correlation_id = correlation_id or uuid4().hex
         self.steps: list[SessionStep] = []
         self.on_step = on_step
+        self._pending_tasks: list[asyncio.Task] = []
 
     def seed(self, steps: list[dict[str, Any]] | None) -> None:
         """Restore prior steps without firing on_step (queue + earlier attempts)."""
@@ -64,12 +67,7 @@ class ApplySessionRecorder:
     ) -> SessionStep:
         step = SessionStep(key=key, label=label, status=status, detail=detail, metadata=metadata)
         self.steps.append(step)
-        callback = self.on_step
-        if callback:
-            try:
-                callback(step)
-            except Exception:  # noqa: BLE001 — live UI must never break apply
-                pass
+        self._emit(step)
         return step
 
     def complete_pending(
@@ -89,14 +87,40 @@ class ApplySessionRecorder:
             if detail is not None:
                 step.detail = detail
             step.at = iso_utc(datetime.utcnow()) or step.at
-            callback = self.on_step
-            if callback:
-                try:
-                    callback(step)
-                except Exception:  # noqa: BLE001
-                    pass
+            self._emit(step)
             return step
         return None
+
+    def _emit(self, step: SessionStep) -> None:
+        callback = self.on_step
+        if not callback:
+            return
+        try:
+            result = callback(step)
+        except Exception:  # noqa: BLE001 — live UI must never break apply
+            return
+        if not inspect.isawaitable(result):
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            close = getattr(result, "close", None)
+            if callable(close):
+                close()
+            return
+        self._pending_tasks.append(loop.create_task(result))
+
+    async def flush(self) -> None:
+        """Wait until live UI publishes for steps already recorded.
+
+        Call this before blocking work (blob download, Chromium launch) so the
+        pipeline does not sit on “Worker started applying” with no next step.
+        """
+        if not self._pending_tasks:
+            return
+        pending = self._pending_tasks
+        self._pending_tasks = []
+        await asyncio.gather(*pending, return_exceptions=True)
 
     def opened_jd(self, url: str = "") -> None:
         self.add("opened_jd", "Opened job description", detail=url[:300])

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import tempfile
 from pathlib import Path
@@ -15,6 +16,7 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 _BLOB_PREFIX = "blob://"
+_BLOB_IO_TIMEOUT_S = 45.0
 
 
 def _safe_key(folder: str, filename: str) -> str:
@@ -124,7 +126,7 @@ class StorageService:
         """Return a filesystem path Playwright can upload. Downloads blob objects to a temp file."""
         if not self.is_remote(stored):
             return stored
-        data = await self.read_bytes(stored)
+        data = await asyncio.wait_for(self.read_bytes(stored), timeout=_BLOB_IO_TIMEOUT_S)
         suffix = Path(self.key_from_path(stored)).suffix or ""
         handle = tempfile.NamedTemporaryFile(delete=False, suffix=suffix, prefix="jobpilot-")
         handle.write(data)
@@ -158,7 +160,14 @@ class StorageService:
             return BlobServiceClient.from_connection_string(conn)
         from azure.identity.aio import DefaultAzureCredential
 
-        credential = DefaultAzureCredential()
+        # Skip CLI / interactive credentials — they hang for minutes in Container Apps.
+        credential = DefaultAzureCredential(
+            exclude_interactive_browser_credential=True,
+            exclude_azure_cli_credential=True,
+            exclude_azure_powershell_credential=True,
+            exclude_azure_developer_cli_credential=True,
+            exclude_shared_token_cache_credential=True,
+        )
         return BlobServiceClient(
             account_url=f"https://{self.account}.blob.core.windows.net",
             credential=credential,

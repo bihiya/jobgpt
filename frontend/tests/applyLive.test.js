@@ -22,7 +22,8 @@ describe('apply live helpers', () => {
   it('flags applies with no worker update past the stale window', () => {
     const now = Date.parse('2026-08-16T12:00:00Z');
     expect(isStaleApply('2026-08-13T12:00:00Z', now)).toBe(true);
-    expect(isStaleApply('2026-08-16T11:50:00Z', now)).toBe(false);
+    expect(isStaleApply('2026-08-16T11:58:00Z', now)).toBe(false);
+    expect(isStaleApply('2026-08-16T11:50:00Z', now)).toBe(true);
     expect(isStaleApply('2026-08-16T11:00:00Z', now, STALE_APPLY_MS)).toBe(true);
   });
 

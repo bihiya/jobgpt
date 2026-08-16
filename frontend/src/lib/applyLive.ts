@@ -10,7 +10,7 @@ export const LIVE_APPLY_STATUSES = new Set([
 ]);
 
 /** No worker update for this long → treat the apply as stuck. */
-export const STALE_APPLY_MS = 20 * 60 * 1000;
+export const STALE_APPLY_MS = 3 * 60 * 1000;
 
 export type ApplySnapshot = {
   id: string;

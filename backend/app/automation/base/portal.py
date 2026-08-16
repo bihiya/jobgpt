@@ -190,12 +190,17 @@ class BasePortal(ABC):
                         status="pending",
                         detail=self.name,
                     )
+                    # Persist “Launching browser” before Chromium starts — launch can
+                    # block the event loop in containers, so fire-and-forget UI updates
+                    # never run and the pipeline looks stuck on “started”.
+                    await self.recorder.flush()
                     async with self.browser.session() as (_, _, raw_page):
                         self.recorder.complete_pending(
                             "browser",
                             label="Browser ready",
                             detail=self.name,
                         )
+                        await self.recorder.flush()
                         page = BasePage(raw_page)
                         await self.login(page)
                         captcha = await self.handle_captcha(page)
