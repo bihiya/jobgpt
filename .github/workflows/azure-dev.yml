@@ -30,6 +30,7 @@ jobs:
       AZURE_ACR_NAME: crjobpilot5zmfpn
       AZURE_API_APP_NAME: ca-jobpilot-api
       AZURE_FRONTEND_APP_NAME: ca-jobpilot-web
+      AZURE_PUBLIC_WEBAPP_NAME: jobpilot
       IMAGE_TAG: ${{ github.sha }}
     steps:
       - name: Checkout

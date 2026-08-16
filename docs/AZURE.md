@@ -2,11 +2,14 @@
 
 Elastic setup using **Azure Container Apps Consumption** + **manual Jobs**.
 
-You pay for API CPU/memory only while it handles traffic (can scale to **0**), and for worker Jobs only while fetch/match/apply are running.
+The public site uses a short Azure hostname: **`https://jobpilot.azurewebsites.net`**. API, workers, and the original Container App remain Azure-only (no Vercel).
+
+You pay for API CPU/memory only while it handles traffic (can scale to **0**), and for worker Jobs only while fetch/match/apply are running. The public App Service is a Basic (B1) Linux plan so the hostname stays `*.azurewebsites.net`.
 
 | Piece | Where |
 |--------|--------|
-| Frontend | Azure Container Apps (Consumption, min 0) — Vercel still optional |
+| Public UI | App Service `jobpilot.azurewebsites.net` (Linux container, B1) |
+| Frontend fallback | Azure Container Apps (Consumption, min 0) |
 | API | Azure Container Apps (Consumption, min 0) |
 | Fetch / Match / Apply | Azure Container Apps **Jobs** (start → run → stop) |
 | MongoDB | [MongoDB Atlas](https://www.mongodb.com/atlas) Flex/Serverless |
@@ -27,8 +30,7 @@ You pay for API CPU/memory only while it handles traffic (can scale to **0**), a
    # Docker (for local image builds during azd deploy)
    ```
 3. MongoDB Atlas connection string  
-4. Upstash Redis URL  
-5. Vercel frontend URL (for CORS), e.g. `https://your-app.vercel.app`
+4. Upstash Redis URL
 
 ---
 
@@ -53,7 +55,7 @@ cd jobgpt
 
 ```bash
 azd env new prod
-azd env set AZURE_LOCATION eastus
+azd env set AZURE_LOCATION centralindia
 ```
 
 ### 4. Set secrets / config
@@ -65,19 +67,18 @@ azd env set SECRET_KEY "$(openssl rand -hex 32)"
 # Atlas + Upstash
 azd env set MONGODB_URL "mongodb+srv://USER:PASS@cluster.mongodb.net/?retryWrites=true&w=majority"
 azd env set REDIS_URL "rediss://default:TOKEN@REGION.upstash.io:6379"
-
-# Your Vercel frontend (comma-separated if several)
-azd env set CORS_ORIGINS "https://your-app.vercel.app"
 ```
+
+Leave `CORS_ORIGINS` empty. Provision always adds the Azure App Service origin (`https://jobpilot.azurewebsites.net`) and the Container App web origin.
 
 ### 5. Provision + deploy
 
 ```bash
-# One command: infra + build image + deploy API + Jobs
+# One command: infra + build image + deploy API + Jobs + public web
 azd up
 ```
 
-When finished, azd prints **SERVICE_API_URI** and **SERVICE_FRONTEND_URI** (e.g. `https://ca-jobpilot-api-xxxxxx.eastus.azurecontainerapps.io`).
+When finished, azd prints **SERVICE_PUBLIC_WEB_URI** (`https://jobpilot.azurewebsites.net`) and **SERVICE_API_URI**. Then run `./scripts/azure-redeploy.sh` so the App Service hostname exists and CORS is Azure-only.
 
 Or use the helper:
 
@@ -85,23 +86,18 @@ Or use the helper:
 ./scripts/azure-up.sh
 ```
 
-### 6. Frontend URL
+### 6. Public URL
 
-`azd up` / `azd deploy` also ships the Vite SPA as a Container App (`SERVICE_FRONTEND_URI`). Nginx on that app proxies `/api/` to the Azure API.
+Use **`https://jobpilot.azurewebsites.net`**. Nginx on that app proxies `/api/` and `/health` to the Azure API Container App (same-origin, no extra CORS for the SPA).
 
-If you still host the UI on Vercel, set:
-
-```
-VITE_API_URL=https://<SERVICE_API_URI>/api/v1
-```
-
-and include the Vercel origin in `CORS_ORIGINS`.
+The longer Container Apps hostname still works as a fallback.
 
 ### 7. Smoke test
 
 ```bash
+curl https://jobpilot.azurewebsites.net/health
 curl https://<SERVICE_API_URI>/health
-# open https://<SERVICE_API_URI>/docs
+# open https://jobpilot.azurewebsites.net
 ```
 
 In the app: connect a portal → **Run fetch**.  
@@ -115,6 +111,7 @@ Automation logs should show `automation.azure_job` (not `playwright` missing).
 - Container Apps Environment (Consumption)
 - API Container App (scale 0–5)
 - Frontend Container App (scale 0–3)
+- Public App Service `jobpilot` → `https://jobpilot.azurewebsites.net` (created/updated by `./scripts/azure-redeploy.sh` using `infra/app-service-public.bicep`)
 - Jobs: `fetch`, `match`, `apply` (manual trigger)
 - Azure Container Registry (Basic)
 - Key Vault (secrets)
@@ -133,7 +130,7 @@ with `JOB_TYPE` / `JOB_USER_ID` set per execution.
 
 ## CI/CD (deploy on every push to `main`)
 
-GitHub Actions workflow [`.github/workflows/azure-dev.yml`](../.github/workflows/azure-dev.yml) logs in to Azure with OIDC, finds the existing JobPilot Container Apps, rebuilds both images in ACR, and updates **frontend + API**.
+GitHub Actions workflow [`.github/workflows/azure-dev.yml`](../.github/workflows/azure-dev.yml) logs in to Azure with OIDC, finds the existing JobPilot apps, rebuilds both images in ACR, and updates **App Service + Container Apps**.
 
 Required GitHub Actions values are already in `.github/workflows/azure-dev.yml` (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, resource names).
 
@@ -156,11 +153,11 @@ Then re-run **Actions → Azure Deploy**.
 ## Day-2 commands
 
 ```bash
-# Redeploy API + frontend images after code changes
-azd deploy
+# Redeploy API + frontend images after code changes (also refreshes jobpilot.azurewebsites.net)
+./scripts/azure-redeploy.sh
 
-# Change env vars / secrets then re-provision
-azd env set CORS_ORIGINS "https://new-frontend.vercel.app"
+# Change extra CORS origins then re-provision (Azure web origins are always included)
+azd env set CORS_ORIGINS ""
 azd provision
 
 # Manually start a fetch job (debug)
@@ -185,6 +182,7 @@ azd down --force --purge
 
 - API `minReplicas: 0` → idle ≈ $0 compute (cold start on first request).
 - Jobs bill only while running (Playwright fetch/apply use ~1–2 Gi for a few minutes).
+- Public App Service B1 is a small always-on cost so the hostname can be `jobpilot.azurewebsites.net`.
 - Prefer Atlas + Upstash free/flex tiers for light traffic.
 - Avoid Event Hubs/Kafka until you need continuous high volume.
 - ACR Basic has a small fixed monthly cost; delete unused envs with `azd down`.
@@ -195,21 +193,22 @@ azd down --force --purge
 
 | Symptom | Fix |
 |---------|-----|
-| `PLAYWRIGHT_UNAVAILABLE` | You are still on the Vercel slim API — point UI at the Azure API URL |
+| `PLAYWRIGHT_UNAVAILABLE` | Point the UI at the Azure API (the public App Service already proxies `/api/`) |
 | Job start 403 | Wait ~1–2 min after first deploy for RBAC; re-run `azd provision` |
 | Job start 400 | Check Container Apps Job logs in Azure Portal |
 | Mongo/Redis errors | Confirm Atlas IP access (allow Azure / `0.0.0.0/0` for ACA) and Upstash URL |
-| CORS errors | `CORS_ORIGINS` must include the exact Vercel origin, then `azd provision` |
+| CORS errors | `CORS_ORIGINS` must include `https://jobpilot.azurewebsites.net` (redeploy sets this) |
 
 ---
 
 ## Architecture (short)
 
 ```text
-Container App (UI)  ──/api──►  Container App API  ──starts──►  Job (fetch/match/apply)
-    │                                │
-    │                                ├── MongoDB / Cosmos
-    │                                ├── Upstash Redis
-    │                                └── Azure Blob (resumes, reports, screenshots)
-    └── optional: Vercel SPA talking to the same API
+App Service (jobpilot.azurewebsites.net)
+    └── /api ──►  Container App API  ──starts──►  Job (fetch/match/apply)
+                       │
+                       ├── MongoDB / Cosmos
+                       ├── Upstash Redis
+                       └── Azure Blob (resumes, reports, screenshots)
+Container App (UI fallback, long *.azurecontainerapps.io hostname)
 ```

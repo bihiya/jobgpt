@@ -48,6 +48,7 @@ ENV_ID="$(az containerapp show -n "$API_NAME" -g "$RG" --query "properties.envir
 ENV_NAME="$(basename "$ENV_ID")"
 API_FQDN="$(az containerapp show -n "$API_NAME" -g "$RG" --query "properties.configuration.ingress.fqdn" -o tsv)"
 LOCATION="$(az containerapp show -n "$API_NAME" -g "$RG" --query location -o tsv)"
+LOCATION="$(echo "$LOCATION" | tr '[:upper:]' '[:lower:]' | tr -d ' ')"
 
 ACR_NAME="${AZURE_ACR_NAME:-}"
 if [ -z "$ACR_NAME" ]; then
@@ -73,6 +74,7 @@ echo "Resource group: $RG"
 echo "ACR:            $ACR_LOGIN"
 echo "API app:        $API_NAME"
 echo "Frontend app:   $WEB_NAME"
+echo "Public app:     ${AZURE_PUBLIC_WEBAPP_NAME:-jobpilot}.azurewebsites.net"
 echo "Image tag:      $TAG"
 
 docker_cmd() {
@@ -150,13 +152,72 @@ fi
 WEB_FQDN="$(az containerapp show -n "$WEB_NAME" -g "$RG" --query "properties.configuration.ingress.fqdn" -o tsv)"
 API_URI="https://${API_FQDN}"
 WEB_URI="https://${WEB_FQDN}"
+PUBLIC_APP="${AZURE_PUBLIC_WEBAPP_NAME:-jobpilot}"
+PUBLIC_URI=""
+
+sync_public_webapp() {
+  local image="${ACR_LOGIN}/jobpilot-web:${TAG}"
+  if ! az webapp show --name "$PUBLIC_APP" --resource-group "$RG" >/dev/null 2>&1; then
+    echo "Creating public App Service ${PUBLIC_APP} (https://${PUBLIC_APP}.azurewebsites.net)..."
+    az deployment group create \
+      --resource-group "$RG" \
+      --name jobpilot-public-hostname \
+      --template-file "${ROOT}/infra/app-service-public.bicep" \
+      --parameters \
+        location="$LOCATION" \
+        webAppName="$PUBLIC_APP" \
+        acrName="$ACR_NAME" \
+        containerImage="$image" \
+        assignAcrPull=false \
+      --output none
+  fi
+
+  echo "Updating public App Service image..."
+  ACR_USER="$(az acr credential show --name "$ACR_NAME" --query username -o tsv)"
+  ACR_PASS="$(az acr credential show --name "$ACR_NAME" --query passwords[0].value -o tsv)"
+  az webapp config container set \
+    --name "$PUBLIC_APP" \
+    --resource-group "$RG" \
+    --container-image-name "$image" \
+    --container-registry-url "https://${ACR_LOGIN}" \
+    --container-registry-user "$ACR_USER" \
+    --container-registry-password "$ACR_PASS" \
+    --enable-app-service-storage false \
+    --output none
+  az webapp config appsettings set \
+    --name "$PUBLIC_APP" \
+    --resource-group "$RG" \
+    --settings WEBSITES_PORT=80 WEBSITES_ENABLE_APP_SERVICE_STORAGE=false \
+    --output none
+  PUBLIC_URI="https://$(az webapp show --name "$PUBLIC_APP" --resource-group "$RG" --query defaultHostName -o tsv)"
+}
+
+if az webapp show --name "$PUBLIC_APP" --resource-group "$RG" >/dev/null 2>&1 \
+  || [ -f "${ROOT}/infra/app-service-public.bicep" ]; then
+  sync_public_webapp
+fi
+
+if [ -n "$PUBLIC_URI" ]; then
+  CORS_ORIGINS="${PUBLIC_URI},${WEB_URI}"
+  echo "Setting API CORS to Azure origins only: ${CORS_ORIGINS}"
+  az containerapp update \
+    --name "$API_NAME" \
+    --resource-group "$RG" \
+    --set-env-vars "CORS_ORIGINS=${CORS_ORIGINS}" \
+    --output none
+fi
 
 echo "Waiting for apps to accept traffic..."
 curl -fsS --retry 8 --retry-all-errors --retry-delay 8 "${API_URI}/health"
 curl -fsS --retry 8 --retry-all-errors --retry-delay 8 -o /dev/null "${WEB_URI}/"
+if [ -n "$PUBLIC_URI" ]; then
+  curl -fsS --retry 12 --retry-all-errors --retry-delay 10 -o /dev/null "${PUBLIC_URI}/"
+fi
 
 echo
 echo "Redeploy complete."
+echo "  App:      ${PUBLIC_URI:-$WEB_URI}"
 echo "  API:      ${API_URI}"
-echo "  Frontend: ${WEB_URI}"
+echo "  ACA web:  ${WEB_URI}"
 echo "  Location: ${LOCATION}"
+

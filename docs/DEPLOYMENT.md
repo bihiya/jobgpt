@@ -11,9 +11,9 @@
 - Ingress / TLS termination
 - Prometheus + Grafana
 
-## Azure Container Apps (pay-per-use)
+## Azure (production)
 
-Elastic API + Playwright Jobs (no always-on VM/Kafka). See **[docs/AZURE.md](AZURE.md)** for full steps (`azd up`).
+Public URL: **`https://jobpilot.azurewebsites.net`** (Azure App Service). API + Playwright Jobs run on Azure Container Apps. See **[docs/AZURE.md](AZURE.md)** for full steps.
 
 ## Docker Compose (single host)
 
@@ -75,11 +75,11 @@ GitHub Actions (`.github/workflows/ci.yml`) runs tests on pull requests and push
 2. Frontend unit tests + build
 3. (Optional) Playwright E2E against compose stack
 
-On every push to `main`, [`.github/workflows/azure-dev.yml`](../.github/workflows/azure-dev.yml) logs in to Azure (OIDC) and redeploys the frontend and API Container Apps via `./scripts/azure-redeploy.sh`. See **[docs/AZURE.md](AZURE.md)**.
+On every push to `main`, [`.github/workflows/azure-dev.yml`](../.github/workflows/azure-dev.yml) logs in to Azure (OIDC) and redeploys the public App Service plus frontend/API Container Apps via `./scripts/azure-redeploy.sh`. See **[docs/AZURE.md](AZURE.md)**.
 
-## Vercel
+## Vercel (optional, not production)
 
-This monorepo is set up for **two** Vercel projects (same GitHub repo):
+Production is Azure-only (`https://jobpilot.azurewebsites.net`). This monorepo can still run **two** Vercel projects for experiments (same GitHub repo):
 
 | Project | Root Directory | Role |
 |---------|----------------|------|

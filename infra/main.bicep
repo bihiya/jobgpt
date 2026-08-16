@@ -21,8 +21,8 @@ param redisUrl string
 @secure()
 param secretKey string
 
-@description('Comma-separated extra CORS origins (Vercel or other frontends). The Azure web app origin is always included.')
-param corsOrigins string = 'http://localhost:3000'
+@description('Comma-separated extra CORS origins. Leave empty for Azure-only (App Service + Container App web).')
+param corsOrigins string = ''
 
 @description('Tags applied to all resources')
 param tags object = {}
@@ -60,6 +60,7 @@ output SERVICE_API_NAME string = resources.outputs.apiName
 output SERVICE_API_URI string = resources.outputs.apiUri
 output SERVICE_FRONTEND_NAME string = resources.outputs.webName
 output SERVICE_FRONTEND_URI string = resources.outputs.webUri
+output SERVICE_PUBLIC_WEB_URI string = resources.outputs.publicWebUri
 output AZURE_JOB_FETCH_NAME string = resources.outputs.fetchJobName
 output AZURE_JOB_MATCH_NAME string = resources.outputs.matchJobName
 output AZURE_JOB_APPLY_NAME string = resources.outputs.applyJobName

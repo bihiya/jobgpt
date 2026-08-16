@@ -22,7 +22,7 @@ Additional docs:
 | [docs/REDUX_TOOLKIT.md](docs/REDUX_TOOLKIT.md) | Redux Toolkit (JS) setup |
 | [docs/INSTALLATION.md](docs/INSTALLATION.md) | Local setup |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production / K8s guide |
-| [docs/AZURE.md](docs/AZURE.md) | Azure Container Apps (pay-per-use) |
+| [docs/AZURE.md](docs/AZURE.md) | Azure deploy (`https://jobpilot.azurewebsites.net`) |
 
 ## Tech Stack
 

@@ -11,6 +11,8 @@ param redisUrl string
 param secretKey string
 param corsOrigins string
 param tags object
+@description('Public Azure hostname origin included in API CORS (App Service azurewebsites.net).')
+param publicWebOrigin string = 'https://jobpilot.azurewebsites.net'
 
 // Placeholder until azd deploy pushes the real image and wires ACR.
 param containerImage string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
@@ -120,9 +122,11 @@ module web 'modules/container-app-web.bicep' = {
   }
 }
 
+// Public hostname is the App Service azurewebsites.net URL. ACA web stays as a fallback origin.
+var azureWebOrigins = '${publicWebOrigin},https://${web.outputs.fqdn}'
 var corsOriginsEffective = empty(corsOrigins)
-  ? 'https://${web.outputs.fqdn}'
-  : '${corsOrigins},https://${web.outputs.fqdn}'
+  ? azureWebOrigins
+  : '${corsOrigins},${azureWebOrigins}'
 
 var sharedEnv = [
   { name: 'APP_ENV', value: 'production' }
@@ -322,6 +326,7 @@ output apiName string = api.outputs.name
 output apiUri string = api.outputs.uri
 output webName string = web.outputs.name
 output webUri string = web.outputs.uri
+output publicWebUri string = publicWebOrigin
 output fetchJobName string = fetchJob.outputs.name
 output matchJobName string = matchJob.outputs.name
 output applyJobName string = applyJob.outputs.name
