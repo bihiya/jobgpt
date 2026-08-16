@@ -101,6 +101,20 @@ az containerapp update \
   --image "${ACR_LOGIN}/jobpilot-api:${TAG}" \
   --output none
 
+API_IMAGE="${ACR_LOGIN}/jobpilot-api:${TAG}"
+for JOB_HINT in job-jobpilot-fetch job-jobpilot-match job-jobpilot-apply; do
+  JOB_NAME="$(az containerapp job list -g "$RG" --query "[?name=='${JOB_HINT}' || contains(name, '${JOB_HINT}')] | [0].name" -o tsv)"
+  if [ -z "$JOB_NAME" ]; then
+    continue
+  fi
+  echo "Updating job ${JOB_NAME}..."
+  az containerapp job update \
+    --name "$JOB_NAME" \
+    --resource-group "$RG" \
+    --image "$API_IMAGE" \
+    --output none
+done
+
 echo "Building frontend image..."
 docker_cmd build --platform linux/amd64 \
   --build-arg NGINX_CONF=nginx.azure.conf \

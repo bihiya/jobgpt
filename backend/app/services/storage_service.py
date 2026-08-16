@@ -29,6 +29,15 @@ class StorageService:
         self.container = (settings.azure_storage_container or "uploads").strip() or "uploads"
         self.use_blob = bool(self.account)
         self.use_s3 = (not self.use_blob) and bool(settings.s3_bucket and settings.s3_enabled)
+        if (
+            settings.app_env == "production"
+            and not self.use_blob
+            and not self.use_s3
+        ):
+            raise RuntimeError(
+                "AZURE_STORAGE_ACCOUNT (or S3) is required in production; "
+                "refusing local disk uploads"
+            )
 
     def blob_url(self, key: str) -> str:
         return f"https://{self.account}.blob.core.windows.net/{self.container}/{key}"

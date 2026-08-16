@@ -42,3 +42,5 @@ output name string = st.name
 output id string = st.id
 output blobEndpoint string = st.properties.primaryEndpoints.blob
 output containerName string = container.name
+@secure()
+output connectionString string = 'DefaultEndpointsProtocol=https;AccountName=${st.name};AccountKey=${listKeys(st.id, st.apiVersion).keys[0].value};EndpointSuffix=core.windows.net'

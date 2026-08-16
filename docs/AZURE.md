@@ -119,7 +119,7 @@ Automation logs should show `automation.azure_job` (not `playwright` missing).
 - Azure Container Registry (Basic)
 - Key Vault (secrets)
 - Log Analytics + Application Insights
-- **Azure Blob Storage** (`stjobpilot…`, private `uploads` container) for resumes, reports, and screenshots. API + Jobs use **managed identity** (`Storage Blob Data Contributor`). Set `AZURE_STORAGE_ACCOUNT` / `AZURE_STORAGE_CONTAINER`.
+- **Azure Blob Storage** (`stjobpilot…`, private `uploads` container) for resumes, reports, screenshots, and apply proofs. Apps get `AZURE_STORAGE_ACCOUNT`, `AZURE_STORAGE_CONTAINER`, and `AZURE_STORAGE_CONNECTION_STRING`. Bicep also assigns **Storage Blob Data Contributor** to API + Job identities when the deploying principal can write role assignments.
 
 Workers run:
 
@@ -208,7 +208,8 @@ azd down --force --purge
 ```text
 Container App (UI)  ──/api──►  Container App API  ──starts──►  Job (fetch/match/apply)
     │                                │
-    │                                ├── MongoDB Atlas
-    │                                └── Upstash Redis
+    │                                ├── MongoDB / Cosmos
+    │                                ├── Upstash Redis
+    │                                └── Azure Blob (resumes, reports, screenshots)
     └── optional: Vercel SPA talking to the same API
 ```
