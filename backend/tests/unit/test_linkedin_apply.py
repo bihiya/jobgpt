@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.automation.base.portal import ExtractedJob
+from app.automation.base.portal import ApplyResult, ExtractedJob
 from app.automation.form_fields import FieldResolution
 from app.automation.portals.linkedin import (
     LinkedInPortal,
