@@ -112,7 +112,7 @@ describe('JobDetailDrawer', () => {
     await waitFor(() => {
       expect(screen.getByText('Apply session')).toBeInTheDocument();
     });
-    expect(screen.getByText(/Now: Clicked Easy Apply/)).toBeInTheDocument();
+    expect(screen.getByText('Clicked Easy Apply / Apply')).toBeInTheDocument();
     expect(screen.getByText('Opened job description')).toBeInTheDocument();
   });
 });

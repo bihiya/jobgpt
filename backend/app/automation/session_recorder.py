@@ -72,6 +72,32 @@ class ApplySessionRecorder:
                 pass
         return step
 
+    def complete_pending(
+        self,
+        key: str,
+        *,
+        label: str | None = None,
+        detail: str | None = None,
+    ) -> SessionStep | None:
+        """Mark the latest pending step with this key as done (queued → worker picked up)."""
+        for step in reversed(self.steps):
+            if step.key != key or step.status != "pending":
+                continue
+            step.status = "ok"
+            if label is not None:
+                step.label = label
+            if detail is not None:
+                step.detail = detail
+            step.at = iso_utc(datetime.utcnow()) or step.at
+            callback = self.on_step
+            if callback:
+                try:
+                    callback(step)
+                except Exception:  # noqa: BLE001
+                    pass
+            return step
+        return None
+
     def opened_jd(self, url: str = "") -> None:
         self.add("opened_jd", "Opened job description", detail=url[:300])
 

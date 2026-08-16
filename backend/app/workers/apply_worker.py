@@ -163,6 +163,7 @@ class ApplyWorker(BaseWorker):
         )
 
         adapter.recorder.seed(list(app.session_steps or []))
+        adapter.recorder.complete_pending("queued", detail="Worker picked up")
         adapter.recorder.add("started", "Worker started applying", detail=job.portal or "")
         await self._publish_session_progress(app, adapter.recorder)
         adapter.recorder.on_step = lambda _step: self._schedule_session_progress(

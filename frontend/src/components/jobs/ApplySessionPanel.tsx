@@ -118,15 +118,15 @@ function ApplySessionPanel({ jobId, jobStatus, open, fallback }: Props) {
         </Box>
       )}
 
-      {latest ? (
-        <Typography sx={{ fontWeight: 700, mb: 0.5 }}>
-          {applying ? 'Now: ' : 'Last: '}
-          {latest.label || latest.key}
-          {latest.detail ? ` — ${latest.detail}` : ''}
-        </Typography>
-      ) : applying ? (
+      {applying && !stale && !latest ? (
         <Typography color="text.secondary" sx={{ mb: 0.5 }}>
           Waiting for the apply worker to start…
+        </Typography>
+      ) : null}
+
+      {latest && applying && !stale ? (
+        <Typography sx={{ fontWeight: 800, mb: 0.25 }}>
+          Now: {latest.label || latest.key}
         </Typography>
       ) : null}
 

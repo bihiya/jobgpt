@@ -174,7 +174,8 @@ class BasePortal(ABC):
         answers: dict | None = None,
     ) -> ApplyResult:
         answers = answers or {}
-        self.recorder = ApplySessionRecorder()
+        # Keep the worker's recorder (queued/started + live on_step). Resetting it
+        # here dropped login/JD steps from the live UI until the whole apply finished.
         last_error = "unknown"
         async for attempt in AsyncRetrying(
             stop=stop_after_attempt(3),
@@ -183,7 +184,18 @@ class BasePortal(ABC):
         ):
             with attempt:
                 try:
+                    self.recorder.add(
+                        "browser",
+                        "Launching browser",
+                        status="pending",
+                        detail=self.name,
+                    )
                     async with self.browser.session() as (_, _, raw_page):
+                        self.recorder.complete_pending(
+                            "browser",
+                            label="Browser ready",
+                            detail=self.name,
+                        )
                         page = BasePage(raw_page)
                         await self.login(page)
                         captcha = await self.handle_captcha(page)
