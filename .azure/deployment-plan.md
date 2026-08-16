@@ -8,7 +8,7 @@ Generated: 2026-08-09
 
 ## 1. Project Overview
 
-**Goal:** Deploy JobPilot AI API + Playwright workers to Azure with elastic pay-per-use billing (Container Apps Consumption + manual Jobs). Frontend stays on Vercel (optional).
+**Goal:** Deploy JobPilot AI API + Playwright workers to Azure with elastic pay-per-use billing (Container Apps Consumption + manual Jobs). Public UI is `https://jobpilot.azurewebsites.net` (Azure App Service).
 
 **Path:** Modernize Existing
 
@@ -34,7 +34,7 @@ Generated: 2026-08-09
 |-----------|------|------------|------|
 | API | API | FastAPI / Python | `backend/` |
 | Fetch/Match/Apply | Worker Jobs | One-shot `run_job` | `backend/` |
-| Frontend | SPA | React/Vite | `frontend/` (Vercel primary) |
+| Frontend | SPA | React/Vite | `frontend/` (Azure App Service public URL) |
 
 ---
 
@@ -103,4 +103,4 @@ Container Apps Consumption API (min 0) + 3 manual Jobs; Atlas + Upstash; Kafka d
 
 1. User follows **docs/AZURE.md**
 2. `azd auth login` → set secrets → `azd up`
-3. Point Vercel `VITE_API_URL` at `SERVICE_API_URI`
+3. Open `SERVICE_PUBLIC_WEB_URI` (`https://jobpilot.azurewebsites.net`)
