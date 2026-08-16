@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.core.exceptions import ConflictError, NotFoundError
+from app.core.exceptions import NotFoundError
 from app.services.user_service import MAX_RESUME_VERSIONS, UserService, resume_content_disposition
 
 
@@ -99,19 +99,54 @@ def _upload(name="cv.pdf"):
 
 
 @pytest.mark.asyncio
-async def test_sixth_resume_is_rejected():
+async def test_sixth_resume_deletes_oldest():
+    created = SimpleNamespace(
+        id="new",
+        name="fresh.pdf",
+        file_type="pdf",
+        is_default=True,
+        created_at=datetime.utcnow(),
+    )
+    oldest = SimpleNamespace(
+        id="old",
+        name="oldest.pdf",
+        file_path="blob://resumes/u1/old.pdf",
+    )
+    kept = [
+        created,
+        SimpleNamespace(id="r2"),
+        SimpleNamespace(id="r3"),
+        SimpleNamespace(id="r4"),
+        SimpleNamespace(id="r5"),
+        oldest,
+    ]
     resumes = SimpleNamespace(
         count=AsyncMock(return_value=MAX_RESUME_VERSIONS),
-        create=AsyncMock(),
+        bulk_update=AsyncMock(return_value=1),
+        create=AsyncMock(return_value=created),
+        list_for_user=AsyncMock(return_value=kept),
+        delete=AsyncMock(),
     )
-    storage = SimpleNamespace(save_bytes=AsyncMock())
+    storage = SimpleNamespace(
+        save_bytes=AsyncMock(
+            return_value={
+                "path": "blob://resumes/u1/fresh.pdf",
+                "url": "https://blob/fresh.pdf",
+                "backend": "azure-blob",
+            }
+        ),
+        delete=AsyncMock(),
+    )
     service = UserService(users=SimpleNamespace(), resumes=resumes, storage=storage)
 
-    with pytest.raises(ConflictError, match="5 resume versions"):
-        await service.upload_resume("u1", _upload())
+    with patch("app.services.audit_service.audit_event", new_callable=AsyncMock):
+        result = await service.upload_resume("u1", _upload("fresh.pdf"), is_default=True)
 
-    storage.save_bytes.assert_not_awaited()
-    resumes.create.assert_not_awaited()
+    assert result is created
+    storage.save_bytes.assert_awaited_once()
+    resumes.list_for_user.assert_awaited_once()
+    storage.delete.assert_awaited_once_with("blob://resumes/u1/old.pdf")
+    resumes.delete.assert_awaited_once_with(oldest)
 
 
 @pytest.mark.asyncio

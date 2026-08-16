@@ -1,5 +1,4 @@
 import {
-  Alert,
   Box,
   Button,
   Chip,
@@ -40,8 +39,6 @@ export default function ResumeVersions({
   onDownload,
   onDelete,
 }: Props) {
-  const atLimit = resumes.length >= MAX_RESUME_VERSIONS;
-
   return (
     <Stack spacing={1.5}>
       <Stack
@@ -53,10 +50,11 @@ export default function ResumeVersions({
         <Box>
           <Typography variant="h5">Resumes</Typography>
           <Typography color="text.secondary">
-            {resumes.length}/{MAX_RESUME_VERSIONS} versions — newest upload becomes the default.
+            {resumes.length}/{MAX_RESUME_VERSIONS} versions — keeps the 5 newest; a new upload
+            removes the oldest.
           </Typography>
         </Box>
-        <Button variant="outlined" component="label" disabled={uploading || atLimit}>
+        <Button variant="outlined" component="label" disabled={uploading}>
           {uploading ? 'Uploading…' : 'Upload resume'}
           <input
             hidden
@@ -70,10 +68,6 @@ export default function ResumeVersions({
           />
         </Button>
       </Stack>
-
-      {atLimit && (
-        <Alert severity="info">Delete a version to upload another (max {MAX_RESUME_VERSIONS}).</Alert>
-      )}
 
       {resumes.length === 0 && (
         <Typography color="text.secondary">No resumes uploaded yet.</Typography>

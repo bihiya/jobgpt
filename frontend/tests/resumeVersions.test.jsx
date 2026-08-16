@@ -40,7 +40,7 @@ describe('ResumeVersions', () => {
     expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument();
   });
 
-  it('disables upload at 5 versions', () => {
+  it('keeps upload enabled at 5 versions and explains the rolling window', () => {
     const resumes = Array.from({ length: 5 }, (_, i) => ({
       id: `r${i}`,
       name: `cv-${i}.pdf`,
@@ -49,11 +49,12 @@ describe('ResumeVersions', () => {
       created_at: '2026-08-15T07:15:13',
     }));
     renderVersions({ resumes });
-    expect(screen.getByRole('button', { name: 'Upload resume' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: 'Upload resume' })).not.toHaveAttribute(
       'aria-disabled',
       'true',
     );
-    expect(screen.getByText(/max 5/i)).toBeInTheDocument();
+    expect(screen.getByText(/5\/5 versions/)).toBeInTheDocument();
+    expect(screen.getByText(/removes the oldest/i)).toBeInTheDocument();
   });
 
   it('renders a PDF preview iframe when a blob URL is provided', () => {
