@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
 from uuid import uuid4
 
 from fastapi import UploadFile
@@ -16,6 +17,8 @@ from app.repository.user_repository import UserRepository
 from app.schemas.user import UserUpdateRequest
 from app.services.storage_service import StorageService
 
+MAX_RESUME_VERSIONS = 5
+
 _RESUME_TYPES = {
     ".pdf": "application/pdf",
     ".doc": "application/msword",
@@ -24,7 +27,15 @@ _RESUME_TYPES = {
 
 
 def _resume_content_type(ext: str) -> str:
-    return _RESUME_TYPES.get(ext.lower(), "application/octet-stream")
+    suffix = ext if ext.startswith(".") else f".{ext}"
+    return _RESUME_TYPES.get(suffix.lower(), "application/octet-stream")
+
+
+def resume_content_disposition(filename: str, *, inline: bool = False) -> str:
+    kind = "inline" if inline else "attachment"
+    raw = (filename or "resume").replace("\r", " ").replace("\n", " ").strip() or "resume"
+    ascii_name = "".join(ch if 32 <= ord(ch) < 127 and ch not in '\\"' else "_" for ch in raw)
+    return f"{kind}; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(raw)}"
 
 
 class UserService:
@@ -94,6 +105,7 @@ class UserService:
         name: str | None = None,
         is_default: bool = False,
     ) -> Resume:
+        existing_count = await self.resumes.count({"user_id": user_id})
         ext = Path(file.filename or "resume.pdf").suffix.lower() or ".pdf"
         filename = f"{uuid4().hex}{ext}"
         content = await file.read()
@@ -109,7 +121,6 @@ class UserService:
                 {"user_id": user_id, "is_default": True},
                 {"is_default": False},
             )
-        existing_count = await self.resumes.count({"user_id": user_id})
         resume = await self.resumes.create(
             {
                 "user_id": user_id,
@@ -130,17 +141,45 @@ class UserService:
             severity="success",
             metadata={"file_type": resume.file_type},
         )
+        if existing_count >= MAX_RESUME_VERSIONS:
+            await self._evict_oldest_versions(user_id, keep_id=str(resume.id))
         return resume
 
     async def list_resumes(self, user_id: str) -> list[Resume]:
-        return await self.resumes.list_for_user(user_id)
+        return await self.resumes.list_for_user(user_id, limit=50)
+
+    async def _evict_oldest_versions(self, user_id: str, *, keep_id: str) -> None:
+        """Keep the newest MAX_RESUME_VERSIONS files; drop older ones including blobs."""
+        items = await self.resumes.list_for_user(user_id, limit=MAX_RESUME_VERSIONS + 50)
+        for old in items[MAX_RESUME_VERSIONS:]:
+            if str(old.id) == keep_id:
+                continue
+            await self.storage.delete(old.file_path)
+            await self.resumes.delete(old)
+
+    async def download_resume(self, user_id: str, resume_id: str) -> tuple[bytes, str, str]:
+        resume = await self.resumes.get_by_id(resume_id)
+        if not resume or resume.user_id != user_id:
+            raise NotFoundError("Resume not found")
+        data = await self.storage.read_bytes(resume.file_path)
+        filename = resume.name or f"resume.{resume.file_type or 'pdf'}"
+        media_type = _resume_content_type(resume.file_type or ".pdf")
+        return data, filename, media_type
 
     async def delete_resume(self, user_id: str, resume_id: str) -> None:
         resume = await self.resumes.get_by_id(resume_id)
         if not resume or resume.user_id != user_id:
             raise NotFoundError("Resume not found")
+        was_default = bool(resume.is_default)
         await self.storage.delete(resume.file_path)
         await self.resumes.delete(resume)
+        if was_default:
+            remaining = await self.resumes.list_for_user(user_id)
+            if remaining:
+                await self.resumes.update(
+                    remaining[0],
+                    {"is_default": True, "updated_at": datetime.utcnow()},
+                )
         from app.services.audit_service import audit_event
 
         await audit_event(

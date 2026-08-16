@@ -1,9 +1,10 @@
 import { Button, Divider, Stack, TextField, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { usersApi } from '../../api';
 import ActivityTimeline from '../../components/activity/ActivityTimeline';
 import PageShell from '../../components/common/PageShell';
+import ResumeVersions, { type ResumeVersion } from '../../components/profile/ResumeVersions';
 import { useToast } from '../../hooks/useToast';
 
 export default function ProfilePage() {
@@ -67,7 +68,60 @@ export default function ProfilePage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['profile'] }),
   });
 
+  const {
+    data: resumeRows,
+    isLoading: resumesLoading,
+    isFetching: resumesFetching,
+  } = useQuery({
+    queryKey: ['resumes'],
+    queryFn: async () => (await usersApi.resumes()).data as ResumeVersion[],
+  });
+  const resumes = resumeRows || [];
+
   const [uploading, setUploading] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  const [previewId, setPreviewId] = useState<string | null>(null);
+
+  const previewResume = useMemo(() => {
+    if (previewId) {
+      return resumes.find((row) => row.id === previewId) || null;
+    }
+    return resumes.find((row) => row.is_default) || resumes[0] || null;
+  }, [resumes, previewId]);
+
+  useEffect(() => {
+    if (!previewResume || (previewResume.file_type || '').toLowerCase() !== 'pdf') {
+      setPreviewUrl(null);
+      return;
+    }
+    let objectUrl = '';
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await usersApi.downloadResume(previewResume.id, true);
+        if (res.headers?.['x-jobpilot-demo'] === '1') {
+          if (!cancelled) setPreviewUrl(null);
+          return;
+        }
+        const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+        objectUrl = url;
+        if (cancelled) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        setPreviewUrl(url);
+      } catch {
+        if (!cancelled) setPreviewUrl(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [previewResume?.id, previewResume?.file_type]);
+
   const uploadResume = async (file: File) => {
     setUploading(true);
     try {
@@ -75,8 +129,10 @@ export default function ProfilePage() {
       body.append('file', file);
       body.append('is_default', 'true');
       await usersApi.uploadResume(body);
+      setPreviewId(null);
       apiSuccess('Resume uploaded');
-      void queryClient.invalidateQueries({ queryKey: ['profile'] });
+      void queryClient.invalidateQueries({ queryKey: ['resumes'] });
+      void queryClient.invalidateQueries({ queryKey: ['onboarding'] });
     } catch (err) {
       apiError(err, 'Resume upload failed');
     } finally {
@@ -84,15 +140,68 @@ export default function ProfilePage() {
     }
   };
 
+  const downloadResume = async (resume: ResumeVersion) => {
+    setBusyId(resume.id);
+    try {
+      const res = await usersApi.downloadResume(resume.id);
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = resume.name || `resume.${resume.file_type || 'pdf'}`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+      apiSuccess('Download started');
+    } catch (err) {
+      apiError(err, 'Resume download failed');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const deleteResume = async (resume: ResumeVersion) => {
+    setBusyId(resume.id);
+    try {
+      await usersApi.deleteResume(resume.id);
+      if (previewId === resume.id) setPreviewId(null);
+      apiSuccess('Resume deleted');
+      void queryClient.invalidateQueries({ queryKey: ['resumes'] });
+      void queryClient.invalidateQueries({ queryKey: ['onboarding'] });
+    } catch (err) {
+      apiError(err, 'Could not delete resume');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   return (
     <PageShell
-      sx={{ maxWidth: 720 }}
+      sx={{ maxWidth: 840 }}
       skeleton="form"
-      loading={isLoading || activityLoading}
-      fetching={(!isLoading && isFetching) || (!activityLoading && activityFetching)}
-      busy={saveMutation.isPending || uploading}
+      loading={isLoading}
+      fetching={
+        (!isLoading && isFetching) ||
+        (!activityLoading && activityFetching) ||
+        (!resumesLoading && resumesFetching)
+      }
+      busy={saveMutation.isPending || uploading || Boolean(busyId)}
     >
       <Typography variant="h4">Profile</Typography>
+      <ResumeVersions
+        resumes={resumes}
+        uploading={uploading}
+        loading={resumesLoading}
+        busyId={busyId}
+        previewUrl={previewUrl}
+        previewName={previewResume?.name || ''}
+        selectedId={previewResume?.id || null}
+        onUpload={(file) => void uploadResume(file)}
+        onDownload={(resume) => void downloadResume(resume)}
+        onDelete={(resume) => void deleteResume(resume)}
+        onSelect={(resume) => setPreviewId(resume.id)}
+      />
+
+      <Divider sx={{ my: 1 }} />
+      <Typography variant="h5">Details</Typography>
       <TextField label="Full name" value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} fullWidth />
       <TextField label="Skills (comma separated)" value={form.skills} onChange={(e) => setForm({ ...form, skills: e.target.value })} fullWidth />
       <TextField label="Keywords" value={form.keywords} onChange={(e) => setForm({ ...form, keywords: e.target.value })} fullWidth />
@@ -104,23 +213,14 @@ export default function ProfilePage() {
       <TextField label="LinkedIn URL" value={form.linkedin_url} onChange={(e) => setForm({ ...form, linkedin_url: e.target.value })} fullWidth />
       <TextField label="GitHub URL" value={form.github_url} onChange={(e) => setForm({ ...form, github_url: e.target.value })} fullWidth />
       <TextField label="Portfolio URL" value={form.portfolio_url} onChange={(e) => setForm({ ...form, portfolio_url: e.target.value })} fullWidth />
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-        <Button variant="contained" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
-          {saveMutation.isPending ? 'Saving…' : 'Save profile'}
-        </Button>
-        <Button variant="outlined" component="label" disabled={uploading}>
-          {uploading ? 'Uploading…' : 'Upload resume'}
-          <input
-            hidden
-            type="file"
-            accept=".pdf,.doc,.docx"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void uploadResume(file);
-            }}
-          />
-        </Button>
-      </Stack>
+      <Button
+        variant="contained"
+        onClick={() => saveMutation.mutate()}
+        disabled={saveMutation.isPending}
+        sx={{ alignSelf: 'flex-start' }}
+      >
+        {saveMutation.isPending ? 'Saving…' : 'Save profile'}
+      </Button>
 
       <Divider sx={{ my: 1 }} />
       <Typography variant="h5">Your activity</Typography>

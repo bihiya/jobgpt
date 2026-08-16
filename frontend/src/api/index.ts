@@ -91,6 +91,12 @@ export const usersApi = {
   update: (payload: Record<string, unknown>) => api.patch('/users/me', payload),
   resumes: () => api.get('/users/me/resumes'),
   uploadResume: (form: FormData) => api.post('/users/me/resumes', form),
+  downloadResume: (id: string, inline = false) =>
+    api.get(`/users/me/resumes/${id}/download`, {
+      params: { inline },
+      responseType: 'blob',
+    }),
+  deleteResume: (id: string) => api.delete(`/users/me/resumes/${id}`),
   activity: (params?: Record<string, unknown>) => api.get('/users/me/activity', { params }),
 };
 
