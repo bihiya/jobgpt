@@ -250,7 +250,7 @@ async def test_apply_worker_timeout_marks_failed(monkeypatch):
     assert app.status == ApplicationStatus.FAILED
     assert "timed out" in app.error_message.lower()
     assert any(step["key"] == "failed" for step in adapter.recorder.to_list())
-    assert any(step["key"] == "resume" for step in adapter.recorder.to_list())
+    assert any(step["key"] == "prepare" for step in adapter.recorder.to_list())
 
 
 @pytest.mark.asyncio
@@ -286,3 +286,35 @@ async def test_apply_worker_resume_download_timeout_marks_failed(monkeypatch):
     assert app.status == ApplicationStatus.FAILED
     assert "resume" in app.error_message.lower()
     adapter.apply_with_retry.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_apply_worker_continues_when_question_bank_list_fails():
+    job = _job()
+    app = _app()
+    worker = _worker(job, app)
+    worker.questions.list = AsyncMock(side_effect=RuntimeError("order-by item is excluded"))
+    adapter = MagicMock()
+    adapter.recorder = ApplySessionRecorder()
+    adapter.recorder.correlation_id = "cid-4"
+    adapter.session_identity = {}
+    adapter.apply_with_retry = AsyncMock(
+        return_value=ApplyResult(success=True, message="ok", correlation_id="cid-4")
+    )
+
+    with (
+        patch("app.workers.apply_worker.Application.get", new=AsyncMock(return_value=app)),
+        patch("app.workers.apply_worker.AutomationLog", _Log),
+        patch("app.workers.apply_worker.get_portal_adapter", return_value=adapter),
+        patch("app.workers.apply_worker.emit_realtime", new=AsyncMock()),
+        patch("app.workers.apply_worker.publish", new=AsyncMock()),
+        patch("app.workers.apply_worker.audit_event", new=AsyncMock()),
+        patch("app.workers.apply_worker.apply_identity_to_portal"),
+    ):
+        await worker.handle("job.apply", {"user_id": "u1", "job_id": "j1", "application_id": "a1"})
+
+    adapter.apply_with_retry.assert_awaited_once()
+    assert app.status == ApplicationStatus.SUCCESS
+    keys = [step["key"] for step in adapter.recorder.to_list()]
+    assert "prepare" in keys
+    assert "started" in keys

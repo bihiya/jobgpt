@@ -2,7 +2,6 @@
 
 import asyncio
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Any
 
 from app.automation.portals.registry import get_portal_adapter
@@ -188,76 +187,54 @@ class ApplyWorker(BaseWorker):
             apply_url=job.apply_url,
         )
 
-        user = await self.users.get_by_id(user_id)
-        question_prompts = [
-            "How many years of experience do you have?",
-            "What is your notice period?",
-            "What is your current location?",
-            "Are you authorized to work?",
-            "Do you require sponsorship?",
-            "Expected salary",
-        ]
-        bank = await self.questions.resolve_answers(user_id, question_prompts)
-        # Also load full bank for form label matching
-        for item in await self.questions.list(user_id):
-            bank.setdefault(item["question"], item["answer"])
-
-        answers = {
-            "years": bank.get(
-                "How many years of experience do you have?",
-                str(user.profile.experience_years) if user else "0",
-            ),
-            "notice": bank.get(
-                "What is your notice period?",
-                str(user.profile.notice_period_days) if user else "0",
-            ),
-            "location": bank.get(
-                "What is your current location?",
-                user.profile.location if user else "",
-            ),
-            **{k: v for k, v in bank.items()},
-        }
-
-        await AutomationLog(
-            user_id=user_id,
-            job_id=job_id,
-            application_id=str(app.id),
-            portal=job.portal,
-            action="apply",
-            level="info",
-            message="Starting application",
-            correlation_id=adapter.recorder.correlation_id,
-        ).insert()
-        await emit_realtime(
-            user_id,
-            "application.started",
-            {
-                "job_id": job_id,
-                "application_id": str(app.id),
-                "portal": job.portal,
-                "title": job.title,
-            },
-            title="Applying…",
-            body=f"Starting application for {job.title}",
-            severity="info",
-        )
-
         result = None
         resume_local = None
         crash = ""
         try:
             adapter.recorder.add(
-                "resume",
-                "Preparing resume for upload",
+                "prepare",
+                "Loading resume and answers",
                 status="pending",
-                detail=Path(resume.file_path).name if getattr(resume, "file_path", None) else "",
+                detail=job.portal or "",
             )
             await adapter.recorder.flush()
+
+            user = await self.users.get_by_id(user_id)
+            answers = await self._load_apply_answers(user_id, user)
+
+            await AutomationLog(
+                user_id=user_id,
+                job_id=job_id,
+                application_id=str(app.id),
+                portal=job.portal,
+                action="apply",
+                level="info",
+                message="Starting application",
+                correlation_id=adapter.recorder.correlation_id,
+            ).insert()
+            await emit_realtime(
+                user_id,
+                "application.started",
+                {
+                    "job_id": job_id,
+                    "application_id": str(app.id),
+                    "portal": job.portal,
+                    "title": job.title,
+                },
+                title="Applying…",
+                body=f"Starting application for {job.title}",
+                severity="info",
+            )
+
             resume_local = await asyncio.wait_for(
                 self.storage.as_local_file(resume.file_path),
                 timeout=_RESUME_DOWNLOAD_TIMEOUT_S,
             )
-            adapter.recorder.complete_pending("resume", label="Resume ready")
+            adapter.recorder.complete_pending(
+                "prepare",
+                label="Resume and answers ready",
+                detail=job.portal or "",
+            )
             await adapter.recorder.flush()
             result = await asyncio.wait_for(
                 adapter.apply_with_retry(extracted, resume_local, answers),
@@ -520,6 +497,46 @@ class ApplyWorker(BaseWorker):
             content_type="text/html; charset=utf-8",
         )
         app.fail_proof_path = stored["path"]
+
+    async def _load_apply_answers(self, user_id: str, user) -> dict[str, str]:
+        """Best-effort question bank + profile defaults. Must never abort apply."""
+        question_prompts = [
+            "How many years of experience do you have?",
+            "What is your notice period?",
+            "What is your current location?",
+            "Are you authorized to work?",
+            "Do you require sponsorship?",
+            "Expected salary",
+        ]
+        bank: dict[str, str] = {}
+        try:
+            bank = await self.questions.resolve_answers(user_id, question_prompts)
+        except Exception as exc:  # noqa: BLE001 — Cosmos index / empty bank
+            logger.warning("question_bank_resolve_failed", user_id=user_id, error=str(exc)[:300])
+        try:
+            for item in await self.questions.list(user_id):
+                bank.setdefault(item["question"], item["answer"])
+        except Exception as exec_exc:  # noqa: BLE001
+            logger.warning(
+                "question_bank_list_failed",
+                user_id=user_id,
+                error=str(exec_exc)[:300],
+            )
+        return {
+            "years": bank.get(
+                "How many years of experience do you have?",
+                str(user.profile.experience_years) if user else "0",
+            ),
+            "notice": bank.get(
+                "What is your notice period?",
+                str(user.profile.notice_period_days) if user else "0",
+            ),
+            "location": bank.get(
+                "What is your current location?",
+                user.profile.location if user else "",
+            ),
+            **{k: v for k, v in bank.items()},
+        }
 
     async def _fail(self, app: Application, job, message: str, screenshot: str = "") -> None:
         app.status = ApplicationStatus.FAILED
