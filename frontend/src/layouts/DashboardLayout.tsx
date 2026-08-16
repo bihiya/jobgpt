@@ -3,7 +3,6 @@ import {
   Box,
   Button,
   Chip,
-  Collapse,
   Drawer,
   IconButton,
   List,
@@ -20,8 +19,6 @@ import {
   CalendarMonth,
   Checklist,
   Dashboard,
-  ExpandLess,
-  ExpandMore,
   History,
   Timeline,
   Quiz,
@@ -39,13 +36,9 @@ import {
   LightMode,
   Menu as MenuIcon,
   Circle,
-  BookmarkBorder,
-  CheckCircleOutline,
-  Tune,
-  MoreHoriz,
 } from '@mui/icons-material';
 import { alpha } from '@mui/material/styles';
-import { memo, startTransition, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, startTransition, useCallback, useMemo, type ReactNode } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import GuestBanner from '../components/auth/GuestBanner';
 import { usePrefetch } from '../contexts/PrefetchContext';
@@ -57,51 +50,28 @@ import { logout } from '../store/slices/authSlice';
 import { openLoginGate, toggleDarkMode, toggleSidebar } from '../store/slices/uiSlice';
 import { useThrottleCallback } from '../hooks/useThrottleCallback';
 import { useToast } from '../hooks/useToast';
+import { SIDEBAR_SECTIONS, TITLE_NAV, type NavLink, type PrefetchKey } from './nav';
 
-const drawerWidth = 260;
+const drawerWidth = 268;
+const navMint = '#F4FFF9';
 
-type PrefetchKey = 'dashboard' | 'jobs';
-
-type NavLink = {
-  label: string;
-  path: string;
-  icon: React.ReactNode;
-  prefetch?: PrefetchKey;
-  match?: 'exact' | 'prefix';
+const NAV_ICONS: Record<string, ReactNode> = {
+  '/dashboard': <Dashboard />,
+  '/jobs': <Work />,
+  '/pipeline': <ViewKanban />,
+  '/approvals': <Checklist />,
+  '/automation': <SmartToy />,
+  '/email': <MailOutline />,
+  '/job-portals': <Hub />,
+  '/companies': <Business />,
+  '/questions': <Quiz />,
+  '/onboarding': <RocketLaunch />,
+  '/calendar': <CalendarMonth />,
+  '/activity': <Timeline />,
+  '/reports': <Assessment />,
+  '/profile': <Person />,
+  '/settings': <Settings />,
 };
-
-const PRIMARY_NAV: NavLink[] = [
-  { label: 'Digest', path: '/dashboard', icon: <Dashboard />, prefetch: 'dashboard' },
-  { label: 'Approvals', path: '/approvals', icon: <Checklist /> },
-  { label: 'Pipeline', path: '/pipeline', icon: <ViewKanban /> },
-  { label: 'Jobs', path: '/jobs', icon: <Work />, prefetch: 'jobs', match: 'prefix' },
-  { label: 'Automation', path: '/automation', icon: <SmartToy /> },
-  { label: 'Email', path: '/email', icon: <MailOutline /> },
-];
-
-const JOB_SUB_NAV: NavLink[] = [
-  { label: 'All jobs', path: '/jobs', icon: <Work /> },
-  { label: 'Tracked', path: '/jobs/tracked', icon: <BookmarkBorder /> },
-  { label: 'Applied', path: '/jobs/applied', icon: <CheckCircleOutline /> },
-  { label: 'History', path: '/jobs/history', icon: <History /> },
-];
-
-const SETUP_NAV: NavLink[] = [
-  { label: 'Job portals', path: '/job-portals', icon: <Hub /> },
-  { label: 'Companies', path: '/companies', icon: <Business /> },
-  { label: 'Questions', path: '/questions', icon: <Quiz /> },
-  { label: 'Onboarding', path: '/onboarding', icon: <RocketLaunch /> },
-];
-
-const MORE_NAV: NavLink[] = [
-  { label: 'Calendar', path: '/calendar', icon: <CalendarMonth /> },
-  { label: 'Activity', path: '/activity', icon: <Timeline /> },
-  { label: 'Reports', path: '/reports', icon: <Assessment />, prefetch: 'dashboard' },
-  { label: 'Profile', path: '/profile', icon: <Person /> },
-  { label: 'Settings', path: '/settings', icon: <Settings /> },
-];
-
-const ALL_NAV_FOR_TITLE = [...PRIMARY_NAV, ...JOB_SUB_NAV, ...SETUP_NAV, ...MORE_NAV];
 
 function pathSelected(pathname: string, item: NavLink): boolean {
   if (item.match === 'prefix') {
@@ -116,11 +86,10 @@ function pathSelected(pathname: string, item: NavLink): boolean {
 type NavItemProps = {
   label: string;
   path: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
   selected: boolean;
   onNavigate: (path: string) => void;
   onPrefetch?: () => void;
-  nested?: boolean;
 };
 
 const NavItem = memo(function NavItem({
@@ -130,7 +99,6 @@ const NavItem = memo(function NavItem({
   selected,
   onNavigate,
   onPrefetch,
-  nested,
 }: NavItemProps) {
   const handleClick = useCallback(() => onNavigate(path), [onNavigate, path]);
   return (
@@ -139,42 +107,17 @@ const NavItem = memo(function NavItem({
       onClick={handleClick}
       onMouseEnter={onPrefetch}
       onFocus={onPrefetch}
-      sx={nested ? { pl: 4 } : undefined}
+      sx={{ py: 0.7 }}
     >
-      <ListItemIcon sx={{ minWidth: 40, color: 'inherit' }}>{icon}</ListItemIcon>
-      <ListItemText primary={label} />
+      <ListItemIcon sx={{ minWidth: 36, color: navMint }}>{icon}</ListItemIcon>
+      <ListItemText
+        primary={label}
+        primaryTypographyProps={{
+          noWrap: false,
+          sx: { color: navMint, fontWeight: selected ? 700 : 600, fontSize: '0.92rem' },
+        }}
+      />
     </ListItemButton>
-  );
-});
-
-type NavGroupProps = {
-  label: string;
-  icon: React.ReactNode;
-  open: boolean;
-  onToggle: () => void;
-  active: boolean;
-  children: React.ReactNode;
-};
-
-const NavGroup = memo(function NavGroup({
-  label,
-  icon,
-  open,
-  onToggle,
-  active,
-  children,
-}: NavGroupProps) {
-  return (
-    <Box>
-      <ListItemButton selected={active && !open} onClick={onToggle}>
-        <ListItemIcon sx={{ minWidth: 40, color: 'inherit' }}>{icon}</ListItemIcon>
-        <ListItemText primary={label} />
-        {open ? <ExpandLess /> : <ExpandMore />}
-      </ListItemButton>
-      <Collapse in={open} timeout="auto" unmountOnExit>
-        <List disablePadding>{children}</List>
-      </Collapse>
-    </Box>
   );
 });
 
@@ -191,27 +134,11 @@ function DashboardLayout() {
   const { info } = useToast();
   const { status: liveStatus } = useRealtimeSocket(isAuthenticated);
 
-  const jobsActive = location.pathname === '/jobs' || location.pathname.startsWith('/jobs/');
-  const setupActive = SETUP_NAV.some((n) => location.pathname === n.path);
-  const moreActive = MORE_NAV.some((n) => location.pathname === n.path);
-
-  // Jobs stays open by default — Tracked/Applied/History used to clutter the top level.
-  const [jobsOpen, setJobsOpen] = useState(true);
-  const [setupOpen, setSetupOpen] = useState(setupActive);
-  const [moreOpen, setMoreOpen] = useState(moreActive);
-
-  useEffect(() => {
-    if (jobsActive) setJobsOpen(true);
-    if (setupActive) setSetupOpen(true);
-    if (moreActive) setMoreOpen(true);
-  }, [jobsActive, setupActive, moreActive]);
-
   const liveChip = useMemo(() => {
     if (liveStatus === 'connected') {
       return { label: 'Live', color: 'success' as const };
     }
     if (liveStatus === 'polling') {
-      // HTTP API is healthy; WebSocket unavailable (common on Vercel SPA rewrites).
       return { label: 'Synced', color: 'success' as const };
     }
     if (liveStatus === 'connecting' || liveStatus === 'reconnecting') {
@@ -236,7 +163,7 @@ function DashboardLayout() {
     dispatch(logout());
     info('Signed out');
     navigate('/dashboard');
-  }, [dispatch, navigate, info]);
+  }, [dispatch, info, navigate]);
 
   const handleSignIn = useCallback(() => {
     dispatch(
@@ -256,7 +183,7 @@ function DashboardLayout() {
   );
 
   const pageTitle = useMemo(() => {
-    const exact = ALL_NAV_FOR_TITLE.find((n) => n.path === location.pathname);
+    const exact = TITLE_NAV.find((n) => n.path === location.pathname);
     if (exact) return exact.label;
     return 'JobPilot AI';
   }, [location.pathname]);
@@ -264,98 +191,77 @@ function DashboardLayout() {
   const desktopSidebarVisible = sidebarOpen && !isMobile;
   const contentOffset = desktopSidebarVisible ? drawerWidth : 0;
 
-  const renderLinks = (items: NavLink[], nested = false) =>
-    items.map((item) => (
-      <NavItem
-        key={item.path + item.label}
-        label={item.label}
-        path={item.path}
-        icon={item.icon}
-        nested={nested}
-        selected={pathSelected(location.pathname, { ...item, match: nested ? 'exact' : item.match })}
-        onNavigate={handleNavigate}
-        onPrefetch={item.prefetch ? prefetchMap[item.prefetch] : undefined}
-      />
-    ));
-
   const drawer = (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', color: '#F4FFF9' }}>
-      <Box sx={{ px: 2.5, py: 2.5 }}>
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', color: navMint }}>
+      <Box sx={{ px: 2.5, py: 2.25 }}>
         <Typography
           variant="h5"
           sx={{
             letterSpacing: '-0.03em',
-            background: 'linear-gradient(135deg, #F4FFF9, #7EE0C3)',
-            backgroundClip: 'text',
-            WebkitBackgroundClip: 'text',
-            color: 'transparent',
+            color: navMint,
+            textShadow: `0 0 22px ${alpha('#7EE0C3', 0.4)}`,
           }}
         >
           JobPilot AI
         </Typography>
-        <Typography variant="body2" sx={{ opacity: 0.75, mt: 0.5 }}>
+        <Typography variant="body2" sx={{ color: alpha(navMint, 0.82), mt: 0.5 }}>
           {isAuthenticated ? displayName : 'Guest explorer'}
         </Typography>
       </Box>
 
       <List sx={{ px: 0.5, flex: 1, overflowY: 'auto', pb: 1 }}>
-        {PRIMARY_NAV.filter((item) => item.path !== '/jobs').map((item) => (
-          <NavItem
-            key={item.path}
-            label={item.label}
-            path={item.path}
-            icon={item.icon}
-            selected={pathSelected(location.pathname, item)}
-            onNavigate={handleNavigate}
-            onPrefetch={item.prefetch ? prefetchMap[item.prefetch] : undefined}
-          />
+        {SIDEBAR_SECTIONS.map((section) => (
+          <Box key={section.label} sx={{ mb: 0.75 }}>
+            <Typography
+              variant="overline"
+              sx={{
+                display: 'block',
+                px: 2.25,
+                pt: 1.25,
+                pb: 0.25,
+                color: alpha(navMint, 0.72),
+                letterSpacing: '0.14em',
+                fontWeight: 700,
+                fontSize: '0.68rem',
+              }}
+            >
+              {section.label}
+            </Typography>
+            {section.items.map((item) => (
+              <NavItem
+                key={item.path}
+                label={item.label}
+                path={item.path}
+                icon={NAV_ICONS[item.path] ?? <History />}
+                selected={pathSelected(location.pathname, item)}
+                onNavigate={handleNavigate}
+                onPrefetch={item.prefetch ? prefetchMap[item.prefetch as PrefetchKey] : undefined}
+              />
+            ))}
+          </Box>
         ))}
-
-        <NavGroup
-          label="Jobs"
-          icon={<Work />}
-          open={jobsOpen}
-          onToggle={() => setJobsOpen((v) => !v)}
-          active={jobsActive}
-        >
-          {renderLinks(JOB_SUB_NAV, true)}
-        </NavGroup>
-
-        <NavGroup
-          label="Setup"
-          icon={<Tune />}
-          open={setupOpen}
-          onToggle={() => setSetupOpen((v) => !v)}
-          active={setupActive}
-        >
-          {renderLinks(SETUP_NAV, true)}
-        </NavGroup>
-
-        <NavGroup
-          label="More"
-          icon={<MoreHoriz />}
-          open={moreOpen}
-          onToggle={() => setMoreOpen((v) => !v)}
-          active={moreActive}
-        >
-          {renderLinks(MORE_NAV, true)}
-        </NavGroup>
       </List>
 
       <List sx={{ px: 0.5, pb: 2 }}>
         {isAuthenticated ? (
-          <ListItemButton onClick={handleLogout}>
-            <ListItemIcon sx={{ minWidth: 40, color: 'inherit' }}>
+          <ListItemButton onClick={handleLogout} sx={{ py: 0.7 }}>
+            <ListItemIcon sx={{ minWidth: 36, color: navMint }}>
               <Logout />
             </ListItemIcon>
-            <ListItemText primary="Logout" />
+            <ListItemText
+              primary="Logout"
+              primaryTypographyProps={{ sx: { color: navMint, fontWeight: 600 } }}
+            />
           </ListItemButton>
         ) : (
-          <ListItemButton onClick={handleSignIn}>
-            <ListItemIcon sx={{ minWidth: 40, color: 'inherit' }}>
+          <ListItemButton onClick={handleSignIn} sx={{ py: 0.7 }}>
+            <ListItemIcon sx={{ minWidth: 36, color: navMint }}>
               <Login />
             </ListItemIcon>
-            <ListItemText primary="Sign in" />
+            <ListItemText
+              primary="Sign in"
+              primaryTypographyProps={{ sx: { color: navMint, fontWeight: 600 } }}
+            />
           </ListItemButton>
         )}
       </List>
@@ -375,7 +281,7 @@ function DashboardLayout() {
         }}
       >
         <Toolbar sx={{ gap: 1 }}>
-          <IconButton edge="start" onClick={handleToggleSidebar} aria-label="Toggle sidebar">
+          <IconButton edge="start" onClick={handleToggleSidebar} aria-label="Toggle sidebar" color="inherit">
             <MenuIcon />
           </IconButton>
           <Typography
@@ -384,6 +290,7 @@ function DashboardLayout() {
               fontWeight: 700,
               fontFamily: '"Fraunces", Georgia, serif',
               fontSize: { xs: '1.05rem', sm: '1.25rem' },
+              color: 'text.primary',
             }}
           >
             {pageTitle}
@@ -417,7 +324,7 @@ function DashboardLayout() {
               Sign in
             </Button>
           )}
-          <IconButton onClick={handleToggleDark} aria-label="Toggle theme">
+          <IconButton onClick={handleToggleDark} aria-label="Toggle theme" color="inherit">
             {darkMode ? <LightMode /> : <DarkMode />}
           </IconButton>
         </Toolbar>
@@ -427,10 +334,10 @@ function DashboardLayout() {
         variant={isMobile ? 'temporary' : 'persistent'}
         open={sidebarOpen}
         onClose={handleToggleSidebar}
+        slotProps={{ paper: { className: 'jp-nav-drawer' } }}
         sx={{
           width: { md: contentOffset },
           flexShrink: 0,
-          whiteSpace: 'nowrap',
           transition: (theme) =>
             theme.transitions.create('width', {
               easing: theme.transitions.easing.sharp,
@@ -439,6 +346,7 @@ function DashboardLayout() {
           '& .MuiDrawer-paper': {
             width: drawerWidth,
             boxSizing: 'border-box',
+            overflowX: 'hidden',
             transition: (theme) =>
               theme.transitions.create('transform', {
                 easing: theme.transitions.easing.sharp,

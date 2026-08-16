@@ -81,7 +81,19 @@ function JobDetailDrawerComponent({ open, job, onClose, onApply, applyBusy }: Pr
   const canApply = Boolean(onApply && job && APPLYABLE.has(job.status));
 
   return (
-    <Drawer anchor="right" open={open} onClose={onClose} PaperProps={{ sx: { width: { xs: '100%', sm: 440 } } }}>
+    <Drawer
+      anchor="right"
+      open={open}
+      onClose={onClose}
+      PaperProps={{
+        sx: {
+          width: { xs: '100%', sm: 440 },
+          bgcolor: 'background.paper',
+          color: 'text.primary',
+          backgroundImage: 'none',
+        },
+      }}
+    >
       {job && (
         <Box sx={{ p: 3 }}>
           <Typography variant="h5" sx={{ mb: 0.5 }}>

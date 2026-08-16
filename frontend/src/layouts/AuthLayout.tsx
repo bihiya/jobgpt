@@ -50,7 +50,8 @@ export default function AuthLayout() {
             background: 'linear-gradient(135deg, #0B3D2E 0%, #1FA67A 55%, #2BB3C0 100%)',
             backgroundClip: 'text',
             WebkitBackgroundClip: 'text',
-            color: 'transparent',
+            WebkitTextFillColor: 'transparent',
+            color: '#0B3D2E',
             fontSize: { xs: '2rem', sm: '2.75rem' },
           }}
         >

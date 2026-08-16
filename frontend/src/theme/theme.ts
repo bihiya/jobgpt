@@ -162,7 +162,8 @@ const sharedComponents = (mode: 'light' | 'dark'): ThemeOptions['components'] =>
   MuiAppBar: {
     styleOverrides: {
       root: {
-        background: alpha(mode === 'light' ? '#FFFFFF' : '#0D1512', 0.82),
+        background: alpha(mode === 'light' ? '#FFFFFF' : '#0D1512', 0.9),
+        color: mode === 'light' ? ink : '#E7F2EC',
         backdropFilter: 'blur(14px)',
         borderBottom: `1px solid ${alpha(mode === 'light' ? forest : '#fff', 0.08)}`,
       },
@@ -172,11 +173,39 @@ const sharedComponents = (mode: 'light' | 'dark'): ThemeOptions['components'] =>
     styleOverrides: {
       paper: {
         borderRight: 'none',
-        background:
-          mode === 'light'
-            ? `linear-gradient(180deg, ${forest} 0%, #0E4F3A 48%, #126B4F 100%)`
-            : `linear-gradient(180deg, #061510 0%, #0A2A20 50%, #0E3D2E 100%)`,
-        color: '#F4FFF9',
+        backgroundImage: 'none',
+        // Nav chrome only — job-detail and other drawers keep paper + ink contrast.
+        '&.jp-nav-drawer': {
+          background:
+            mode === 'light'
+              ? `linear-gradient(180deg, ${forest} 0%, #0E4F3A 48%, #126B4F 100%)`
+              : `linear-gradient(180deg, #061510 0%, #0A2A20 50%, #0E3D2E 100%)`,
+          color: '#F4FFF9',
+          '& .MuiTypography-root': { color: '#F4FFF9' },
+          '& .MuiListItemText-primary': {
+            color: '#F4FFF9',
+            fontWeight: 600,
+            whiteSpace: 'normal',
+          },
+          '& .MuiListItemIcon-root': { color: '#F4FFF9', opacity: 0.95 },
+          '& .MuiListItemButton-root': {
+            borderRadius: 12,
+            marginInline: 8,
+            marginBlock: 2,
+            color: '#F4FFF9',
+            transition: 'background 0.2s ease, transform 0.2s ease',
+            '&:hover': {
+              background: alpha('#F4FFF9', 0.12),
+              transform: 'translateX(2px)',
+            },
+            '&.Mui-selected': {
+              background: alpha('#7EE0C3', 0.28),
+              boxShadow: 'inset 3px 0 0 #7EE0C3',
+              '& .MuiListItemText-primary': { fontWeight: 700 },
+              '&:hover': { background: alpha('#7EE0C3', 0.36) },
+            },
+          },
+        },
       },
     },
   },
@@ -184,23 +213,33 @@ const sharedComponents = (mode: 'light' | 'dark'): ThemeOptions['components'] =>
     styleOverrides: {
       root: {
         borderRadius: 12,
-        marginInline: 8,
-        marginBlock: 2,
         transition: 'background 0.2s ease, transform 0.2s ease',
-        '&.Mui-selected': {
-          background: alpha('#fff', 0.16),
-          '&:hover': { background: alpha('#fff', 0.22) },
-        },
-        '&:hover': {
-          background: alpha('#fff', 0.1),
-          transform: 'translateX(2px)',
-        },
       },
     },
   },
   MuiListItemIcon: {
     styleOverrides: {
-      root: { color: 'inherit', opacity: 0.92 },
+      root: { color: 'inherit' },
+    },
+  },
+  MuiTabs: {
+    styleOverrides: {
+      indicator: {
+        height: 3,
+        borderRadius: 3,
+        background: `linear-gradient(90deg, ${teal}, ${sky})`,
+      },
+    },
+  },
+  MuiTab: {
+    styleOverrides: {
+      root: {
+        fontWeight: 700,
+        color: mode === 'light' ? '#4A635A' : '#A7B8B0',
+        '&.Mui-selected': {
+          color: mode === 'light' ? forest : '#3DDC97',
+        },
+      },
     },
   },
   MuiChip: {

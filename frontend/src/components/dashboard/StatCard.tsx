@@ -62,7 +62,8 @@ function StatCard({ label, value, accent, tone = 'teal' }: Props) {
           background: `linear-gradient(135deg, ${colors.from}, ${colors.to})`,
           backgroundClip: 'text',
           WebkitBackgroundClip: 'text',
-          color: accent ? 'transparent' : 'inherit',
+          WebkitTextFillColor: accent ? 'transparent' : 'unset',
+          color: accent ? 'transparent' : 'text.primary',
         }}
       >
         {value}

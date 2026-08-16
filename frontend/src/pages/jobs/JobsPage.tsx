@@ -1,12 +1,14 @@
-import { Button, Stack, TextField, Typography } from '@mui/material';
+import { Button, Stack, Tab, Tabs, TextField, Typography } from '@mui/material';
 import { DataGrid, GridColDef } from '@mui/x-data-grid';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { memo, useCallback, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { applicationsApi, jobsApi } from '../../api';
 import PageShell from '../../components/common/PageShell';
 import JobDetailDrawer, { type JobDetail } from '../../components/jobs/JobDetailDrawer';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { useToast } from '../../hooks/useToast';
+import { JOB_TAB_PATHS, JOB_TABS } from '../../layouts/nav';
 
 type Mode = 'all' | 'tracked' | 'applied' | 'history';
 
@@ -47,12 +49,19 @@ const ActionCell = memo(function ActionCell({ id, showApply, onApply, onDetails 
 });
 
 function JobsPage({ mode = 'all' }: { mode?: Mode }) {
+  const navigate = useNavigate();
   const [q, setQ] = useState('');
   const [drawerJob, setDrawerJob] = useState<JobDetail | null>(null);
   const debouncedQ = useDebouncedValue(q, 350);
   const queryClient = useQueryClient();
   const { apiError } = useToast();
   const showApply = mode === 'all' || mode === 'tracked';
+  const onTabChange = useCallback(
+    (_: unknown, next: Mode) => {
+      navigate(JOB_TAB_PATHS[next]);
+    },
+    [navigate],
+  );
 
   const listQuery = useQuery({
     queryKey: ['jobs', mode, debouncedQ],
@@ -138,6 +147,18 @@ function JobsPage({ mode = 'all' }: { mode?: Mode }) {
   return (
     <PageShell loading={listQuery.isLoading} fetching={!listQuery.isLoading && listQuery.isFetching}>
       <Typography variant="h4">{titleMap[mode]}</Typography>
+      <Tabs
+        value={mode}
+        onChange={onTabChange}
+        variant="scrollable"
+        allowScrollButtonsMobile
+        aria-label="Job lists"
+        sx={{ borderBottom: 1, borderColor: 'divider', maxWidth: '100%' }}
+      >
+        {JOB_TABS.map((tab) => (
+          <Tab key={tab.value} value={tab.value} label={tab.label} />
+        ))}
+      </Tabs>
       <TextField
         size="small"
         placeholder="Search title, company, description"
