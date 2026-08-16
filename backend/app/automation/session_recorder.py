@@ -26,9 +26,32 @@ class SessionStep:
 class ApplySessionRecorder:
     """In-memory step log for one apply attempt; persisted on Application."""
 
-    def __init__(self, *, correlation_id: str | None = None) -> None:
+    def __init__(self, *, correlation_id: str | None = None, on_step: Any = None) -> None:
         self.correlation_id = correlation_id or uuid4().hex
         self.steps: list[SessionStep] = []
+        self.on_step = on_step
+
+    def seed(self, steps: list[dict[str, Any]] | None) -> None:
+        """Restore prior steps without firing on_step (queue + earlier attempts)."""
+        for raw in steps or []:
+            if not isinstance(raw, dict):
+                continue
+            meta = raw.get("metadata") if isinstance(raw.get("metadata"), dict) else {}
+            extra = {
+                key: value
+                for key, value in raw.items()
+                if key not in {"key", "label", "status", "detail", "at", "metadata"}
+            }
+            self.steps.append(
+                SessionStep(
+                    key=str(raw.get("key") or "step"),
+                    label=str(raw.get("label") or raw.get("key") or "step"),
+                    status=str(raw.get("status") or "ok"),
+                    detail=str(raw.get("detail") or ""),
+                    at=str(raw.get("at") or iso_utc(datetime.utcnow()) or ""),
+                    metadata={**extra, **meta},
+                )
+            )
 
     def add(
         self,
@@ -41,6 +64,12 @@ class ApplySessionRecorder:
     ) -> SessionStep:
         step = SessionStep(key=key, label=label, status=status, detail=detail, metadata=metadata)
         self.steps.append(step)
+        callback = self.on_step
+        if callback:
+            try:
+                callback(step)
+            except Exception:  # noqa: BLE001 — live UI must never break apply
+                pass
         return step
 
     def opened_jd(self, url: str = "") -> None:

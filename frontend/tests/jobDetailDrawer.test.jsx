@@ -1,12 +1,36 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 import JobDetailDrawer from '../src/components/jobs/JobDetailDrawer';
 
 vi.mock('../src/api', () => ({
   activityApi: {
     forJob: async () => ({ data: { items: [] } }),
+  },
+  applicationsApi: {
+    forJob: async () => ({
+      data: {
+        items: [
+          {
+            id: 'app-1',
+            job_id: 'job-1',
+            status: 'in_progress',
+            attempts: 1,
+            session_steps: [
+              { key: 'started', label: 'Worker started applying', status: 'ok', detail: 'linkedin' },
+              { key: 'opened_jd', label: 'Opened job description', status: 'ok', detail: 'https://linkedin.com/jobs/view/1' },
+              { key: 'clicked_apply', label: 'Clicked Easy Apply / Apply', status: 'ok' },
+            ],
+            error_message: '',
+            updated_at: new Date().toISOString(),
+          },
+        ],
+        total: 1,
+      },
+    }),
+    retry: async () => ({ data: {} }),
+    cancel: async () => ({ data: {} }),
   },
 }));
 
@@ -22,7 +46,7 @@ function renderDrawer(job) {
 }
 
 describe('JobDetailDrawer', () => {
-  it('shows the listing URL, salary, and description for a LinkedIn job', () => {
+  it('shows the listing URL, salary, and description for a LinkedIn job', async () => {
     renderDrawer({
       id: 'job-1',
       title: 'Product Engineer',
@@ -55,5 +79,10 @@ describe('JobDetailDrawer', () => {
     expect(screen.getByText('$150K/yr - $220K/yr')).toBeInTheDocument();
     expect(screen.getByText(/Build the AnswerThis product/)).toBeInTheDocument();
     expect(screen.getByText('TypeScript')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Apply session')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Now: Clicked Easy Apply/)).toBeInTheDocument();
+    expect(screen.getByText('Opened job description')).toBeInTheDocument();
   });
 });

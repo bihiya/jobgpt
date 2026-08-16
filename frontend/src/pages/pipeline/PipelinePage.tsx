@@ -1,6 +1,5 @@
-import { Box, Button, Chip, Stack, Typography } from '@mui/material';
+import { Box, Chip, Stack, Typography } from '@mui/material';
 import { alpha } from '@mui/material/styles';
-import DragIndicator from '@mui/icons-material/DragIndicator';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { applicationsApi, jobsApi } from '../../api';
@@ -9,6 +8,8 @@ import { type LiveApplication } from '../../components/digest/LiveApplyTray';
 import JobDetailDrawer, { type JobDetail } from '../../components/jobs/JobDetailDrawer';
 import { useRequireAuth } from '../../hooks/useRequireAuth';
 import { useToast } from '../../hooks/useToast';
+import { mergeApplySnapshots, pipelineHasLiveApply, type ApplySnapshot } from '../../lib/applyLive';
+import PipelineJobCard from './PipelineJobCard';
 import {
   PIPELINE_COLUMNS,
   moveJobInColumns,
@@ -32,6 +33,7 @@ function PipelinePage() {
   const { requireAuth } = useRequireAuth();
   const { apiError, success } = useToast();
   const [drawerJob, setDrawerJob] = useState<JobDetail | null>(null);
+  const [drawerLive, setDrawerLive] = useState<ApplySnapshot | null>(null);
   const [dragging, setDragging] = useState<{ id: string; from: PipelineColumnKey } | null>(null);
   const [overColumn, setOverColumn] = useState<PipelineColumnKey | null>(null);
   const draggedRef = useRef(false);
@@ -39,17 +41,27 @@ function PipelinePage() {
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['pipeline'],
     queryFn: async () => (await jobsApi.pipeline()).data,
+    refetchInterval: (query) =>
+      pipelineHasLiveApply(query.state.data?.columns as PipelineColumnsState | undefined) ? 4000 : false,
   });
 
   const appsQ = useQuery({
     queryKey: ['applications', 'pipeline'],
-    queryFn: async () => (await applicationsApi.list({ page_size: 50 })).data,
+    queryFn: async () => (await applicationsApi.list({ page_size: 100 })).data,
+    refetchInterval: (query) => {
+      const items = (query.state.data as { items?: LiveApplication[] } | undefined)?.items || [];
+      return items.some((app) =>
+        ['pending', 'in_progress', 'retrying', 'needs_input', 'needs_otp'].includes(app.status),
+      )
+        ? 4000
+        : false;
+    },
   });
 
   const liveByJob = useMemo(() => {
-    const map = new Map<string, LiveApplication>();
-    for (const app of (appsQ.data?.items || []) as LiveApplication[]) {
-      map.set(app.job_id, app);
+    const map = new Map<string, ApplySnapshot>();
+    for (const app of (appsQ.data?.items || []) as ApplySnapshot[]) {
+      if (app.job_id) map.set(app.job_id, app);
     }
     return map;
   }, [appsQ.data]);
@@ -100,6 +112,12 @@ function PipelinePage() {
     onSettled: invalidate,
   });
 
+  const retry = useMutation({
+    mutationFn: (id: string) => applicationsApi.retry(id),
+    meta: { successMessage: 'Retry queued', errorMessage: 'Could not retry' },
+    onSettled: invalidate,
+  });
+
   const columns = useMemo<PipelineColumnsState>(() => data?.columns || {}, [data]);
   const counts = useMemo(() => data?.counts || {}, [data]);
 
@@ -117,14 +135,18 @@ function PipelinePage() {
   const applyFromDrawer = useMutation({
     mutationFn: (id: string) => applicationsApi.create({ job_id: id }),
     meta: { successMessage: 'Applying…', errorMessage: 'Could not apply' },
-    onSuccess: () => setDrawerJob(null),
+    onSuccess: () => {
+      setDrawerJob(null);
+      setDrawerLive(null);
+    },
     onSettled: invalidate,
   });
 
   const openJob = useCallback(
-    async (id: string) => {
+    async (id: string, live?: ApplySnapshot) => {
       try {
         const { data: full } = await jobsApi.get(id);
+        setDrawerLive(live || null);
         setDrawerJob(full);
       } catch (err) {
         apiError(err, 'Could not open job');
@@ -140,7 +162,7 @@ function PipelinePage() {
           Pipeline
         </Typography>
         <Typography color="text.secondary">
-          Click Apply on a fetched job. Drag to change stages.
+          Click Apply on a fetched job. Drag to change stages. Open a card to see every apply step.
         </Typography>
       </Box>
 
@@ -208,15 +230,33 @@ function PipelinePage() {
               </Typography>
               <Stack spacing={1} sx={{ flex: 1 }}>
                 {jobs.map((job) => {
-                  const live = liveByJob.get(job.id);
-                  const applying =
-                    job.status === 'applying' ||
-                    ['pending', 'in_progress', 'retrying'].includes(live?.status || '');
-                  const latest = live?.session_steps?.[live.session_steps.length - 1];
+                  const live = mergeApplySnapshots(job.application, liveByJob.get(job.id));
                   return (
-                    <Box
+                    <PipelineJobCard
                       key={job.id}
-                      draggable
+                      job={job}
+                      column={col.key}
+                      live={live}
+                      dragging={dragging?.id === job.id}
+                      onOpen={(id) => {
+                        if (draggedRef.current) return;
+                        void openJob(id, live);
+                      }}
+                      onApply={
+                        col.key === 'fetched'
+                          ? () => requestMove(job, 'fetched', 'queued')
+                          : undefined
+                      }
+                      onCancel={(applicationId) => {
+                        if (!requireAuth('Sign in to cancel an apply')) return;
+                        cancel.mutate(applicationId);
+                      }}
+                      onRetry={(applicationId) => {
+                        if (!requireAuth('Sign in to retry an apply')) return;
+                        retry.mutate(applicationId);
+                      }}
+                      cancelBusy={cancel.isPending && cancel.variables === live?.id}
+                      retryBusy={retry.isPending && retry.variables === live?.id}
                       onDragStart={(e) => {
                         draggedRef.current = true;
                         setDragging({ id: job.id, from: col.key });
@@ -234,76 +274,7 @@ function PipelinePage() {
                           draggedRef.current = false;
                         }, 0);
                       }}
-                      sx={{
-                        p: 1.25,
-                        borderRadius: 2,
-                        border: '1px solid',
-                        borderColor: 'divider',
-                        cursor: 'grab',
-                        opacity: dragging?.id === job.id ? 0.45 : 1,
-                        transition: 'transform 0.15s ease, opacity 0.15s ease',
-                        '&:hover': { transform: 'translateY(-1px)' },
-                        '&:active': { cursor: 'grabbing' },
-                      }}
-                      onClick={() => {
-                        if (draggedRef.current) return;
-                        void openJob(job.id);
-                      }}
-                    >
-                      <Stack direction="row" spacing={0.5} alignItems="flex-start">
-                        <DragIndicator fontSize="small" sx={{ mt: 0.15, color: 'text.disabled' }} />
-                        <Box sx={{ minWidth: 0, flex: 1 }}>
-                          <Typography sx={{ fontWeight: 700, fontSize: '0.95rem' }}>{job.title}</Typography>
-                          <Typography variant="caption" color="text.secondary" display="block">
-                            {job.company}
-                            {job.portal ? ` · ${job.portal}` : ''}
-                          </Typography>
-                          {latest && col.key === 'queued' && (
-                            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
-                              {latest.label}
-                              {latest.detail ? ` — ${latest.detail}` : ''}
-                            </Typography>
-                          )}
-                          <Stack direction="row" spacing={0.75} sx={{ mt: 0.75 }} alignItems="center" flexWrap="wrap" useFlexGap>
-                            <Chip size="small" label={`${Math.round((job.match_score || 0) * 100)}%`} />
-                            {applying && (
-                              <Chip
-                                size="small"
-                                color="warning"
-                                label="Applying"
-                                sx={{ animation: 'jp-pulse-soft 2.2s ease infinite' }}
-                              />
-                            )}
-                            {col.key === 'fetched' && (
-                              <Button
-                                size="small"
-                                variant="contained"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  requestMove(job, 'fetched', 'queued');
-                                }}
-                              >
-                                Apply
-                              </Button>
-                            )}
-                            {col.key === 'queued' && live && (
-                              <Button
-                                size="small"
-                                color="inherit"
-                                disabled={cancel.isPending && cancel.variables === live.id}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (!requireAuth('Sign in to cancel an apply')) return;
-                                  cancel.mutate(live.id);
-                                }}
-                              >
-                                Cancel
-                              </Button>
-                            )}
-                          </Stack>
-                        </Box>
-                      </Stack>
-                    </Box>
+                    />
                   );
                 })}
                 {jobs.length === 0 && (
@@ -320,7 +291,11 @@ function PipelinePage() {
       <JobDetailDrawer
         open={!!drawerJob}
         job={drawerJob}
-        onClose={() => setDrawerJob(null)}
+        liveApplication={drawerLive}
+        onClose={() => {
+          setDrawerJob(null);
+          setDrawerLive(null);
+        }}
         applyBusy={applyFromDrawer.isPending}
         onApply={(id) => {
           if (!requireAuth('Sign in to apply')) return;

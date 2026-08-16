@@ -25,6 +25,8 @@ export const portalsApi = {
 export const applicationsApi = {
   list: (params?: Record<string, unknown>) => api.get('/applications', { params }),
   get: (id: string) => api.get(`/applications/${id}`),
+  forJob: (jobId: string, params?: Record<string, unknown>) =>
+    api.get('/applications', { params: { job_id: jobId, page_size: 20, ...params } }),
   create: (payload: { job_id: string; resume_id?: string }) => api.post('/applications', payload),
   retry: (id: string) => api.post(`/applications/${id}/retry`),
   cancel: (id: string) => api.post(`/applications/${id}/cancel`),

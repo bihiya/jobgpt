@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from 'react';
 import {
   automationLogFromEvent,
   getRealtimeUrl,
+  patchApplicationSession,
+  patchPipelineSession,
   prependAutomationLog,
   queryKeysForEvent,
   shouldToastEvent,
@@ -119,6 +121,28 @@ export function useRealtimeSocket(enabled = true) {
             queryClient.setQueryData(['automation-logs'], (old) =>
               prependAutomationLog(old as { items?: typeof liveLog[] } | undefined, liveLog),
             );
+          } else if (payload.event === 'application.session') {
+            const data = payload.data || {};
+            queryClient.setQueriesData({ queryKey: ['applications'] }, (old) =>
+              patchApplicationSession(old as { items?: Array<Record<string, unknown>> } | undefined, data, payload.ts),
+            );
+            queryClient.setQueriesData({ queryKey: ['pipeline'] }, (old) =>
+              patchPipelineSession(
+                old as { columns?: Record<string, Array<Record<string, unknown>>> } | undefined,
+                data,
+                payload.ts,
+              ),
+            );
+            const jobId = String(data.job_id || '');
+            if (jobId) {
+              queryClient.setQueriesData({ queryKey: ['job-application', jobId] }, (old) =>
+                patchApplicationSession(
+                  old as { items?: Array<Record<string, unknown>> } | undefined,
+                  data,
+                  payload.ts,
+                ),
+              );
+            }
           } else {
             for (const key of queryKeysForEvent(payload.event)) {
               void queryClient.invalidateQueries({ queryKey: key });

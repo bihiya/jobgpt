@@ -23,6 +23,7 @@ describe('pipeline columns', () => {
       'Interview',
       'Shortlisted',
     ]);
+    expect(PIPELINE_COLUMNS.find((c) => c.key === 'queued')?.hint).toMatch(/Live worker steps/);
   });
 
   it('maps job statuses onto the five stages', () => {

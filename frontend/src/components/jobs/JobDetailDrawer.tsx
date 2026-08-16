@@ -16,9 +16,11 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { memo, useMemo } from 'react';
 import { activityApi } from '../../api';
+import type { ApplySnapshot } from '../../lib/applyLive';
 import { listingUrlFor } from '../../lib/jobListing';
 import { formatLocal } from '../../utils/datetime';
 import ActivityTimeline from '../activity/ActivityTimeline';
+import ApplySessionPanel from './ApplySessionPanel';
 
 export type JobDetail = {
   id: string;
@@ -67,6 +69,7 @@ type Props = {
   onClose: () => void;
   onApply?: (jobId: string) => void;
   applyBusy?: boolean;
+  liveApplication?: ApplySnapshot | null;
 };
 
 function ScoreBar({ label, value }: { label: string; value: number }) {
@@ -97,7 +100,7 @@ function Field({ label, value }: { label: string; value?: string | null }) {
   );
 }
 
-function JobDetailDrawerComponent({ open, job, onClose, onApply, applyBusy }: Props) {
+function JobDetailDrawerComponent({ open, job, onClose, onApply, applyBusy, liveApplication }: Props) {
   const breakdown = job?.match_breakdown;
   const reasons = useMemo(() => breakdown?.reasons || [], [breakdown]);
   const listingUrl = useMemo(() => listingUrlFor(job), [job]);
@@ -125,6 +128,13 @@ function JobDetailDrawerComponent({ open, job, onClose, onApply, applyBusy }: Pr
             <Chip label={`${Math.round((job.match_score || 0) * 100)}% match`} size="small" color="success" />
             {job.source ? <Chip label={job.source} size="small" variant="outlined" /> : null}
           </Stack>
+
+          <ApplySessionPanel
+            jobId={job.id}
+            jobStatus={job.status}
+            open={open}
+            fallback={liveApplication}
+          />
 
           {listingUrl ? (
             <Button

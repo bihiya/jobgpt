@@ -1,5 +1,6 @@
-import { Chip, Stack, Step, StepLabel, Stepper, Typography } from '@mui/material';
+import { Chip, CircularProgress, Stack, Step, StepLabel, Stepper, Typography } from '@mui/material';
 import { memo } from 'react';
+import { formatWhen } from '../../utils/datetime';
 
 export type SessionStep = {
   key?: string;
@@ -12,6 +13,7 @@ export type SessionStep = {
 type Props = {
   steps: SessionStep[];
   dense?: boolean;
+  live?: boolean;
 };
 
 function colorFor(status?: string): 'success' | 'error' | 'warning' | 'info' | 'default' {
@@ -22,7 +24,7 @@ function colorFor(status?: string): 'success' | 'error' | 'warning' | 'info' | '
   return 'info';
 }
 
-function ApplySessionTimeline({ steps, dense }: Props) {
+function ApplySessionTimeline({ steps, dense, live }: Props) {
   if (!steps?.length) {
     return (
       <Typography variant="body2" color="text.secondary">
@@ -31,42 +33,72 @@ function ApplySessionTimeline({ steps, dense }: Props) {
     );
   }
 
+  const lastIdx = steps.length - 1;
+
   if (dense) {
     return (
       <Stack spacing={1}>
-        {steps.map((step, idx) => (
-          <Stack key={`${step.key}-${idx}`} direction="row" spacing={1} alignItems="center">
-            <Chip size="small" label={step.status || 'ok'} color={colorFor(step.status)} />
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-              {step.label || step.key}
-            </Typography>
-            {step.detail ? (
-              <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 220 }}>
-                {step.detail}
-              </Typography>
-            ) : null}
-          </Stack>
-        ))}
+        {steps.map((step, idx) => {
+          const current = Boolean(live && idx === lastIdx);
+          return (
+            <Stack
+              key={`${step.key}-${idx}`}
+              direction="row"
+              spacing={1}
+              alignItems="flex-start"
+              sx={current ? { animation: 'jp-step-in 0.35s ease' } : undefined}
+            >
+              {current ? (
+                <CircularProgress size={16} sx={{ mt: 0.35 }} />
+              ) : (
+                <Chip size="small" label={step.status || 'ok'} color={colorFor(step.status)} />
+              )}
+              <Stack spacing={0.15} sx={{ minWidth: 0, flex: 1 }}>
+                <Typography variant="body2" sx={{ fontWeight: current ? 800 : 600 }}>
+                  {step.label || step.key}
+                </Typography>
+                {step.detail ? (
+                  <Typography variant="caption" color="text.secondary">
+                    {step.detail}
+                  </Typography>
+                ) : null}
+                {step.at ? (
+                  <Typography variant="caption" color="text.disabled">
+                    {formatWhen(step.at)}
+                  </Typography>
+                ) : null}
+              </Stack>
+            </Stack>
+          );
+        })}
       </Stack>
     );
   }
 
   return (
-    <Stepper orientation="vertical" activeStep={steps.length}>
-      {steps.map((step, idx) => (
-        <Step key={`${step.key}-${idx}`} completed={step.status === 'ok'}>
-          <StepLabel error={step.status === 'error'}>
-            <Typography variant="body2" sx={{ fontWeight: 700 }}>
-              {step.label || step.key}
-            </Typography>
-            {step.detail ? (
-              <Typography variant="caption" color="text.secondary" display="block">
-                {step.detail}
+    <Stepper orientation="vertical" activeStep={live ? lastIdx : steps.length}>
+      {steps.map((step, idx) => {
+        const current = Boolean(live && idx === lastIdx);
+        return (
+          <Step key={`${step.key}-${idx}`} completed={!current && step.status === 'ok'} active={current}>
+            <StepLabel error={step.status === 'error'} icon={current ? <CircularProgress size={18} /> : undefined}>
+              <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                {step.label || step.key}
               </Typography>
-            ) : null}
-          </StepLabel>
-        </Step>
-      ))}
+              {step.detail ? (
+                <Typography variant="caption" color="text.secondary" display="block">
+                  {step.detail}
+                </Typography>
+              ) : null}
+              {step.at ? (
+                <Typography variant="caption" color="text.disabled" display="block">
+                  {formatWhen(step.at)}
+                </Typography>
+              ) : null}
+            </StepLabel>
+          </Step>
+        );
+      })}
     </Stepper>
   );
 }

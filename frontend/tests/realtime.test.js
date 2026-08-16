@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   automationLogFromEvent,
   getRealtimeHttpEndpoint,
+  patchApplicationSession,
+  patchPipelineSession,
   prependAutomationLog,
   queryKeysForEvent,
   shouldToastEvent,
@@ -93,5 +95,34 @@ describe('realtime helpers', () => {
     expect(once.items).toHaveLength(1);
     expect(twice.items).toHaveLength(1);
     expect(twice.total).toBe(1);
+  });
+
+  it('does not HTTP-refetch on every apply session step', () => {
+    expect(queryKeysForEvent('application.session')).toEqual([]);
+  });
+
+  it('patches live apply steps onto applications and pipeline caches', () => {
+    const data = {
+      application_id: 'app-1',
+      job_id: 'job-1',
+      status: 'in_progress',
+      steps: [{ key: 'opened_jd', label: 'Opened job description' }],
+      updated_at: '2026-08-16T11:05:00Z',
+    };
+    const apps = patchApplicationSession(
+      { items: [{ id: 'app-1', job_id: 'job-1', status: 'pending', session_steps: [] }], total: 1 },
+      data,
+    );
+    expect(apps.items[0].status).toBe('in_progress');
+    expect(apps.items[0].session_steps).toHaveLength(1);
+    const pipeline = patchPipelineSession(
+      {
+        columns: {
+          queued: [{ id: 'job-1', title: 'Eng', application: { id: 'app-1', status: 'pending', session_steps: [] } }],
+        },
+      },
+      data,
+    );
+    expect(pipeline.columns.queued[0].application.session_steps[0].key).toBe('opened_jd');
   });
 });
