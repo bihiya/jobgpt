@@ -458,6 +458,12 @@ function DashboardLayout() {
           '& .MuiDrawer-paper': {
             width: drawerWidth,
             boxSizing: 'border-box',
+            borderRight: 'none',
+            color: '#FFF5F9',
+            background: (theme) =>
+              theme.palette.mode === 'light'
+                ? 'linear-gradient(185deg, #FF3D8A 0%, #E2186F 48%, #4A1230 100%)'
+                : 'linear-gradient(185deg, #1A0810 0%, #3A1024 48%, #4A1230 100%)',
             transition: (theme) =>
               theme.transitions.create('transform', {
                 easing: theme.transitions.easing.sharp,
