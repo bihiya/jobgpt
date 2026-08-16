@@ -92,6 +92,13 @@ def test_selector_packs_versioned():
     assert "a[href*='/feed']" not in li.all("logged_in")
     assert get_selector_pack("greenhouse").all("success")
     assert get_selector_pack("workday").all("submit")
+    assert get_selector_pack("workday").all("apply_manually")
+    assert get_selector_pack("workday").all("autofill_resume")
+    assert get_selector_pack("workday").all("use_last_application")
+    assert get_selector_pack("workday").all("email_verify")
+    assert get_selector_pack("workday").all("mfa")
+    assert get_selector_pack("workday").all("job_closed")
+    assert get_selector_pack("workday").all("wizard_title")
     assert any("bottom-navigation-next-button" in sel for sel in get_selector_pack("workday").all("next"))
     assert get_selector_pack("unknown").version == 0
 

@@ -82,6 +82,8 @@ class BasePortal(ABC):
         self.browser = BaseBrowser(headless=headless, proxy=proxy, cookies=cookies)
         self.recorder = ApplySessionRecorder()
         self.session_identity: dict[str, str] = {}
+        self.cover_letter_path = ""
+        self.extra_files: list[str] = []
 
     @abstractmethod
     async def login(self, page: BasePage) -> None: ...

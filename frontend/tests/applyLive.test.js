@@ -82,5 +82,6 @@ describe('apply live helpers', () => {
     });
     expect(applyChannelFromSteps([], { portal: 'linkedin' })).toBeNull();
     expect(applyStatusLabel('needs_account')).toBe('Needs a candidate account');
+    expect(applyStatusLabel('needs_otp')).toBe('Needs a verification code');
   });
 });

@@ -331,7 +331,7 @@ export default function DashboardPage() {
       </Dialog>
 
       <Dialog open={!!otpOpen} onClose={() => setOtpOpen(null)} fullWidth maxWidth="xs">
-        <DialogTitle>Enter {otpOpen?.portal || 'portal'} OTP</DialogTitle>
+        <DialogTitle>Enter {otpOpen?.portal || 'portal'} verification code</DialogTitle>
         <DialogContent>
           <TextField
             autoFocus

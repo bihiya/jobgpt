@@ -78,6 +78,7 @@ def _worker(job, app, portal_doc=None):
     worker.jobs.get_by_id = AsyncMock(return_value=job)
     worker.resumes.get_by_id = AsyncMock(return_value=_resume())
     worker.resumes.get_default = AsyncMock(return_value=_resume())
+    worker.resumes.list_for_user = AsyncMock(return_value=[])
     worker.portals.find_one = AsyncMock(return_value=portal_doc or _portal_doc())
     worker.settings.get_or_create = AsyncMock(
         return_value=SimpleNamespace(headless=True, follow_up_days=7)

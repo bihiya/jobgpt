@@ -151,6 +151,7 @@ def spawn_child_adapter(parent: BasePortal, ats: str) -> BasePortal:
     key = (ats or ATS_GENERIC).lower()
     creds = (getattr(parent, "ats_credentials", None) or {}).get(key) or {}
     cookies = (getattr(parent, "ats_cookies", None) or {}).get(key) or []
+    totp = (getattr(parent, "ats_totp", None) or {}).get(key) or ""
     adapter = adapter_for_ats(
         key,
         credentials=creds,
@@ -158,8 +159,12 @@ def spawn_child_adapter(parent: BasePortal, ats: str) -> BasePortal:
         proxy=parent.proxy,
         headless=getattr(parent.browser, "headless", None),
         selector_version=getattr(parent, "selector_version", 1),
+        totp_secret=totp,
+        otp_code=getattr(parent, "otp_code", "") or "",
     )
     adapter.recorder = parent.recorder
+    adapter.cover_letter_path = getattr(parent, "cover_letter_path", "") or ""
+    adapter.extra_files = list(getattr(parent, "extra_files", None) or [])
     return adapter
 
 
@@ -197,7 +202,13 @@ async def apply_on_landed_ats(
         source=source,
     )
     adapter = spawn_child_adapter(parent, ats)
-    await _inject_cookies(page, getattr(adapter, "cookies", None))
+    cookies = list(getattr(adapter, "cookies", None) or [])
+    if ats == ATS_WORKDAY:
+        from app.automation.workday_session import cookies_for_workday_host, workday_tenant_host
+
+        cookies = cookies_for_workday_host(cookies, workday_tenant_host(url))
+        adapter.cookies = cookies
+    await _inject_cookies(page, cookies)
     landed = ExtractedJob(
         external_id=job.external_id,
         title=job.title,

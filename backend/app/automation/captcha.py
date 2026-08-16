@@ -146,18 +146,30 @@ class TwoCaptchaProvider(CaptchaProvider):
         return await _fill_otp(page, code)
 
 
+_OTP_SELECTORS = [
+    "input[name*='otp']",
+    "input[name*='code']",
+    "input[name*='pin']",
+    "input[autocomplete='one-time-code']",
+    "input#input__email_verification_pin",
+    "input[data-automation-id='otpToken']",
+    "input[data-automation-id='otp']",
+    "input[data-automation-id='emailVerificationPin']",
+    "input[data-automation-id='verificationCode']",
+    "input[aria-label*='verification']",
+    "input[aria-label*='one-time']",
+]
+
+
 async def _fill_otp(page: BasePage, code: str) -> bool:
-    selectors = [
-        "input[name*='otp']",
-        "input[name*='code']",
-        "input[name*='pin']",
-        "input[autocomplete='one-time-code']",
-        "input#input__email_verification_pin",
-    ]
+    selectors = list(_OTP_SELECTORS)
     for sel in selectors:
         if await page.page.query_selector(sel):
             await page.fill(sel, code)
-            await page.safe_click("button[type='submit'], button:has-text('Submit'), button:has-text('Verify')")
+            await page.safe_click(
+                "button[type='submit'], button:has-text('Submit'), button:has-text('Verify'), "
+                "button[data-automation-id='verifyButton']"
+            )
             return True
     return False
 
@@ -189,9 +201,7 @@ async def default_captcha_hook(
         result.captcha_solved = bool(token)
         result.detail = "captcha_solved" if token else "captcha_unsolved"
 
-    otp_sel = await page.page.query_selector(
-        "input[name*='otp'], input[name*='code'], input[name*='pin'], input[autocomplete='one-time-code']"
-    )
+    otp_sel = await page.page.query_selector(", ".join(_OTP_SELECTORS))
     if otp_sel:
         handled = await provider.handle_2fa(
             page,

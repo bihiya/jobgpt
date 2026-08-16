@@ -152,6 +152,10 @@ class ApplyWorker(BaseWorker):
         credentials = portal_doc.credentials.model_dump() if portal_doc else {}
         proxy = portal_doc.proxy.model_dump() if portal_doc and portal_doc.proxy.server else None
         cookies = self.vault.load_cookies(portal_doc) if portal_doc else []
+        if (job.portal or "").lower() == "workday":
+            from app.automation.workday_session import cookies_for_workday_host, workday_tenant_host
+
+            cookies = cookies_for_workday_host(cookies, workday_tenant_host(job.apply_url or ""))
         totp_secret = self.vault.load_totp_secret(portal_doc) if portal_doc else ""
         selector_version = getattr(portal_doc, "selector_version", 1) if portal_doc else 1
         headless = bool(getattr(user_settings, "headless", True))
@@ -190,6 +194,7 @@ class ApplyWorker(BaseWorker):
 
         result = None
         resume_local = None
+        extra_temps: list[tuple[str, str]] = []
         crash = ""
         try:
             adapter.recorder.add(
@@ -231,6 +236,7 @@ class ApplyWorker(BaseWorker):
                 self.storage.as_local_file(resume.file_path),
                 timeout=_RESUME_DOWNLOAD_TIMEOUT_S,
             )
+            extra_temps = await self._materialize_extra_files(user_id, resume, adapter)
             adapter.recorder.complete_pending(
                 "prepare",
                 label="Resume and answers ready",
@@ -262,6 +268,8 @@ class ApplyWorker(BaseWorker):
             await adapter.recorder.flush()
             await self._drain_session_progress(str(app.id))
             await self.storage.cleanup_temp(resume_local, original=resume.file_path)
+            for local, original in extra_temps:
+                await self.storage.cleanup_temp(local, original=original)
 
         if crash or result is None:
             await self._fail(app, job, crash or "Apply worker returned no result")
@@ -272,10 +280,9 @@ class ApplyWorker(BaseWorker):
         # Persist refreshed session cookies + who this session belongs to
         if portal_doc:
             apply_identity_to_portal(portal_doc, getattr(adapter, "session_identity", None))
-            if result.cookies:
-                self.vault.save_cookies(portal_doc, result.cookies)
             portal_doc.updated_at = datetime.utcnow()
             await portal_doc.save()
+        await self._persist_result_cookies(user_id, job, portal_doc, result)
 
         app.session_steps = adapter.recorder.to_list() or result.steps or []
         app.correlation_id = result.correlation_id or ""
@@ -438,7 +445,7 @@ class ApplyWorker(BaseWorker):
             app.user_id,
             event="application.needs_otp",
             title="OTP needed",
-            body=f"{job.portal} requires your 2FA code for {job.title}",
+            body=result.message or f"{job.portal} requires a verification code for {job.title}",
             type_="warning",
             metadata={"job_id": app.job_id, "application_id": str(app.id), "portal": job.portal},
         )
@@ -565,6 +572,8 @@ class ApplyWorker(BaseWorker):
             "Do you require sponsorship?",
             "Expected salary",
             "How did you hear about us?",
+            "Cover Letter",
+            "Cover letter",
         ]
         bank: dict[str, str] = {}
         try:
@@ -602,10 +611,97 @@ class ApplyWorker(BaseWorker):
         answers.setdefault("How did you hear about us?", "LinkedIn")
         return {key: str(value) for key, value in answers.items() if value not in {None, ""}}
 
+    async def _materialize_extra_files(self, user_id: str, primary, adapter) -> list[tuple[str, str]]:
+        """Cover letter + additional PDFs from resume versions (best-effort)."""
+        temps: list[tuple[str, str]] = []
+        list_fn = getattr(self.resumes, "list_for_user", None)
+        if not callable(list_fn):
+            return temps
+        try:
+            items = await list_fn(user_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("extra_files_list_failed", error=str(exc)[:200])
+            return temps
+        primary_id = str(getattr(primary, "id", "") or "")
+        cover = None
+        others = []
+        for item in items or []:
+            if str(getattr(item, "id", "") or "") == primary_id:
+                continue
+            name = str(getattr(item, "name", "") or "").lower()
+            path = str(getattr(item, "file_path", "") or "")
+            if not path:
+                continue
+            if cover is None and "cover" in name:
+                cover = item
+            else:
+                others.append(item)
+        async def _local(doc) -> str:
+            return await asyncio.wait_for(
+                self.storage.as_local_file(doc.file_path),
+                timeout=_RESUME_DOWNLOAD_TIMEOUT_S,
+            )
+
+        try:
+            if cover:
+                local = await _local(cover)
+                adapter.cover_letter_path = local
+                temps.append((local, cover.file_path))
+            extra_paths = []
+            for doc in others[:3]:
+                local = await _local(doc)
+                extra_paths.append(local)
+                temps.append((local, doc.file_path))
+            adapter.extra_files = extra_paths
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("extra_files_download_failed", error=str(exc)[:200])
+        return temps
+
+    async def _persist_result_cookies(self, user_id: str, job, portal_doc, result) -> None:
+        cookies = list(getattr(result, "cookies", None) or [])
+        if not cookies:
+            return
+        from app.automation.workday_session import merge_workday_tenant_cookies, workday_tenant_host
+
+        def _name(doc) -> str:
+            return str(getattr(getattr(doc, "name", ""), "value", getattr(doc, "name", "")) or "").lower()
+
+        if portal_doc:
+            if _name(portal_doc) == "workday":
+                host = workday_tenant_host(job.apply_url or "")
+                existing = self.vault.load_cookies(portal_doc)
+                self.vault.save_cookies(portal_doc, merge_workday_tenant_cookies(existing, cookies, host))
+            else:
+                self.vault.save_cookies(portal_doc, cookies)
+            try:
+                await portal_doc.save()
+            except Exception:  # noqa: BLE001
+                pass
+        wd_url = str((getattr(result, "metadata", None) or {}).get("external_url") or "")
+        host = workday_tenant_host(wd_url) or workday_tenant_host(job.apply_url or "")
+        if not host:
+            return
+        if portal_doc and _name(portal_doc) == "workday":
+            return
+        try:
+            wd_doc = await self.portals.find_one({"user_id": user_id, "name": "workday"})
+        except Exception:  # noqa: BLE001
+            return
+        if not wd_doc or _name(wd_doc) != "workday":
+            return
+        existing = self.vault.load_cookies(wd_doc)
+        self.vault.save_cookies(wd_doc, merge_workday_tenant_cookies(existing, cookies, host))
+        try:
+            wd_doc.updated_at = datetime.utcnow()
+            await wd_doc.save()
+        except Exception:  # noqa: BLE001
+            return
+
     async def _attach_ats_sessions(self, adapter, user_id: str) -> None:
         """Load Workday/Greenhouse/etc. logins so LinkedIn company-site Apply can sign in."""
         adapter.ats_credentials = {}
         adapter.ats_cookies = {}
+        adapter.ats_totp = {}
         list_fn = getattr(self.portals, "list_for_user", None)
         if not callable(list_fn):
             return
@@ -625,6 +721,10 @@ class ApplyWorker(BaseWorker):
                 adapter.ats_cookies[name.lower()] = self.vault.load_cookies(doc) or []
             except Exception:  # noqa: BLE001
                 adapter.ats_cookies[name.lower()] = []
+            try:
+                adapter.ats_totp[name.lower()] = self.vault.load_totp_secret(doc) or ""
+            except Exception:  # noqa: BLE001
+                adapter.ats_totp[name.lower()] = ""
 
     @staticmethod
     def _remember_apply_channel(job, result) -> None:

@@ -19,7 +19,7 @@ export type BlockerItem = {
 };
 
 function actionLabel(type?: string) {
-  if (type === 'otp') return 'Enter OTP';
+  if (type === 'otp') return 'Enter code';
   if (type === 'unknown_question') return 'Answer';
   if (type === 'captcha') return 'Resolve';
   if (type === 'create_account') return 'Open site';

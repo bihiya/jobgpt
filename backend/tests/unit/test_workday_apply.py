@@ -26,6 +26,9 @@ class _El:
     async def inner_text(self) -> str:
         return self._inner.texts.get(self._selector, "")
 
+    async def set_input_files(self, file_path: str) -> None:
+        await self._inner.set_input_files(self._selector, file_path)
+
 
 class _PwItem:
     def __init__(self, inner: _InnerPage, selector: str) -> None:
@@ -127,6 +130,8 @@ class _InnerPage:
                 }
             )
             self.visible.discard("a[data-automation-id='jobPostingApplyButton']")
+            self.visible.add("[data-automation-id='pageHeaderTitle']")
+            self.texts["[data-automation-id='pageHeaderTitle']"] = "My Information"
         if "submit" in selector.lower() or selector == "button:has-text('Submit')":
             self.body = "Thank you for applying. We have received your application."
             self.visible.add("text=Thank you for applying")
@@ -211,6 +216,8 @@ async def test_workday_apply_landed_submits(tmp_path):
     assert "apply_channel" in keys
     assert "clicked_apply" in keys
     assert "uploaded_resume" in keys
+    assert "wizard_step" in keys
+    assert any(step["label"] == "My Information" for step in result.steps if step["key"] == "wizard_step")
     assert "submitted" in keys
     assert "verified" in keys
 
@@ -227,3 +234,105 @@ async def test_workday_account_wall_without_credentials():
     assert result.needs_account is True
     assert "candidate account" in result.message.lower()
     assert result.fail_proof_html
+
+
+@pytest.mark.asyncio
+async def test_workday_job_closed_before_wizard():
+    inner = _InnerPage(
+        WD_URL,
+        visible={"text=no longer accepting applications"},
+        body="This job is no longer available. We are no longer accepting applications.",
+    )
+    result = await WorkdayPortal().apply_landed(_Page(inner), _job(), "/tmp/r.pdf", {})
+    assert result.success is False
+    assert result.needs_account is False
+    assert "closed" in result.message.lower()
+    assert not inner.uploads
+    assert "submitted" not in [step["key"] for step in result.steps]
+
+
+@pytest.mark.asyncio
+async def test_workday_already_applied_skips_wizard():
+    inner = _InnerPage(
+        WD_URL,
+        visible={"text=You have already applied"},
+        body="You have already applied for this job.",
+    )
+    result = await WorkdayPortal().apply_landed(_Page(inner), _job(), "/tmp/r.pdf", {})
+    assert result.success is True
+    assert result.metadata.get("verify") == "already_applied"
+    assert not inner.uploads
+
+
+@pytest.mark.asyncio
+async def test_workday_prefers_apply_manually():
+    inner = _InnerPage(
+        WD_URL,
+        visible={
+            "a[data-automation-id='jobPostingApplyButton']",
+            "button[data-automation-id='applyManually']",
+            "button:has-text('Autofill with Resume')",
+            "button:has-text('Use Last Application')",
+        },
+        body="Apply",
+    )
+    resume = "/tmp/r.pdf"
+    with patch(
+        "app.automation.portals.workday.resolve_and_fill",
+        return_value=FieldResolution(),
+    ):
+        result = await WorkdayPortal().apply_landed(_Page(inner), _job(), resume, {})
+    assert any(step["key"] == "apply_method" and step["label"] == "Apply Manually" for step in result.steps)
+    assert "applyManually" in " ".join(inner.clicks)
+
+
+@pytest.mark.asyncio
+async def test_workday_uploads_cover_letter_and_extra_doc(tmp_path):
+    inner = _InnerPage(
+        WD_URL,
+        visible={"a[data-automation-id='jobPostingApplyButton']"},
+        body="Apply",
+    )
+    resume = tmp_path / "resume.pdf"
+    cover = tmp_path / "cover.pdf"
+    extra = tmp_path / "transcript.pdf"
+    resume.write_bytes(b"%PDF")
+    cover.write_bytes(b"%PDF")
+    extra.write_bytes(b"%PDF")
+    portal = WorkdayPortal()
+    portal.cover_letter_path = str(cover)
+    portal.extra_files = [str(extra)]
+    with patch(
+        "app.automation.portals.workday.resolve_and_fill",
+        return_value=FieldResolution(),
+    ):
+        result = await portal.apply_landed(_Page(inner), _job(), str(resume), {"Cover Letter": "Dear hiring team"})
+    assert result.success is True
+    uploaded = [path for _sel, path in inner.uploads]
+    assert str(resume) in uploaded
+
+
+@pytest.mark.asyncio
+async def test_workday_email_verify_pauses_like_otp():
+    inner = _InnerPage(
+        WD_URL,
+        visible={"h1:has-text('Verify Your Email')", "text=Check your email"},
+        body="Verify your email. We've sent you an email with a code.",
+    )
+    result = await WorkdayPortal().apply_landed(_Page(inner), _job(), "/tmp/r.pdf", {})
+    assert result.success is False
+    assert result.needs_otp is True
+    assert "verification" in result.message.lower()
+
+
+@pytest.mark.asyncio
+async def test_workday_mfa_pauses_after_login_wall():
+    inner = _InnerPage(
+        WD_URL,
+        visible={"h2:has-text('Two-Step Verification')", "input[data-automation-id='otpToken']"},
+        body="Two-Step Verification. Enter the verification code from your authenticator app.",
+    )
+    result = await WorkdayPortal().apply_landed(_Page(inner), _job(), "/tmp/r.pdf", {})
+    assert result.success is False
+    assert result.needs_otp is True
+    assert "mfa" in result.message.lower()

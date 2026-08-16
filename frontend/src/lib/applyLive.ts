@@ -76,7 +76,7 @@ export function applyStatusLabel(status?: string | null): string {
   if (value === 'pending') return 'Queued';
   if (value === 'retrying') return 'Retrying';
   if (value === 'needs input') return 'Needs an answer';
-  if (value === 'needs otp') return 'Needs OTP';
+  if (value === 'needs otp') return 'Needs a verification code';
   if (value === 'needs account') return 'Needs a candidate account';
   if (value === 'success') return 'Applied';
   return value.charAt(0).toUpperCase() + value.slice(1);
